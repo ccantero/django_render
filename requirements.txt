@@ -3,3 +3,4 @@ dj-database-url
 django-environ
 psycopg2
 whitenoise
+gunicorn
