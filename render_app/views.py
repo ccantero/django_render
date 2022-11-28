@@ -2,10 +2,10 @@ from django.shortcuts import render
 from django.views.generic import TemplateView
 
 class ThanksPage(TemplateView):
-    template_name = 'thanks.html'
+    template_name = 'index.html'
 
 class HomePage(TemplateView):
-    template_name = 'index.html'
+    template_name = 'thanks.html'
 
 # Create your views here.
 def index(request):
