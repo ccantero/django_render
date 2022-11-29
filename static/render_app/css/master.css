@@ -1,0 +1,24 @@
+.mynav {
+	color: black;
+}
+
+body {
+  margin: 0;
+  background-color: black;
+  color:white;
+}
+
+.container-fluid{
+	padding-top: 10px;	
+}
+
+tbody {
+	background-color: white;
+}
+
+
+.help-block {
+	width: 100%;
+	color: red;
+	font-size: 18px;
+}
