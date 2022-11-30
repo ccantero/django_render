@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container-fluid">
+    <h3>Conversion</h3>
+    <table class="table table-striped order-list">
+      <thead class="thead-dark">
+        <tr>
+          <th scope="col">#</th>
+          <th scope="col">Nombre</th>
+          <th scope="col">Moneda Origen</th>
+          <th scope="col">Moneda Destino</th>
+          <th scope="col">Última Actualización</th>
+          <th scope="col">Último Valor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for conversion_obj in object_list %}
+          <tr>
+            <th scope="row">{{ forloop.counter }}</th>
+            <td>{{ conversion_obj.name }}</td>
+            <td>{{ conversion_obj.numerator }}</td>
+            <td>{{ conversion_obj.denominator }}</td>
+            <td>{{ conversion_obj.last_update }}</td>
+            <td>{{ conversion_obj.last_quote }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+
+{% endblock %}
+
+
