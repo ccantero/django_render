@@ -18,16 +18,30 @@
 	<link rel="stylesheet" href="{% static 'render_app/css/master.css' %}">
 
 </head>
-<body>
+<bodWy>
 	<nav class="navbar navbar-expand-lg navbar-dark bg-dark techfont mynav" id='navbar'>
 		<a class='navbar-brand mynav' href="{% url 'home' %}">Cantero Solutions!</a>
 	</nav>
 
 	<div class="container-fluid">
 		{% block content %}
-
-		{% endblock %}
+	
+	<div class="container-fluid">
+	
+		{% block group_content %} {% endblock %}
+		<div class="row">
+			{% block pregroup %} {% endblock %}
+			{% block postgroup %} {% endblock %}
+		</div>
+		
 	</div>
+	{% block footer %} {% endblock %}
+	
 
+	{% endblock %}
+	</div>
+	<script src="{% static 'currencyconverter/js/master.js' %}"></script>
 </body>
 </html>
+
+

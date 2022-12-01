@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% load bootstrap3 %}
+
+{% block pregroup %}
+
+<div class="col">
+    <div class="content">
+        <form action="" method="POST">
+            {% csrf_token %}
+            {% bootstrap_form form %}
+        </form>
+        </br>
+        <button onclick="calculate()" class='btn btn-primary btn-large'>Calcular</button>
+    </div>	
+</div>
+
+{% endblock %}
+
+{% block postgroup %}
+
+	<div class="col order-1">
+	  </br>
+	  <div class="alert alert-success" id="amount_ars" role="alert">
+	      ARS: 
+	  </div>
+	  </br>
+	  <div class="alert alert-success" id="amount_usd" role="alert">
+	    USD ( Oficial ): 
+	  </div>
+	  </br>
+	  <div class="alert alert-success" id="amount_usd_blue" role="alert">
+	    USD ( Blue ): 
+	  </div>
+	</div>
+
+ {% endblock %}
+
+{% block footer %} 
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+<script>
+  
+  function initialize() {
+    $("#id_amount_cuota").val({{ cuota }})
+    $("#id_amount_deuda").val({{ saldo }})
+
+    $("#amount_ars").html('ARS: {{ cuota_calculada|floatformat:2 }}')
+    $("#amount_usd_blue").html('USD ( Blue ): {{ saldo_calculado_usd_blue|floatformat:2 }}')
+    $("#amount_usd").html('USD ( Oficial ): {{ saldo_calculado_usd|floatformat:2 }}')
+
+
+    if($("#id_amount_deuda").val() == 0)
+    {
+      $("#id_amount_deuda").val(getCookie("_deuda__"))
+    }
+
+    if($("#id_amount_cuota").val() == 0)
+    {
+      $("#id_amount_cuota").val(getCookie("_cuota__"))
+    }
+  }
+</script>
+<script type="text/javascript">initialize();</script> 
+{% endblock %}
