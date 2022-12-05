@@ -70,7 +70,7 @@ class CurrencyViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows users to be viewed or edited.
     """
-    queryset = Currency.objects.all()
+    queryset = Currency.objects.all().order_by('-key')
     serializer_class = CurrencySerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -78,6 +78,6 @@ class ExchangeRatesViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows users to be viewed or edited.
     """
-    queryset = ExchangeRate.objects.all()
+    queryset = ExchangeRate.objects.all().order_by('-name')
     serializer_class = ExchangeRateSerializer
     permission_classes = [permissions.IsAuthenticated]
