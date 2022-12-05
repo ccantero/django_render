@@ -4,3 +4,4 @@ __pycache__
 staticfiles/*
 render_app/__pycache__/*.pyc
 django_render/__pycache__/*.pyc
+currencyconverter/migrations/*

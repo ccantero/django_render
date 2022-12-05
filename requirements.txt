@@ -5,3 +5,4 @@ psycopg2
 whitenoise
 gunicorn
 django-bootstrap3
+djangorestframework

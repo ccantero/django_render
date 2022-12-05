@@ -1,8 +1,12 @@
 from django.shortcuts import render
 from django.views import generic
 
-from currencyconverter.models import ExchangeRate
+from currencyconverter.models import Currency,ExchangeRate
 from currencyconverter.forms import UVAForm
+from currencyconverter.serializers import CurrencySerializer,ExchangeRateSerializer
+
+from rest_framework import viewsets
+from rest_framework import permissions
 
 # Create your views here.
 class ListExchangeRates(generic.ListView):
@@ -61,3 +65,19 @@ class UVAFormView(generic.FormView):
             context['saldo_calculado_usd_blue'] = 0.0
 
         return context
+
+class CurrencyViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows users to be viewed or edited.
+    """
+    queryset = Currency.objects.all()
+    serializer_class = CurrencySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class ExchangeRatesViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows users to be viewed or edited.
+    """
+    queryset = ExchangeRate.objects.all()
+    serializer_class = ExchangeRateSerializer
+    permission_classes = [permissions.IsAuthenticated]
