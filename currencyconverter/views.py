@@ -8,10 +8,6 @@ from currencyconverter.serializers import CurrencySerializer,ExchangeRateSeriali
 from rest_framework import viewsets
 from rest_framework import permissions
 
-# Create your views here.
-class ListExchangeRates(generic.ListView):
-    model = ExchangeRate
-
 class UVAFormView(generic.FormView):
     template_name = 'currencyconverter/uvaform.html'
     form_class = UVAForm
@@ -27,16 +23,16 @@ class UVAFormView(generic.FormView):
         uva_quote = 1.0
         blue_quote = 1.0
 
-        if len(ExchangeRate.objects.filter(name__iexact="Dolar Oficial")) == 1:
-            a_exchangerate = ExchangeRate.objects.filter(name__iexact="Dolar Oficial")[0]
+        if len(ExchangeRate.objects.filter(key__iexact="USD_OFFICIAL")) == 1:
+            a_exchangerate = ExchangeRate.objects.filter(key__iexact="USD_OFFICIAL")[0]
             green_quote = a_exchangerate.last_quote
 
-        if len(ExchangeRate.objects.filter(name__iexact="Dolar Blue")) == 1:
-            a_exchangerate = ExchangeRate.objects.filter(name__iexact="Dolar Blue")[0]
+        if len(ExchangeRate.objects.filter(key__iexact="USD_BLUE")) == 1:
+            a_exchangerate = ExchangeRate.objects.filter(key__iexact="USD_BLUE")[0]
             blue_quote = a_exchangerate.last_quote
 
-        if len(ExchangeRate.objects.filter(name__iexact="ARS_UVA")) == 1:
-            a_exchangerate = ExchangeRate.objects.filter(name__iexact="ARS_UVA")[0]
+        if len(ExchangeRate.objects.filter(key__iexact="ARS_UVA")) == 1:
+            a_exchangerate = ExchangeRate.objects.filter(key__iexact="ARS_UVA")[0]
             uva_quote = a_exchangerate.last_quote
 
         if self.request.GET.get('cuota') :
@@ -66,6 +62,8 @@ class UVAFormView(generic.FormView):
 
         return context
 
+from rest_framework.renderers import TemplateHTMLRenderer, JSONRenderer
+
 class CurrencyViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows users to be viewed or edited.
@@ -73,11 +71,15 @@ class CurrencyViewSet(viewsets.ModelViewSet):
     queryset = Currency.objects.all().order_by('-key')
     serializer_class = CurrencySerializer
     permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ['get','post']
 
 class ExchangeRatesViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows users to be viewed or edited.
     """
-    queryset = ExchangeRate.objects.all().order_by('-name')
+    queryset = ExchangeRate.objects.all().order_by('-key')
     serializer_class = ExchangeRateSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    renderer_classes = (JSONRenderer, TemplateHTMLRenderer,)
+    template_name = "currencyconverter/exchangerate_list.html"

@@ -13,7 +13,8 @@ class Currency(models.Model):
         return self.key
 
 class ExchangeRate(models.Model):
-    name = models.CharField(blank=True,default='',max_length=255, unique=True)
+    key = models.SlugField(primary_key=True, unique=True)
+    description = models.CharField(blank=True,default='',max_length=255)
     numerator = models.ForeignKey(	Currency, 
                                 to_field='key',
                                 related_name='numerator', 
@@ -26,4 +27,4 @@ class ExchangeRate(models.Model):
     last_quote = models.FloatField(default=0.0)
 
     def __str__(self):
-        return self.name
+        return self.key

@@ -9,9 +9,12 @@ class CurrencySerializer(serializers.HyperlinkedModelSerializer):
         fields = ['key', 'description'] # Check why _all_ does not work
 
 class ExchangeRateSerializer(serializers.HyperlinkedModelSerializer):
-    numerator = CurrencySerializer()
-    denominator = CurrencySerializer()
+    numerator = serializers.PrimaryKeyRelatedField(queryset=Currency.objects.all())
+    denominator = serializers.PrimaryKeyRelatedField(queryset=Currency.objects.all())
+    last_update = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S")
+
 
     class Meta:
         model = ExchangeRate
-        fields = ['name', 'numerator', 'denominator', 'last_update', 'last_quote'] # Check why _all_ does not work
+        depth = 1
+        fields = ['key', 'description', 'numerator', 'denominator', 'last_update', 'last_quote'] # Check why _all_ does not work

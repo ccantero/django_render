@@ -19,5 +19,5 @@ from django.urls import path, include
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('render_app.urls')),
-    path("exchangerates/", include("currencyconverter.urls", namespace="exchangerates")),
+    path("currencyconverter/", include("currencyconverter.urls", namespace="currencyconverter")),
 ]

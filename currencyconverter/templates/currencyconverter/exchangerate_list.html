@@ -16,20 +16,19 @@
         </tr>
       </thead>
       <tbody>
-        {% for conversion_obj in object_list %}
+        {% for conversion_obj in results %}
           <tr>
             <th scope="row">{{ forloop.counter }}</th>
-            <td>{{ conversion_obj.name }}</td>
+            <td>{{ conversion_obj.key }}</td>
             <td>{{ conversion_obj.numerator }}</td>
             <td>{{ conversion_obj.denominator }}</td>
-            <td>{{ conversion_obj.last_update }}</td>
+            <td>{{ conversion_obj.last_update  }}</td>
             <td>{{ conversion_obj.last_quote }}</td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-
 
 {% endblock %}
 
