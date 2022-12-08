@@ -8,6 +8,18 @@ from currencyconverter.serializers import CurrencySerializer,ExchangeRateSeriali
 from rest_framework import viewsets
 from rest_framework import permissions
 
+class ExchangeRateUpdateView(generic.UpdateView):
+	model = ExchangeRate
+	slug_field = 'key'
+    
+	def get_object(self):
+		obj = super().get_object()
+		# Record the last accessed date
+		obj.last_quote = 7.0
+		obj.save()
+		return obj
+
+
 class UVAFormView(generic.FormView):
     template_name = 'currencyconverter/uvaform.html'
     form_class = UVAForm
@@ -81,5 +93,13 @@ class ExchangeRatesViewSet(viewsets.ModelViewSet):
     serializer_class = ExchangeRateSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    renderer_classes = (JSONRenderer, TemplateHTMLRenderer,)
+class ExchangeRatesHTMLViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows users to be viewed or edited.
+    """
+    queryset = ExchangeRate.objects.all().order_by('-key')
+    serializer_class = ExchangeRateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    renderer_classes = (TemplateHTMLRenderer,)
     template_name = "currencyconverter/exchangerate_list.html"
