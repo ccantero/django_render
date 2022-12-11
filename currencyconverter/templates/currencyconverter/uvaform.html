@@ -49,7 +49,7 @@
     if ((cuota != "") && (deuda != "")) {
       setCookie("_deuda__", deuda, 30);
       setCookie("_cuota__", cuota, 30);
-      url = "{% url 'exchangerates:calculadora' %}" + "?cuota=" + cuota + "&saldo=" + deuda
+      url = "{% url 'currencyconverter:calculadora' %}" + "?cuota=" + cuota + "&saldo=" + deuda
       location.href = url;
     }
   }

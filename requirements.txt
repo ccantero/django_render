@@ -6,3 +6,4 @@ whitenoise
 gunicorn
 django-bootstrap3
 djangorestframework
+requests
