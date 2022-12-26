@@ -54,7 +54,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'bootstrap3',
     'rest_framework',
-    'currencyconverter'
+    'rest_framework.authtoken',
+    'currencyconverter',
+    'profile_app'
 ]
 
 MIDDLEWARE = [
@@ -167,3 +169,5 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10
 }
+
+AUTH_USER_MODEL = 'profile_app.UserProfile'
