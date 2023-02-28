@@ -3,7 +3,7 @@ from django.views import generic
 
 from currencyconverter.models import Currency,ExchangeRate
 from currencyconverter.forms import UVAForm
-from currencyconverter.serializers import CurrencySerializer,ExchangeRateSerializer
+from currencyconverter.serializers import CurrencySerializer,ExchangeRateSerializer, CurrencyDetailSerializer
 
 from rest_framework import viewsets
 from rest_framework import permissions
@@ -65,33 +65,40 @@ from rest_framework.renderers import TemplateHTMLRenderer, JSONRenderer
 
 class CurrencyViewSet(viewsets.ModelViewSet):
     """
-    API endpoint that allows users to be viewed or edited.
+    API endpoint that allows currencies to be viewed or edited.
     """
     queryset = Currency.objects.all().order_by('-key')
-    serializer_class = CurrencySerializer
-    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = CurrencyDetailSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     http_method_names = ['get','post']
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return CurrencySerializer
+
+        return super().get_serializer_class()
 
 class ExchangeRatesViewSet(viewsets.ModelViewSet):
     """
-    API endpoint that allows users to be viewed or edited.
+    API endpoint that allows ExchangeRates to be viewed or edited.
     """
     queryset = ExchangeRate.objects.all().order_by('-key')
     serializer_class = ExchangeRateSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    http_method_names = ['get','post', 'put']
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    http_method_names = ['get','post']
 
 class ExchangeRatesHTMLViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows users to be viewed or edited.
     """
+    schema=None # Avoid to be included on Swagger page
     queryset = ExchangeRate.objects.all().order_by('-key')
     serializer_class = ExchangeRateSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
     renderer_classes = (TemplateHTMLRenderer,)
     template_name = "currencyconverter/exchangerate_list.html"
-
+    
 from django.utils import timezone
 from django.http import JsonResponse
 from datetime import datetime

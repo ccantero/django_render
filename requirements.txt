@@ -7,3 +7,4 @@ gunicorn
 django-bootstrap3
 djangorestframework
 requests
+drf-spectacular
