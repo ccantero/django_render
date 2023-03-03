@@ -3,9 +3,9 @@ from rest_framework import routers
 from profile import views
 
 router = routers.DefaultRouter()
-router.register('profile', views.UserProfileViewSet)
+router.register('profiles', views.UserProfileViewSet)
 
-app_name = 'profile'
+app_name = 'profiles'
 
 urlpatterns = [
     path('login/', views.UserLoginApiView.as_view()),

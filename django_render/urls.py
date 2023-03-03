@@ -21,7 +21,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('render_app.urls')),
     path("currencyconverter/", include("currencyconverter.urls", namespace="currencyconverter")),
-    path("profiles/", include("profile.urls", namespace="profile")),
+    path("api/", include("profile.urls", namespace="profile")),
     path('api/schema', SpectacularAPIView.as_view(), name='api-schema'),
     path('api/docs', 
         SpectacularSwaggerView.as_view(url_name='api-schema'), 
