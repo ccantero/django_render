@@ -12,6 +12,6 @@ app_name = 'currencyconverter'
 urlpatterns = [
 	path('', include(router.urls)),
 	path('calculadora_uva/',views.UVAFormView.as_view(), {'cuota':0, 'saldo':0}, name='calculadora'),
-	path('exchangerates/',views.ExchangeRatesHTMLViewSet.as_view({'get': 'list'})),
+	path('exchangerates/',views.ExchangeRatesHTMLViewSet.as_view({'get': 'list'}), name='cotizaciones'),
 	path('ajax/update_rates', views.update_rates, name='update_rates')
 ]
