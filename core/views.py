@@ -13,6 +13,9 @@ class ThanksPage(TemplateView):
 
 class HomePage(TemplateView):
     template_name = 'index.html'
+    
+class AboutMePage(TemplateView):
+    template_name = 'aboutme.html'
 
 # Create your views here.
 def index(request):
