@@ -113,6 +113,31 @@ def get_ARSUVA_rate():
     return quote
 
 def update_ARSUSD_rate(now):
+    response = requests.get('https://dolarapi.com/v1/dolares/')
+    json_obj = response.json()
+    for obj in json_obj:
+        if obj['casa'] == 'blue':
+            data = 'Dolar Blue'
+            quote_blue = float(data['compra'].replace(',','.'))
+
+        if obj['casa'] == 'oficial':
+            data = 'Dolar Oficial'
+            quote_green = float(data['compra'].replace(',','.'))
+    
+    for key in ['USD_OFFICIAL','USD_BLUE']:
+        query_set = ExchangeRate.objects.filter(key__iexact=key)
+        if len(query_set) == 1:
+            a_exchangerate = query_set[0]
+            if key == 'USD_OFFICIAL':
+                a_exchangerate.last_quote = quote_green
+            
+            if key == 'USD_BLUE':
+                a_exchangerate.last_quote = quote_blue
+
+            a_exchangerate.last_update = now
+            a_exchangerate.save()
+
+def _update_ARSUSD_rate(now):
     response = requests.get('https://www.dolarsi.com/api/api.php?type=valoresprincipales')
     json_obj = response.json()
     for obj in json_obj:
