@@ -118,11 +118,11 @@ def update_ARSUSD_rate(now):
     for obj in json_obj:
         if obj['casa'] == 'blue':
             data = 'Dolar Blue'
-            quote_blue = float(data['compra'].replace(',','.'))
+            quote_blue = obj['compra']
 
         if obj['casa'] == 'oficial':
             data = 'Dolar Oficial'
-            quote_green = float(data['compra'].replace(',','.'))
+            quote_green = obj['compra']
     
     for key in ['USD_OFFICIAL','USD_BLUE']:
         query_set = ExchangeRate.objects.filter(key__iexact=key)
