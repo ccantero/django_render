@@ -106,14 +106,14 @@ from datetime import datetime
 import requests
 
 def get_ARSUVA_rate():
-    response = requests.get('https://www.bancociudad.com.ar/institucional/herramientas/getCotizaciones')
+    response = requests.get('https://www.bancociudad.com.ar/institucional/herramientas/getCotizaciones', verify=False)
     data = response.json()
     uva_value = data['data']['Uva']['compra'].replace('$','').strip().replace(',','.')
     quote = float(uva_value)
     return quote
 
 def update_ARSUSD_rate(now):
-    response = requests.get('https://dolarapi.com/v1/dolares/')
+    response = requests.get('   https://dolarapi.com/v1/dolares')
     json_obj = response.json()
     for obj in json_obj:
         if obj['casa'] == 'blue':
