@@ -1,7 +1,7 @@
-Django
-dj-database-url
+Django==3.2.25
+dj-database-url<3.0.0
 django-environ
-psycopg2
+psycopg2-binary
 whitenoise
 gunicorn
 django-bootstrap3
