@@ -102,6 +102,11 @@ DATABASES = {
     )
 }
 
+DATABASES['default']['OPTIONS'] = {
+    # Esto le dice a PostgreSQL dónde buscar primero
+    'options': '-c search_path=django,public'
+}
+
 # default='sqlite:////path-to-my/database.sqlite'
 
 
