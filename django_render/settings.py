@@ -26,11 +26,11 @@ STATIC_DIR = os.path.join(BASE_DIR,'static')
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY', default='your secret key')
+SECRET_KEY = env.str('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 #DEBUG = 'RENDER' not in os.environ
-DEBUG = os.environ.get('CC_DEBUG', default=False)
+DEBUG = env.bool('CC_DEBUG', default=False)
 
 ALLOWED_HOSTS = ['www.cantero-solutions.com.ar']
 
@@ -179,3 +179,18 @@ REST_FRAMEWORK = {
 }
 
 AUTH_USER_MODEL = 'profile.UserProfile'
+
+# Security Settings for Production
+if not DEBUG:
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    X_FRAME_OPTIONS = 'DENY'
+else:
+    # Development security settings
+    X_FRAME_OPTIONS = 'SAMEORIGIN'

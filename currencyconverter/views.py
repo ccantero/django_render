@@ -101,12 +101,13 @@ class ExchangeRatesHTMLViewSet(viewsets.ModelViewSet):
     
 from django.utils import timezone
 from django.http import JsonResponse
+from django.contrib.admin.views.decorators import staff_member_required
 from datetime import datetime
 
 import requests
 
 def get_ARSUVA_rate():
-    response = requests.get('https://www.bancociudad.com.ar/institucional/herramientas/getCotizaciones', verify=False)
+    response = requests.get('https://www.bancociudad.com.ar/institucional/herramientas/getCotizaciones', verify=True)
     data = response.json()
     uva_value = data['data']['Uva']['compra'].replace('$','').strip().replace(',','.')
     quote = float(uva_value)
@@ -162,6 +163,7 @@ def _update_ARSUSD_rate(now):
             a_exchangerate.last_update = now
             a_exchangerate.save()
 
+@staff_member_required
 def update_rates(request):
     now = timezone.now()
     for key in ['ARS_UVA', 'USD_OFFICIAL','USD_BLUE']:

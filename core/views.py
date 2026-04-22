@@ -1,12 +1,15 @@
 from django.shortcuts import render
 from django.views.generic import TemplateView
 from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, HttpResponseForbidden
+from django.contrib.admin.views.decorators import staff_member_required
 
 import os
 import json
 import requests
 from core.models import TelegramMessage
+
+TELEGRAM_WEBHOOK_TOKEN = os.getenv("TELEGRAM_WEBHOOK_TOKEN")
 
 class ThanksPage(TemplateView):
     template_name = 'thanks.html'
@@ -26,12 +29,15 @@ TUTORIAL_BOT_TOKEN = os.getenv("TUTORIAL_BOT_TOKEN", "error_token")
 
 @csrf_exempt
 def listener(request):
+	token = request.headers.get('X-Telegram-Bot-Api-Secret-Token')
+	if TELEGRAM_WEBHOOK_TOKEN and token != TELEGRAM_WEBHOOK_TOKEN:
+		return HttpResponseForbidden("Invalid or missing token")
 
 	if TUTORIAL_BOT_TOKEN == 'error_token':
 		return HttpResponse("<h1>Unable to find TUTORIAL_BOT_TOKEN</h1>")
 
 	if request.method == 'GET':
-		return HttpResponse(f"You are listening!<br>{TELEGRAM_URL}{TUTORIAL_BOT_TOKEN}/")
+		return HttpResponse("You are listening!")
 
 	if request.method == 'POST':
 		t_data = json.loads(request.body)
@@ -55,11 +61,6 @@ def listener(request):
 		
 		if t_message_text == "/start":
 			send_message("Hi " + str(username), chat_id)
-			#list_of_profiles = Profile.objects.filter(telegram_user__iexact=username)
-			#if len(list_of_profiles) == 0:
-			#	send_message("Seems you have not yet associated your misgastos account with this Telegram profile", chat_id)
-			#else:
-			#	send_message("What do you want to do my friend?", chat_id)
 		elif t_message_text == "/getmyinvest":
 			send_message("Sorry " + str(username) + "!", chat_id)
 			send_message("<b>This functionality is not yet implemented</b>", chat_id)
@@ -68,7 +69,7 @@ def listener(request):
 			send_message("My answer are limited. Please ask the right questions.", chat_id)
 
 		return JsonResponse({"ok": "POST request processed"}) 
-@csrf_exempt
+@staff_member_required
 def test_speaker(request, chat_id):
 	if TUTORIAL_BOT_TOKEN == 'error_token':
 		return HttpResponse("There is not TUTORIAL_BOT_TOKEN")
