@@ -430,3 +430,13 @@ class PrivateTestViews(TestCase):
 
         self.assertNotEqual(res.reason_phrase, 'Not Found')
         self.assertEqual(res.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_exchangerate_last_quote_zero(self):
+        currency = Currency.objects.create(key='USD')
+        rate = ExchangeRate.objects.create(
+            key='RATE',
+            numerator=currency,
+            denominator=currency,
+            last_quote=0.0
+        )
+        self.assertEqual(rate.last_quote, 0.0)

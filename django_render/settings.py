@@ -14,23 +14,27 @@ import dj_database_url
 from pathlib import Path
 
 import environ
-env = environ.Env()
-environ.Env.read_env()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = os.path.join(BASE_DIR,'templates')
 STATIC_DIR = os.path.join(BASE_DIR,'static')
 
+env = environ.Env()
+environ.Env.read_env(BASE_DIR / '.env')
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env.str('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 #DEBUG = 'RENDER' not in os.environ
 DEBUG = env.bool('CC_DEBUG', default=False)
+
+# SECURITY WARNING: keep the secret key used in production secret!
+if DEBUG:
+    SECRET_KEY = env.str('SECRET_KEY', default='django-insecure-local-dev-key')
+else:
+    SECRET_KEY = env.str('SECRET_KEY')
 
 ALLOWED_HOSTS = ['www.cantero-solutions.com.ar']
 
@@ -102,10 +106,11 @@ DATABASES = {
     )
 }
 
-DATABASES['default']['OPTIONS'] = {
-    # Esto le dice a PostgreSQL dónde buscar primero
-    'options': '-c search_path=django,public'
-}
+if DATABASES['default']['ENGINE'] == 'django.db.backends.postgresql':
+    DATABASES['default']['OPTIONS'] = {
+        # Esto le dice a PostgreSQL dónde buscar primero
+        'options': '-c search_path=django,public'
+    }
 
 # default='sqlite:////path-to-my/database.sqlite'
 
@@ -179,6 +184,9 @@ REST_FRAMEWORK = {
 }
 
 AUTH_USER_MODEL = 'profile.UserProfile'
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/dashboard/'
+LOGOUT_REDIRECT_URL = '/login/'
 
 # Security Settings for Production
 if not DEBUG:

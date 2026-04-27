@@ -36,24 +36,46 @@ class UVAFormView(generic.FormView):
 
         if self.request.GET.get('cuota') :
             # I have receieved on URL
-            context['cuota'] = self.request.GET.get('cuota')
-            context['cuota_calculada'] = float(self.request.GET.get('cuota')) * uva_quote
+            try:
+                cuota_val = float(self.request.GET.get('cuota'))
+                context['cuota'] = cuota_val
+                context['cuota_calculada'] = cuota_val * uva_quote
+            except (ValueError, TypeError):
+                context['cuota'] = 0.0
+                context['cuota_calculada'] = 0.0
         elif self.request.COOKIES.get('_cuota__') and self.request.COOKIES.get('_cuota__') != "undefined":
-            context['cuota'] = self.request.COOKIES.get('_cuota__')
-            context['cuota_calculada'] = float(self.request.COOKIES.get('_cuota__')) * uva_quote
+            try:
+                cuota_val = float(self.request.COOKIES.get('_cuota__'))
+                context['cuota'] = cuota_val
+                context['cuota_calculada'] = cuota_val * uva_quote
+            except (ValueError, TypeError):
+                context['cuota'] = 0.0
+                context['cuota_calculada'] = 0.0
         else:
             context['cuota'] = 0.0
             context['cuota_calculada'] = 0.0
 
         if self.request.GET.get('saldo'):
             # I have receieved on URL
-            context['saldo'] = self.request.GET.get('saldo')
-            context['saldo_calculado_usd'] = float(self.request.GET.get('saldo')) * uva_quote / green_quote
-            context['saldo_calculado_usd_blue'] = float(self.request.GET.get('saldo')) * uva_quote / blue_quote
+            try:
+                saldo_val = float(self.request.GET.get('saldo'))
+                context['saldo'] = saldo_val
+                context['saldo_calculado_usd'] = saldo_val * uva_quote / green_quote
+                context['saldo_calculado_usd_blue'] = saldo_val * uva_quote / blue_quote
+            except (ValueError, TypeError):
+                context['saldo'] = 0.0
+                context['saldo_calculado_usd'] = 0.0
+                context['saldo_calculado_usd_blue'] = 0.0
         elif self.request.COOKIES.get('_deuda__') and self.request.COOKIES.get('_deuda__') != "undefined":
-            context['saldo'] = self.request.COOKIES.get('_deuda__')
-            context['saldo_calculado_usd'] = float(self.request.COOKIES.get('_deuda__')) * uva_quote / green_quote
-            context['saldo_calculado_usd_blue'] = float(self.request.COOKIES.get('_deuda__')) * uva_quote / blue_quote
+            try:
+                saldo_val = float(self.request.COOKIES.get('_deuda__'))
+                context['saldo'] = saldo_val
+                context['saldo_calculado_usd'] = saldo_val * uva_quote / green_quote
+                context['saldo_calculado_usd_blue'] = saldo_val * uva_quote / blue_quote
+            except (ValueError, TypeError):
+                context['saldo'] = 0.0
+                context['saldo_calculado_usd'] = 0.0
+                context['saldo_calculado_usd_blue'] = 0.0
         else:
             context['saldo'] = 0.0
             context['saldo_calculado_usd'] = 0.0

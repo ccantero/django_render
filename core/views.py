@@ -3,11 +3,13 @@ from django.views.generic import TemplateView
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse, JsonResponse, HttpResponseForbidden
 from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_GET, require_POST
 
 import os
 import json
 import requests
-from core.models import TelegramMessage
+from core.models import BotControl, TelegramMessage
 
 TELEGRAM_WEBHOOK_TOKEN = os.getenv("TELEGRAM_WEBHOOK_TOKEN")
 
@@ -23,6 +25,58 @@ class AboutMePage(TemplateView):
 # Create your views here.
 def index(request):
     return render(request, 'core/index.html', {})
+
+
+def bot_control_payload(control):
+	return {
+		"is_paused": control.is_paused,
+		"status": "paused" if control.is_paused else "running",
+		"updated_at": control.updated_at.isoformat() if control.updated_at else None,
+		"updated_by": str(control.updated_by) if control.updated_by else None,
+		"reason": control.reason,
+	}
+
+
+@login_required
+def dashboard(request):
+	control = BotControl.get_solo()
+	context = {
+		"bot_control": control,
+		"bot_status": bot_control_payload(control),
+		"pnl": None,
+		"trades": [],
+		"positions": [],
+	}
+	return render(request, "dashboard.html", context)
+
+
+@login_required
+@require_GET
+def bot_status(request):
+	control = BotControl.get_solo()
+	return JsonResponse(bot_control_payload(control))
+
+
+@login_required
+@require_POST
+def bot_stop(request):
+	control = BotControl.get_solo()
+	control.is_paused = True
+	control.reason = request.POST.get("reason", "")
+	control.updated_by = request.user
+	control.save(update_fields=["is_paused", "reason", "updated_by", "updated_at"])
+	return JsonResponse(bot_control_payload(control))
+
+
+@login_required
+@require_POST
+def bot_resume(request):
+	control = BotControl.get_solo()
+	control.is_paused = False
+	control.reason = request.POST.get("reason", "")
+	control.updated_by = request.user
+	control.save(update_fields=["is_paused", "reason", "updated_by", "updated_at"])
+	return JsonResponse(bot_control_payload(control))
 
 TELEGRAM_URL = "https://api.telegram.org/bot"
 TUTORIAL_BOT_TOKEN = os.getenv("TUTORIAL_BOT_TOKEN", "error_token")
