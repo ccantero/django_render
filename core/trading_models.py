@@ -1,0 +1,125 @@
+from django.db import models
+
+
+class ReadOnlyTradingModel(models.Model):
+	"""
+	Base for tables owned by the external trading bot.
+	Django maps them only to read data; schema and writes belong to the bot.
+	"""
+
+	def save(self, *args, **kwargs):
+		raise RuntimeError("Trading bot tables are read-only from the Django dashboard.")
+
+	def delete(self, *args, **kwargs):
+		raise RuntimeError("Trading bot tables are read-only from the Django dashboard.")
+
+	class Meta:
+		abstract = True
+		managed = False
+		app_label = "trading_read"
+
+
+class PortfolioPosition(ReadOnlyTradingModel):
+	symbol = models.CharField(max_length=32, primary_key=True)
+	asset = models.CharField(max_length=32, blank=True, null=True)
+	quantity = models.DecimalField(max_digits=36, decimal_places=18)
+	entry_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	current_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	updated_at = models.DateTimeField(blank=True, null=True)
+
+	class Meta:
+		managed = False
+		db_table = "portfolio"
+		app_label = "trading_read"
+
+
+class PositionLot(ReadOnlyTradingModel):
+	symbol = models.CharField(max_length=32)
+	asset = models.CharField(max_length=32, blank=True, null=True)
+	original_quantity = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	remaining_quantity = models.DecimalField(max_digits=36, decimal_places=18)
+	entry_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	status = models.CharField(max_length=32, blank=True, null=True)
+	opened_by_trade_operation_id = models.BigIntegerField(blank=True, null=True)
+	opened_at = models.DateTimeField(blank=True, null=True)
+	updated_at = models.DateTimeField(blank=True, null=True)
+
+	class Meta:
+		managed = False
+		db_table = "position_lots"
+		app_label = "trading_read"
+
+
+class TradeOperation(ReadOnlyTradingModel):
+	order_id = models.CharField(max_length=128, blank=True, null=True)
+	symbol = models.CharField(max_length=32)
+	side = models.CharField(max_length=16)
+	status = models.CharField(max_length=32, blank=True, null=True)
+	executed_base_qty = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	executed_quote_qty = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	average_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	fees = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	realized_pnl = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	created_at = models.DateTimeField(blank=True, null=True)
+	executed_at = models.DateTimeField(blank=True, null=True)
+
+	class Meta:
+		managed = False
+		db_table = "trade_operations"
+		app_label = "trading_read"
+
+
+class TradeFill(ReadOnlyTradingModel):
+	order_id = models.CharField(max_length=128, blank=True, null=True)
+	symbol = models.CharField(max_length=32)
+	side = models.CharField(max_length=16, blank=True, null=True)
+	executed_quantity = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	executed_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	quote_quantity = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	commission = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	commission_asset = models.CharField(max_length=32, blank=True, null=True)
+	timestamp = models.DateTimeField(blank=True, null=True)
+
+	class Meta:
+		managed = False
+		db_table = "trade_fills"
+		app_label = "trading_read"
+
+
+class LotClosure(ReadOnlyTradingModel):
+	trade_operation_id = models.BigIntegerField()
+	closed_lot_id = models.BigIntegerField()
+	closed_quantity = models.DecimalField(max_digits=36, decimal_places=18)
+	entry_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	exit_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	realized_pnl = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	timestamp = models.DateTimeField(blank=True, null=True)
+
+	class Meta:
+		managed = False
+		db_table = "lot_closures"
+		app_label = "trading_read"
+
+
+class Healthcheck(ReadOnlyTradingModel):
+	status = models.CharField(max_length=32, blank=True, null=True)
+	last_cycle_at = models.DateTimeField(blank=True, null=True)
+	last_successful_cycle_at = models.DateTimeField(blank=True, null=True)
+	last_error = models.TextField(blank=True, null=True)
+	updated_at = models.DateTimeField(blank=True, null=True)
+	run_id = models.CharField(max_length=128, blank=True, null=True)
+
+	class Meta:
+		managed = False
+		db_table = "healthcheck"
+		app_label = "trading_read"
+
+
+class Snapshot(ReadOnlyTradingModel):
+	created_at = models.DateTimeField(blank=True, null=True)
+	data = models.JSONField(blank=True, null=True)
+
+	class Meta:
+		managed = False
+		db_table = "snapshots"
+		app_label = "trading_read"

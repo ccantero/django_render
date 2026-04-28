@@ -1,8 +1,7 @@
-from django.db import models
 from django.conf import settings
-
-# Create your models here.
+from django.db import models
 from django.utils import timezone
+
 
 class TelegramMessage(models.Model):
 	message_id = models.PositiveIntegerField()
@@ -30,3 +29,17 @@ class BotControl(models.Model):
 
 	def __str__(self):
 		return "Paused" if self.is_paused else "Running"
+
+
+class AppSetting(models.Model):
+	key = models.CharField(max_length=128, unique=True)
+	value = models.CharField(max_length=255)
+	description = models.TextField(blank=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		db_table = "app_settings"
+
+	def __str__(self):
+		return self.key
+

@@ -2,16 +2,17 @@ from django.shortcuts import render
 from django.views.generic import TemplateView
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse, JsonResponse, HttpResponseForbidden
+from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_GET, require_POST
 
-import os
 import json
 import requests
+from core.dashboard_read_model import get_dashboard_context
 from core.models import BotControl, TelegramMessage
 
-TELEGRAM_WEBHOOK_TOKEN = os.getenv("TELEGRAM_WEBHOOK_TOKEN")
+TELEGRAM_WEBHOOK_TOKEN = settings.TELEGRAM_WEBHOOK_TOKEN
 
 class ThanksPage(TemplateView):
     template_name = 'thanks.html'
@@ -39,15 +40,8 @@ def bot_control_payload(control):
 
 @login_required
 def dashboard(request):
-	control = BotControl.get_solo()
-	context = {
-		"bot_control": control,
-		"bot_status": bot_control_payload(control),
-		"pnl": None,
-		"trades": [],
-		"positions": [],
-	}
-	return render(request, "dashboard.html", context)
+	read_model = get_dashboard_context()
+	return render(request, "dashboard.html", read_model.context)
 
 
 @login_required
@@ -79,16 +73,13 @@ def bot_resume(request):
 	return JsonResponse(bot_control_payload(control))
 
 TELEGRAM_URL = "https://api.telegram.org/bot"
-TUTORIAL_BOT_TOKEN = os.getenv("TUTORIAL_BOT_TOKEN", "error_token")
+TUTORIAL_BOT_TOKEN = settings.TUTORIAL_BOT_TOKEN
 
 @csrf_exempt
 def listener(request):
 	token = request.headers.get('X-Telegram-Bot-Api-Secret-Token')
-	if TELEGRAM_WEBHOOK_TOKEN and token != TELEGRAM_WEBHOOK_TOKEN:
+	if token != TELEGRAM_WEBHOOK_TOKEN:
 		return HttpResponseForbidden("Invalid or missing token")
-
-	if TUTORIAL_BOT_TOKEN == 'error_token':
-		return HttpResponse("<h1>Unable to find TUTORIAL_BOT_TOKEN</h1>")
 
 	if request.method == 'GET':
 		return HttpResponse("You are listening!")
@@ -125,9 +116,6 @@ def listener(request):
 		return JsonResponse({"ok": "POST request processed"}) 
 @staff_member_required
 def test_speaker(request, chat_id):
-	if TUTORIAL_BOT_TOKEN == 'error_token':
-		return HttpResponse("There is not TUTORIAL_BOT_TOKEN")
-
 	if request.method == 'GET':
 		send_message("This is a test message", chat_id)
 	

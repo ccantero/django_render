@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container py-4">
-	<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="container-fluid py-4">
+	<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
 		<div>
-			<h1 class="h3 mb-1">Dashboard</h1>
+			<h1 class="h3 mb-1">Trading Dashboard</h1>
 			<p class="text-muted mb-0">Usuario: {{ request.user.email }}</p>
 		</div>
 		<form method="post" action="{% url 'logout' %}">
@@ -13,20 +13,88 @@
 		</form>
 	</div>
 
+	{% if data_error %}
+		<div class="alert alert-warning">
+			<strong>No se pudo leer la base compartida.</strong>
+			<div class="small mt-1">{{ data_error }}</div>
+		</div>
+	{% endif %}
+
 	<div class="row">
-		<div class="col-md-4 mb-3">
+		<div class="col-lg-4 mb-3">
 			<div class="card h-100">
 				<div class="card-body">
-					<h2 class="h5">Bot</h2>
+					<h2 class="h5">Estado del bot</h2>
 					<p class="mb-2">
-						Estado:
-						<strong>{% if bot_control.is_paused %}Pausado{% else %}Activo{% endif %}</strong>
+						Control:
+						{% if bot_control %}
+							<strong>{% if bot_control.is_paused %}paused{% else %}running{% endif %}</strong>
+						{% else %}
+							<strong>unknown</strong>
+						{% endif %}
 					</p>
-					<p class="text-muted small mb-3">
-						Actualizado: {{ bot_control.updated_at|date:"Y-m-d H:i" }}
-						{% if bot_control.updated_by %}por {{ bot_control.updated_by }}{% endif %}
+					<p class="mb-2">
+						Healthcheck:
+						<strong class="{% if health.state == 'healthy' %}text-success{% elif health.state == 'error' %}text-danger{% elif health.state == 'stale' %}text-warning{% else %}text-muted{% endif %}">
+							{{ health.state }}
+						</strong>
 					</p>
+					{% if health.row %}
+						<p class="text-muted small mb-1">Actualizado: {{ health.row.updated_at|date:"Y-m-d H:i:s" }}</p>
+						<p class="text-muted small mb-1">Último ciclo: {{ health.row.last_cycle_at|date:"Y-m-d H:i:s"|default:"-" }}</p>
+						<p class="text-muted small mb-1">Último ciclo OK: {{ health.row.last_successful_cycle_at|date:"Y-m-d H:i:s"|default:"-" }}</p>
+						{% if health.row.last_error %}
+							<p class="text-danger small mb-0">{{ health.row.last_error }}</p>
+						{% endif %}
+					{% else %}
+						<p class="text-muted small mb-0">Sin registros de healthcheck.</p>
+					{% endif %}
+				</div>
+			</div>
+		</div>
 
+		<div class="col-lg-8 mb-3">
+			<div class="row">
+				<div class="col-md-3 mb-3">
+					<div class="card h-100">
+						<div class="card-body">
+							<h2 class="h6 text-muted">Posiciones portfolio</h2>
+							<p class="h4 mb-0">{{ summary.portfolio_positions_count }}</p>
+						</div>
+					</div>
+				</div>
+				<div class="col-md-3 mb-3">
+					<div class="card h-100">
+						<div class="card-body">
+							<h2 class="h6 text-muted">Símbolos con lots</h2>
+							<p class="h4 mb-0">{{ summary.open_lot_symbols_count }}</p>
+						</div>
+					</div>
+				</div>
+				<div class="col-md-3 mb-3">
+					<div class="card h-100">
+						<div class="card-body">
+							<h2 class="h6 text-muted">Valor aprox.</h2>
+							<p class="h4 mb-0">{{ summary.total_value|floatformat:2 }}</p>
+						</div>
+					</div>
+				</div>
+				<div class="col-md-3 mb-3">
+					<div class="card h-100">
+						<div class="card-body">
+							<h2 class="h6 text-muted">Alertas</h2>
+							<p class="h4 mb-0">{{ alerts|length }}</p>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="card">
+				<div class="card-body">
+					<h2 class="h5">Control seguro</h2>
+					<p class="text-muted small">
+						Estos botones solo escriben en la tabla local de control. No ejecutan órdenes ni llaman a Binance.
+					</p>
 					<form method="post" action="{% url 'bot_stop' %}" class="d-inline">
 						{% csrf_token %}
 						<button type="submit" class="btn btn-danger">Stop</button>
@@ -38,33 +106,116 @@
 				</div>
 			</div>
 		</div>
+	</div>
 
-		<div class="col-md-8">
-			<div class="row">
-				<div class="col-md-4 mb-3">
-					<div class="card h-100">
-						<div class="card-body">
-							<h2 class="h5">PnL</h2>
-							<p class="text-muted mb-0">Pendiente</p>
+	<div class="row">
+		<div class="col-lg-5 mb-3">
+			<div class="card h-100">
+				<div class="card-body">
+					<h2 class="h5">Alertas</h2>
+					{% if alerts %}
+						<div class="list-group list-group-flush">
+							{% for alert in alerts %}
+								<div class="list-group-item px-0">
+									<span class="badge badge-{% if alert.level == 'danger' %}danger{% elif alert.level == 'warning' %}warning{% else %}secondary{% endif %}">{{ alert.level }}</span>
+									<strong>{{ alert.title }}</strong>
+									<div class="text-muted small mt-1">{{ alert.detail }}</div>
+								</div>
+							{% endfor %}
 						</div>
+					{% else %}
+						<p class="text-muted mb-0">Sin alertas con las reglas actuales.</p>
+					{% endif %}
+				</div>
+			</div>
+		</div>
+
+		<div class="col-lg-7 mb-3">
+			<div class="card h-100">
+				<div class="card-body">
+					<h2 class="h5">Últimos trades</h2>
+					<div class="table-responsive">
+						<table class="table table-sm table-hover mb-0">
+							<thead>
+								<tr>
+									<th>Fecha</th>
+									<th>Símbolo</th>
+									<th>Side</th>
+									<th>Estado</th>
+									<th class="text-right">Base</th>
+									<th class="text-right">Quote</th>
+									<th class="text-right">Avg</th>
+									<th class="text-right">PnL</th>
+								</tr>
+							</thead>
+							<tbody>
+								{% for trade in trades %}
+									<tr>
+										<td>{{ trade.executed_at|default:trade.created_at|date:"Y-m-d H:i" }}</td>
+										<td>{{ trade.symbol }}</td>
+										<td>{{ trade.side }}</td>
+										<td>{{ trade.status|default:"-" }}</td>
+										<td class="text-right">{{ trade.executed_base_qty|floatformat:8|default:"-" }}</td>
+										<td class="text-right">{{ trade.executed_quote_qty|floatformat:2|default:"-" }}</td>
+										<td class="text-right">{{ trade.average_price|floatformat:8|default:"-" }}</td>
+										<td class="text-right">{{ trade.realized_pnl|floatformat:2|default:"-" }}</td>
+									</tr>
+								{% empty %}
+									<tr>
+										<td colspan="8" class="text-muted">Sin operaciones para mostrar.</td>
+									</tr>
+								{% endfor %}
+							</tbody>
+						</table>
 					</div>
 				</div>
-				<div class="col-md-4 mb-3">
-					<div class="card h-100">
-						<div class="card-body">
-							<h2 class="h5">Trades</h2>
-							<p class="text-muted mb-0">Pendiente</p>
-						</div>
-					</div>
-				</div>
-				<div class="col-md-4 mb-3">
-					<div class="card h-100">
-						<div class="card-body">
-							<h2 class="h5">Positions</h2>
-							<p class="text-muted mb-0">Pendiente</p>
-						</div>
-					</div>
-				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="card mb-3">
+		<div class="card-body">
+			<h2 class="h5">Posiciones</h2>
+			<p class="text-muted small">
+				Portfolio se muestra como proyección. La cantidad real se valida con lots abiertos desde position_lots.
+			</p>
+			<div class="table-responsive">
+				<table class="table table-sm table-hover mb-0">
+					<thead>
+						<tr>
+							<th>Símbolo</th>
+							<th>Asset</th>
+							<th class="text-right">Portfolio qty</th>
+							<th class="text-right">Lots qty</th>
+							<th class="text-right">Diff</th>
+							<th class="text-right">Lots</th>
+							<th class="text-right">Entry</th>
+							<th class="text-right">Current</th>
+							<th class="text-right">Valor</th>
+							<th class="text-right">Unrealized PnL</th>
+						</tr>
+					</thead>
+					<tbody>
+						{% for position in positions %}
+							<tr class="{% if position.has_drift %}table-warning{% endif %}">
+								<td><strong>{{ position.symbol }}</strong></td>
+								<td>{{ position.asset|default:"-" }}</td>
+								<td class="text-right">{{ position.portfolio_quantity|floatformat:8 }}</td>
+								<td class="text-right">{{ position.lot_quantity|floatformat:8 }}</td>
+								<td class="text-right">{{ position.quantity_diff|floatformat:8 }}</td>
+								<td class="text-right">{{ position.open_lot_count }}</td>
+								<td class="text-right">{{ position.entry_price|floatformat:8|default:"-" }}</td>
+								<td class="text-right">{{ position.current_price|floatformat:8|default:"-" }}</td>
+								<td class="text-right">{{ position.position_value|floatformat:2|default:"-" }}</td>
+								<td class="text-right">{{ position.unrealized_pnl|floatformat:2|default:"-" }}</td>
+							</tr>
+						{% empty %}
+							<tr>
+								<td colspan="10" class="text-muted">Sin posiciones para mostrar.</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
 			</div>
 		</div>
 	</div>

@@ -10,10 +10,12 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.1/ref/settings/
 """
 import os
+import sys
 import dj_database_url
 from pathlib import Path
 
 import environ
+from django_render.env_validation import validate_required_env_vars
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -23,6 +25,12 @@ STATIC_DIR = os.path.join(BASE_DIR,'static')
 env = environ.Env()
 environ.Env.read_env(BASE_DIR / '.env')
 
+if "pytest" in sys.argv[0]:
+    os.environ.setdefault("CC_DEBUG", "True")
+    os.environ.setdefault("SECRET_KEY", "test-secret-key")
+    os.environ.setdefault("TUTORIAL_BOT_TOKEN", "test-telegram-bot-token")
+    os.environ.setdefault("TELEGRAM_WEBHOOK_TOKEN", "test-telegram-webhook-token")
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
 
@@ -30,11 +38,12 @@ environ.Env.read_env(BASE_DIR / '.env')
 #DEBUG = 'RENDER' not in os.environ
 DEBUG = env.bool('CC_DEBUG', default=False)
 
+validate_required_env_vars(lambda name, default="": env.str(name, default=default), DEBUG)
+
 # SECURITY WARNING: keep the secret key used in production secret!
-if DEBUG:
-    SECRET_KEY = env.str('SECRET_KEY', default='django-insecure-local-dev-key')
-else:
-    SECRET_KEY = env.str('SECRET_KEY')
+SECRET_KEY = env.str('SECRET_KEY')
+TUTORIAL_BOT_TOKEN = env.str('TUTORIAL_BOT_TOKEN')
+TELEGRAM_WEBHOOK_TOKEN = env.str('TELEGRAM_WEBHOOK_TOKEN')
 
 ALLOWED_HOSTS = ['www.cantero-solutions.com.ar']
 
