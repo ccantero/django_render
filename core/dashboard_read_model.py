@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal
+from typing import List
 
 from django.db import DatabaseError
 from django.db.models import Count, Sum
@@ -18,8 +19,8 @@ HEALTHCHECK_STALE_AFTER = timedelta(minutes=15)
 @dataclass
 class DashboardReadModel:
 	context: dict
-	queries: list[str]
-	assumptions: list[str]
+	queries: List[str]
+	assumptions: List[str]
 
 
 def get_dashboard_context():
