@@ -46,15 +46,21 @@ class Portfolio(ReadOnlyTradingModel):
 
 
 class PositionLot(ReadOnlyTradingModel):
+	lot_id = models.CharField(max_length=128, primary_key=True)
 	symbol = models.CharField(max_length=32)
-	asset = models.CharField(max_length=32, blank=True, null=True)
-	original_quantity = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
-	remaining_quantity = models.DecimalField(max_digits=36, decimal_places=18)
+	original_quantity = models.DecimalField(
+		max_digits=36,
+		decimal_places=18,
+		db_column="quantity_original",
+	)
+	remaining_quantity = models.DecimalField(
+		max_digits=36,
+		decimal_places=18,
+		db_column="quantity_open",
+	)
 	entry_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
 	status = models.CharField(max_length=32, blank=True, null=True)
-	opened_by_trade_operation_id = models.BigIntegerField(blank=True, null=True)
 	opened_at = models.DateTimeField(blank=True, null=True)
-	updated_at = models.DateTimeField(blank=True, null=True)
 
 	class Meta:
 		managed = False
@@ -68,12 +74,8 @@ class TradeOperation(ReadOnlyTradingModel):
 	side = models.CharField(max_length=16)
 	status = models.CharField(max_length=32, blank=True, null=True)
 	executed_base_qty = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
-	executed_quote_qty = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
-	average_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
-	fees = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
 	gross_quote = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
 	net_quote = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
-	realized_pnl = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
 	created_at = models.DateTimeField(blank=True, null=True)
 	executed_at = models.DateTimeField(blank=True, null=True)
 

@@ -139,8 +139,8 @@ def _build_latest_trade():
 		return {"row": None, "gross_quote": None, "net_quote": None}
 	return {
 		"row": row,
-		"gross_quote": row.gross_quote if row.gross_quote is not None else row.executed_quote_qty,
-		"net_quote": row.net_quote if row.net_quote is not None else row.executed_quote_qty,
+		"gross_quote": row.gross_quote,
+		"net_quote": row.net_quote,
 	}
 
 
@@ -149,7 +149,7 @@ def _open_lots_by_symbol():
 		PositionLot.objects
 		.filter(remaining_quantity__gt=0)
 		.values("symbol")
-		.annotate(open_quantity=Sum("remaining_quantity"), open_lot_count=Count("id"))
+		.annotate(open_quantity=Sum("remaining_quantity"), open_lot_count=Count("lot_id"))
 		.order_by("symbol")
 	)
 	return {row["symbol"]: row for row in rows}
@@ -215,7 +215,7 @@ def _important_queries():
 		"bot.bot_healthcheck: latest row ordered by created_at desc",
 		"bot.portfolio: count rows and sum Decimal quantity * current_price",
 		"bot.trade_operations: latest row ordered by executed_at/created_at/id desc",
-		"bot.position_lots: SUM(remaining_quantity) WHERE remaining_quantity > 0 GROUP BY symbol",
+		"bot.position_lots: SUM(quantity_open) WHERE quantity_open > 0 GROUP BY symbol",
 	]
 
 
