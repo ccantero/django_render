@@ -1,8 +1,13 @@
 from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from django.urls import reverse
+from decimal import Decimal
+from types import SimpleNamespace
 import json
 from unittest.mock import patch
+
+from core.dashboard_read_model import _build_bot_status
 
 class TelegramWebhookTests(TestCase):
     def setUp(self):
@@ -49,28 +54,7 @@ class DashboardEndpointTests(TestCase):
 
     @patch('core.views.get_dashboard_context')
     def test_dashboard_authenticated_user_gets_dashboard(self, mock_get_dashboard_context):
-        mock_get_dashboard_context.return_value.context = {
-            'bot_control': None,
-            'health': {
-                'row': None,
-                'state': 'unknown',
-                'age': None,
-                'is_stale': False,
-                'stale_minutes': None,
-            },
-            'summary': {
-                'portfolio_positions_count': 0,
-                'open_lot_symbols_count': 0,
-                'total_value': 0,
-                'drift_alerts_count': 0,
-                'dust_alerts_count': 0,
-            },
-            'positions': [],
-            'trades': [],
-            'alerts': [],
-            'thresholds': {},
-            'data_error': None,
-        }
+        mock_get_dashboard_context.return_value.context = self.empty_dashboard_context()
         self.client.force_login(self.user)
 
         response = self.client.get(self.dashboard_url)
@@ -78,3 +62,110 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Trading Dashboard')
         mock_get_dashboard_context.assert_called_once()
+
+    @patch('core.views.get_dashboard_context')
+    def test_dashboard_loads_when_bot_tables_are_empty(self, mock_get_dashboard_context):
+        mock_get_dashboard_context.return_value.context = self.empty_dashboard_context()
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.dashboard_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'No data yet.')
+        self.assertContains(response, 'Portfolio Summary')
+
+    @patch('core.views.get_dashboard_context')
+    def test_dashboard_loads_with_sample_read_model_data(self, mock_get_dashboard_context):
+        context = self.empty_dashboard_context()
+        context.update({
+            'bot_status': {
+                'row': SimpleNamespace(),
+                'status': 'ok',
+                'probe_message': 'healthy',
+                'created_at': timezone.now(),
+                'read_only': True,
+                'is_stale': False,
+                'stale_after_minutes': 15,
+            },
+            'portfolio_summary': {
+                'rows_count': 2,
+                'total_estimated_value': Decimal('25.50'),
+                'material_positions_count': 1,
+                'dust_positions_count': 1,
+            },
+            'latest_trade': {
+                'row': SimpleNamespace(
+                    side='BUY',
+                    symbol='BTCUSDT',
+                    status='FILLED',
+                    executed_base_qty=Decimal('0.001'),
+                    executed_at=timezone.now(),
+                ),
+                'gross_quote': Decimal('20.00'),
+                'net_quote': Decimal('20.00'),
+            },
+            'reconciliation': {
+                'status': 'warning',
+                'warning_count': 1,
+                'warnings': [{
+                    'symbol': 'BTCUSDT',
+                    'portfolio_quantity': Decimal('0.002'),
+                    'open_lot_quantity': Decimal('0.001'),
+                    'diff': Decimal('0.001'),
+                }],
+                'checked_count': 1,
+                'tolerance': Decimal('0.00000001'),
+            },
+        })
+        mock_get_dashboard_context.return_value.context = context
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.dashboard_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'BTCUSDT')
+        self.assertContains(response, '1 warning')
+
+    def test_stale_healthcheck_detection(self):
+        stale_row = SimpleNamespace(
+            status='ok',
+            probe_message='old heartbeat',
+            created_at=timezone.now() - timezone.timedelta(minutes=16),
+            details={'read_only': True},
+        )
+        with patch('core.dashboard_read_model.BotHealthcheck.objects') as manager:
+            manager.order_by.return_value.first.return_value = stale_row
+
+            status = _build_bot_status()
+
+        self.assertTrue(status['is_stale'])
+        self.assertEqual(status['read_only'], True)
+
+    def empty_dashboard_context(self):
+        return {
+            'bot_control': None,
+            'bot_status': {
+                'row': None,
+                'status': None,
+                'probe_message': None,
+                'created_at': None,
+                'read_only': None,
+                'is_stale': False,
+                'stale_after_minutes': 15,
+            },
+            'portfolio_summary': {
+                'rows_count': 0,
+                'total_estimated_value': Decimal('0'),
+                'material_positions_count': 0,
+                'dust_positions_count': 0,
+            },
+            'latest_trade': {'row': None, 'gross_quote': None, 'net_quote': None},
+            'reconciliation': {
+                'status': 'ok',
+                'warning_count': 0,
+                'warnings': [],
+                'checked_count': 0,
+                'tolerance': Decimal('0.00000001'),
+            },
+            'data_error': None,
+        }

@@ -1,8 +1,40 @@
-static/admin/*
-*.pyc
-__pycache__
-staticfiles/*
-core/__pycache__/*.pyc
-django_render/__pycache__/*.pyc
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test and tooling caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor settings
+.vscode/
+
+# Django
+db.sqlite3
+staticfiles/
+static/admin/
+
+# Local environment files
+.env
+.env.*
+django_render/.env
+django_render/.env_local
+django_render/.env_supabase
+django_render/.env_supabase_old
+
+# App migrations generated locally
 currencyconverter/migrations/*
 core/migrations/*
+!core/migrations/0002_botcontrol.py
+!core/migrations/0003_appsetting.py
+run_server.sh
+populate_database.py
+createsuperuser.py

@@ -19,7 +19,19 @@ class ReadOnlyTradingModel(models.Model):
 		app_label = "trading_read"
 
 
-class PortfolioPosition(ReadOnlyTradingModel):
+class BotHealthcheck(ReadOnlyTradingModel):
+	status = models.CharField(max_length=32, blank=True, null=True)
+	probe_message = models.TextField(blank=True, null=True)
+	created_at = models.DateTimeField(blank=True, null=True)
+	details = models.JSONField(blank=True, null=True)
+
+	class Meta:
+		managed = False
+		db_table = '"bot"."bot_healthcheck"'
+		app_label = "trading_read"
+
+
+class Portfolio(ReadOnlyTradingModel):
 	symbol = models.CharField(max_length=32, primary_key=True)
 	asset = models.CharField(max_length=32, blank=True, null=True)
 	quantity = models.DecimalField(max_digits=36, decimal_places=18)
@@ -29,7 +41,7 @@ class PortfolioPosition(ReadOnlyTradingModel):
 
 	class Meta:
 		managed = False
-		db_table = "portfolio"
+		db_table = '"bot"."portfolio"'
 		app_label = "trading_read"
 
 
@@ -46,7 +58,7 @@ class PositionLot(ReadOnlyTradingModel):
 
 	class Meta:
 		managed = False
-		db_table = "position_lots"
+		db_table = '"bot"."position_lots"'
 		app_label = "trading_read"
 
 
@@ -59,13 +71,15 @@ class TradeOperation(ReadOnlyTradingModel):
 	executed_quote_qty = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
 	average_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
 	fees = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	gross_quote = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	net_quote = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
 	realized_pnl = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
 	created_at = models.DateTimeField(blank=True, null=True)
 	executed_at = models.DateTimeField(blank=True, null=True)
 
 	class Meta:
 		managed = False
-		db_table = "trade_operations"
+		db_table = '"bot"."trade_operations"'
 		app_label = "trading_read"
 
 
@@ -82,7 +96,7 @@ class TradeFill(ReadOnlyTradingModel):
 
 	class Meta:
 		managed = False
-		db_table = "trade_fills"
+		db_table = '"bot"."trade_fills"'
 		app_label = "trading_read"
 
 
@@ -97,21 +111,7 @@ class LotClosure(ReadOnlyTradingModel):
 
 	class Meta:
 		managed = False
-		db_table = "lot_closures"
-		app_label = "trading_read"
-
-
-class Healthcheck(ReadOnlyTradingModel):
-	status = models.CharField(max_length=32, blank=True, null=True)
-	last_cycle_at = models.DateTimeField(blank=True, null=True)
-	last_successful_cycle_at = models.DateTimeField(blank=True, null=True)
-	last_error = models.TextField(blank=True, null=True)
-	updated_at = models.DateTimeField(blank=True, null=True)
-	run_id = models.CharField(max_length=128, blank=True, null=True)
-
-	class Meta:
-		managed = False
-		db_table = "healthcheck"
+		db_table = '"bot"."lot_closures"'
 		app_label = "trading_read"
 
 
@@ -121,5 +121,9 @@ class Snapshot(ReadOnlyTradingModel):
 
 	class Meta:
 		managed = False
-		db_table = "snapshots"
+		db_table = '"bot"."snapshots"'
 		app_label = "trading_read"
+
+
+PortfolioPosition = Portfolio
+Healthcheck = BotHealthcheck
