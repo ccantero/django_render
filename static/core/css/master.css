@@ -22,3 +22,11 @@ tbody {
 	color: red;
 	font-size: 18px;
 }
+
+.dashboard-page .card {
+	color: #212529;
+}
+
+.dashboard-page .card .text-muted {
+	color: #5f6f82 !important;
+}

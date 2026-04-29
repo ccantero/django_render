@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-4">
+<div class="container-fluid py-4 dashboard-page">
 	<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
 		<div>
 			<h1 class="h3 mb-1">Trading Dashboard</h1>
@@ -47,7 +47,7 @@
 				<div class="card-body">
 					<h2 class="h5">Portfolio Summary</h2>
 					<p class="mb-1">Rows: <strong>{{ portfolio_summary.rows_count }}</strong></p>
-					<p class="mb-1">Total value: <strong>{{ portfolio_summary.total_estimated_value|floatformat:2 }}</strong></p>
+					<p class="mb-1">Total value: <strong>{{ portfolio_summary.total_estimated_value|floatformat:2 }} USDT</strong></p>
 					<p class="mb-1">Material: {{ portfolio_summary.material_positions_count }}</p>
 					<p class="mb-0">Dust: {{ portfolio_summary.dust_positions_count }}</p>
 				</div>
@@ -62,7 +62,7 @@
 						<p class="mb-1"><strong>{{ latest_trade.row.side }}</strong> {{ latest_trade.row.symbol }}</p>
 						<p class="mb-1">Status: {{ latest_trade.row.status|default:"-" }}</p>
 						<p class="mb-1">Base qty: {{ latest_trade.row.executed_base_qty|floatformat:8|default:"-" }}</p>
-						<p class="mb-1">Gross / net: {{ latest_trade.gross_quote|floatformat:2|default:"-" }} / {{ latest_trade.net_quote|floatformat:2|default:"-" }}</p>
+						<p class="mb-1">Gross / net: {{ latest_trade.gross_quote|floatformat:2|default:"-" }} / {{ latest_trade.net_quote|floatformat:2|default:"-" }} USDT</p>
 						<p class="mb-0">Executed: {{ latest_trade.row.executed_at|date:"Y-m-d H:i:s"|default:"-" }}</p>
 					{% else %}
 						<p class="text-muted mb-0">No data yet.</p>
