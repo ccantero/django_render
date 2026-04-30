@@ -69,15 +69,24 @@ class PositionLot(ReadOnlyTradingModel):
 
 
 class TradeOperation(ReadOnlyTradingModel):
-	order_id = models.CharField(max_length=128, blank=True, null=True)
+	order_id = models.BigIntegerField(blank=True, null=True)
+	client_order_id = models.TextField(blank=True, null=True)
 	symbol = models.CharField(max_length=32)
 	side = models.CharField(max_length=16)
 	status = models.CharField(max_length=32, blank=True, null=True)
+	base_asset = models.TextField(blank=True, null=True)
+	quote_asset = models.TextField(blank=True, null=True)
+	fee_asset = models.TextField(blank=True, null=True)
 	executed_base_qty = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
 	gross_quote = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	fee_amount = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	fee_amount_in_quote = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
 	net_quote = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	fill_count = models.IntegerField(blank=True, null=True)
 	created_at = models.DateTimeField(blank=True, null=True)
 	executed_at = models.DateTimeField(blank=True, null=True)
+	raw_payload = models.JSONField(blank=True, null=True)
+	fee_details = models.JSONField(blank=True, null=True)
 
 	class Meta:
 		managed = False
@@ -86,15 +95,18 @@ class TradeOperation(ReadOnlyTradingModel):
 
 
 class TradeFill(ReadOnlyTradingModel):
+	run_id = models.CharField(max_length=128, blank=True, null=True)
+	event_type = models.CharField(max_length=32)
 	order_id = models.CharField(max_length=128, blank=True, null=True)
 	symbol = models.CharField(max_length=32)
 	side = models.CharField(max_length=16, blank=True, null=True)
-	executed_quantity = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
-	executed_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
-	quote_quantity = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
-	commission = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
-	commission_asset = models.CharField(max_length=32, blank=True, null=True)
-	timestamp = models.DateTimeField(blank=True, null=True)
+	quantity = models.DecimalField(max_digits=36, decimal_places=18)
+	price = models.DecimalField(max_digits=36, decimal_places=18)
+	executed_at = models.DateTimeField()
+	source = models.CharField(max_length=32)
+	lot_id = models.CharField(max_length=128, blank=True, null=True)
+	metadata = models.JSONField(blank=True, null=True)
+	created_at = models.DateTimeField(blank=True, null=True)
 
 	class Meta:
 		managed = False

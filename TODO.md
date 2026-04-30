@@ -24,3 +24,4 @@ This list tracks the prioritized tasks for modernizing and improving the `django
 - [ ] **Multi-Currency Support**: Expand the `currencyconverter` to support more fiat currencies and potentially cryptocurrencies.
 - [ ] **Advanced Telegram Bot Features**: Implement stateful conversations (using a FSM) and richer message formats (inline buttons, charts).
 - [ ] **Performance Monitoring**: Integrate with a tool like Sentry or New Relic for real-time error tracking and performance monitoring.
+- [ ] **Auto Refresh**: Implement JS to auto-refresha and prevent spin down

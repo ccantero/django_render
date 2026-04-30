@@ -9,7 +9,7 @@ from django.db.models import Count, Sum
 from django.utils import timezone
 
 from core.models import BotControl
-from core.trading_models import BotHealthcheck, Portfolio, PositionLot, TradeFill, TradeOperation
+from core.trading_models import BotHealthcheck, Portfolio, PositionLot, TradeOperation
 
 
 DRIFT_TOLERANCE = Decimal("0.00000001")
@@ -195,17 +195,17 @@ def _empty_portfolio_summary():
 
 def _build_fee_summary():
 	rows = (
-		TradeFill.objects
-		.filter(commission__isnull=False)
-		.values("commission_asset")
-		.annotate(total=Sum("commission"), fill_count=Count("commission"))
-		.order_by("commission_asset")
+		TradeOperation.objects
+		.filter(fee_amount__isnull=False)
+		.values("fee_asset")
+		.annotate(total=Sum("fee_amount"), fill_count=Sum("fill_count"))
+		.order_by("fee_asset")
 	)
 	fee_rows = [
 		{
-			"asset": row["commission_asset"] or "unknown",
+			"asset": row["fee_asset"] or "unknown",
 			"total": row["total"] or Decimal("0"),
-			"fill_count": row["fill_count"],
+			"fill_count": row["fill_count"] or 0,
 		}
 		for row in rows
 	]
@@ -305,7 +305,7 @@ def _important_queries():
 	return [
 		"bot.bot_healthcheck: latest row ordered by created_at desc",
 		"bot.portfolio: count rows and sum Decimal quantity * current_price",
-		"bot.trade_fills: SUM(commission) GROUP BY commission_asset",
+		"bot.trade_operations: SUM(fee_amount) GROUP BY fee_asset",
 		"bot.trade_operations: latest row ordered by executed_at/created_at/id desc",
 		"bot.position_lots: SUM(quantity_open) WHERE quantity_open > 0 GROUP BY symbol",
 	]

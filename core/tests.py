@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import json
 from unittest.mock import patch
 
-from core.dashboard_read_model import _build_bot_status
+from core.dashboard_read_model import _build_bot_status, _build_fee_summary
 
 class TelegramWebhookTests(TestCase):
     def setUp(self):
@@ -157,6 +157,41 @@ class DashboardEndpointTests(TestCase):
 
         self.assertTrue(status['is_stale'])
         self.assertEqual(status['read_only'], True)
+
+    def test_fee_summary_uses_trade_operations_fee_fields(self):
+        class FakeTradeOperationQuery:
+            def __init__(self):
+                self.calls = []
+
+            def filter(self, **kwargs):
+                self.calls.append(('filter', kwargs))
+                return self
+
+            def values(self, *fields):
+                self.calls.append(('values', fields))
+                return self
+
+            def annotate(self, **kwargs):
+                self.calls.append(('annotate', tuple(kwargs)))
+                return self
+
+            def order_by(self, *fields):
+                self.calls.append(('order_by', fields))
+                return [
+                    {'fee_asset': 'BNB', 'total': Decimal('0.0018'), 'fill_count': 2},
+                    {'fee_asset': 'USDT', 'total': Decimal('3.42'), 'fill_count': 5},
+                ]
+
+        query = FakeTradeOperationQuery()
+        with patch('core.dashboard_read_model.TradeOperation.objects', query):
+            summary = _build_fee_summary()
+
+        self.assertEqual(summary['asset_count'], 2)
+        self.assertEqual(summary['fill_count'], 7)
+        self.assertEqual(summary['rows'][0]['asset'], 'BNB')
+        self.assertIn(('filter', {'fee_amount__isnull': False}), query.calls)
+        self.assertIn(('values', ('fee_asset',)), query.calls)
+        self.assertIn(('order_by', ('fee_asset',)), query.calls)
 
     def empty_dashboard_context(self):
         return {
