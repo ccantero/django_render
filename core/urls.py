@@ -8,6 +8,7 @@ urlpatterns = [
     path('login/', auth_views.LoginView.as_view(template_name='login.html'), name='login'),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
     path('dashboard/', views.dashboard, name='dashboard'),
+    path('dashboard/demo/', views.dashboard_demo, name='dashboard_demo'),
     path('bot/status/', views.bot_status, name='bot_status'),
     path('bot/stop/', views.bot_stop, name='bot_stop'),
     path('bot/resume/', views.bot_resume, name='bot_resume'),

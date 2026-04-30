@@ -5,13 +5,22 @@
 	<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
 		<div>
 			<h1 class="h3 mb-1">Trading Dashboard</h1>
-			<p class="text-muted mb-0">Usuario: {{ request.user.email }}</p>
+			<p class="text-muted mb-0">
+				{% if is_demo %}
+					{{ dashboard_user_label }}
+				{% else %}
+					Usuario: {{ request.user.email }}
+				{% endif %}
+			</p>
 		</div>
-		<form method="post" action="{% url 'logout' %}">
-			{% csrf_token %}
-			<button type="submit" class="btn btn-outline-secondary">Salir</button>
-		</form>
 	</div>
+
+	{% if is_demo %}
+		<div class="alert alert-info">
+			<strong>Demo publica.</strong>
+			<div class="small mt-1">Estos datos son de ejemplo y los controles de escritura estan ocultos.</div>
+		</div>
+	{% endif %}
 
 	{% if data_error %}
 		<div class="alert alert-warning">
@@ -96,6 +105,28 @@
 		</div>
 	</div>
 
+	<div class="row">
+		<div class="col-lg-3 col-md-6 mb-3">
+			<div class="card h-100">
+				<div class="card-body">
+					<h2 class="h5">Total Fees</h2>
+					{% if fee_summary.rows %}
+						<p class="mb-1">Assets: <strong>{{ fee_summary.asset_count }}</strong></p>
+						<p class="mb-2">Fills: {{ fee_summary.fill_count }}</p>
+						<ul class="list-unstyled small mb-0">
+							{% for fee in fee_summary.rows %}
+								<li><strong>{{ fee.total|floatformat:8 }}</strong> {{ fee.asset }} <span class="text-muted">({{ fee.fill_count }})</span></li>
+							{% endfor %}
+						</ul>
+					{% else %}
+						<p class="text-muted mb-0">No fee data yet.</p>
+					{% endif %}
+				</div>
+			</div>
+		</div>
+	</div>
+
+	{% if not is_demo %}
 	<div class="card">
 		<div class="card-body">
 			<h2 class="h5">Control seguro</h2>
@@ -120,5 +151,6 @@
 			</form>
 		</div>
 	</div>
+	{% endif %}
 </div>
 {% endblock %}

@@ -869,3 +869,115 @@ Prefer managed=False Django models for existing bot tables.
 Before coding, inspect current project structure and actual DB schema.
 Keep changes small, safe and reviewable.
 ```
+
+---
+
+## 17. Preflight Safety Contract
+
+The bot performs preflight checks before building or running trading services.
+
+Checks:
+
+- Required ENV variables:
+  - `DATABASE_URL`
+  - `BINANCE_API_KEY`
+  - `BINANCE_API_SECRET`
+- Database connectivity through a lightweight query
+- Binance account access with configured API credentials
+
+Expected behavior:
+
+- On success, log `preflight_ok`.
+- On failure, fail fast with non-zero process exit.
+- Trading runner must not be built when preflight fails.
+- Secrets must never be logged.
+
+---
+
+## 18. DustDetectionService Log Contract (Wave 1)
+
+`DustDetectionService` currently emits structured logs only. It does not write a dedicated dust table yet.
+
+Wave 1 events may include:
+
+- `dust_detection_started`
+- `dust_candidate_detected`
+- `lot_below_min_notional_detected`
+- `balance_without_lot_coverage_detected`
+- `lot_balance_drift_detected`
+- `dust_detection_completed`
+- `dust_detection_failed`
+
+Expected event fields when available:
+
+- `run_id`
+- `asset`
+- `symbol`
+- `quantity`
+- `spot_quantity`
+- `open_lot_quantity`
+- `quantity_delta`
+- `price_usdt`
+- `estimated_value_usdt`
+- `estimated_delta_value_usdt`
+- `reason`
+- `severity`
+
+Price / valuation rules:
+
+- Use `portfolio.current_price` as the preferred source for `price_usdt`.
+- Use `price_usdt = 1` for USDT.
+- Do not call Binance for prices in Wave 1.
+- Missing prices are allowed.
+- If price is missing, `estimated_value_usdt` should be `null` / `None`.
+- Valuation is approximate and intended for prioritization, not final accounting.
+
+Wave 1 constraints:
+
+- No DB writes for dust detections.
+- No automatic selling.
+- No automatic Binance dust conversion.
+- No automatic Earn movement.
+- No mutation of `trade_operations`, `position_lots`, `lot_closures`, or `portfolio`.
+- Dust detection failure should be logged but should not crash a healthy trading cycle.
+
+---
+
+## 19. Future `dust_detections` Table Contract (Wave 2 Proposal)
+
+Recommended future table owned by the bot:
+
+```text
+bot.dust_detections
+```
+
+Suggested conceptual fields:
+
+- id
+- run_id
+- detected_at
+- event_type
+- severity
+- asset
+- symbol
+- spot_quantity
+- open_lot_quantity
+- quantity_delta
+- price_usdt
+- estimated_value_usdt
+- estimated_delta_value_usdt
+- reason
+- suggested_action
+- source
+- reviewed_at
+- reviewed_by
+- review_note
+- payload/json details
+
+Dashboard usage after Wave 2:
+
+- Show latest dust detections.
+- Group by symbol/asset.
+- Surface warning/critical detections first.
+- Do not treat summed dust values as audited financial PnL.
+- Allow manual review state only if the table explicitly supports it.

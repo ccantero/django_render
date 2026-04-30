@@ -9,7 +9,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 import json
 import requests
-from core.dashboard_read_model import get_dashboard_context
+from core.dashboard_read_model import get_dashboard_context, get_demo_dashboard_context
 from core.models import BotControl, TelegramMessage
 
 TELEGRAM_WEBHOOK_TOKEN = settings.TELEGRAM_WEBHOOK_TOKEN
@@ -41,6 +41,11 @@ def bot_control_payload(control):
 @login_required
 def dashboard(request):
 	read_model = get_dashboard_context()
+	return render(request, "dashboard.html", read_model.context)
+
+
+def dashboard_demo(request):
+	read_model = get_demo_dashboard_context()
 	return render(request, "dashboard.html", read_model.context)
 
 

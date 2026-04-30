@@ -93,6 +93,11 @@ class DashboardEndpointTests(TestCase):
                 'material_positions_count': 1,
                 'dust_positions_count': 1,
             },
+            'fee_summary': {
+                'asset_count': 1,
+                'fill_count': 2,
+                'rows': [{'asset': 'USDT', 'total': Decimal('0.25'), 'fill_count': 2}],
+            },
             'latest_trade': {
                 'row': SimpleNamespace(
                     side='BUY',
@@ -125,6 +130,18 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'BTCUSDT')
         self.assertContains(response, '1 warning')
+        self.assertContains(response, 'Total Fees')
+        self.assertContains(response, '0.25000000')
+
+    def test_demo_dashboard_is_public_and_read_only(self):
+        response = self.client.get(reverse('dashboard_demo'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Public demo')
+        self.assertContains(response, 'Total Fees')
+        self.assertNotContains(response, 'Control seguro')
+        self.assertNotContains(response, 'Stop')
+        self.assertNotContains(response, 'Resume')
 
     def test_stale_healthcheck_detection(self):
         stale_row = SimpleNamespace(
@@ -159,6 +176,11 @@ class DashboardEndpointTests(TestCase):
                 'material_positions_count': 0,
                 'dust_positions_count': 0,
             },
+            'fee_summary': {
+                'asset_count': 0,
+                'fill_count': 0,
+                'rows': [],
+            },
             'latest_trade': {'row': None, 'gross_quote': None, 'net_quote': None},
             'reconciliation': {
                 'status': 'ok',
@@ -168,4 +190,5 @@ class DashboardEndpointTests(TestCase):
                 'tolerance': Decimal('0.00000001'),
             },
             'data_error': None,
+            'is_demo': False,
         }

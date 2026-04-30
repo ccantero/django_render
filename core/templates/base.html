@@ -24,7 +24,16 @@
 		<ul class='nav navbar-nav navbar-right ml-auto'>
 			<li><a class="nav-link" href="{% url 'currencyconverter:cotizaciones' %}">Cotizaciones</a></li>
 			<li><a class="nav-link" href="{% url 'currencyconverter:calculadora' %}">Caluladora UVA</a></li>
+			<li><a class="nav-link" href="{% url 'dashboard_demo' %}">Demo Dashboard</a></li>
 			<li><a class="nav-link" href="{% url 'aboutMe' %}">About me!</a></li>
+			{% if request.user.is_authenticated %}
+				<li>
+					<form method="post" action="{% url 'logout' %}" class="form-inline my-0">
+						{% csrf_token %}
+						<button type="submit" class="btn btn-link nav-link border-0">Salir</button>
+					</form>
+				</li>
+			{% endif %}
 		</ul>
 	</nav>
 
@@ -48,5 +57,4 @@
 	<script src="{% static 'currencyconverter/js/master.js' %}"></script>
 </body>
 </html>
-
 

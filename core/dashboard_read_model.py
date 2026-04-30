@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import List
 
 from django.db import DatabaseError
@@ -8,7 +9,7 @@ from django.db.models import Count, Sum
 from django.utils import timezone
 
 from core.models import BotControl
-from core.trading_models import BotHealthcheck, Portfolio, PositionLot, TradeOperation
+from core.trading_models import BotHealthcheck, Portfolio, PositionLot, TradeFill, TradeOperation
 
 
 DRIFT_TOLERANCE = Decimal("0.00000001")
@@ -28,9 +29,11 @@ def get_dashboard_context():
 		"bot_control": _get_bot_control(),
 		"bot_status": _empty_bot_status(),
 		"portfolio_summary": _empty_portfolio_summary(),
+		"fee_summary": _empty_fee_summary(),
 		"latest_trade": None,
 		"reconciliation": _empty_reconciliation(),
 		"data_error": None,
+		"is_demo": False,
 	}
 
 	try:
@@ -40,12 +43,69 @@ def get_dashboard_context():
 		context.update({
 			"bot_status": _build_bot_status(),
 			"portfolio_summary": _build_portfolio_summary(portfolio_rows),
+			"fee_summary": _build_fee_summary(),
 			"latest_trade": _build_latest_trade(),
 			"reconciliation": _build_reconciliation(portfolio_rows, open_lots),
 		})
 	except DatabaseError as exc:
 		context["data_error"] = str(exc)
 
+	return DashboardReadModel(
+		context=context,
+		queries=_important_queries(),
+		assumptions=_assumptions(),
+	)
+
+
+def get_demo_dashboard_context():
+	now = timezone.now()
+	context = {
+		"bot_control": SimpleNamespace(is_paused=False),
+		"bot_status": {
+			"row": SimpleNamespace(),
+			"status": "ok",
+			"probe_message": "Demo heartbeat received",
+			"created_at": now,
+			"read_only": True,
+			"is_stale": False,
+			"stale_after_minutes": 15,
+		},
+		"portfolio_summary": {
+			"rows_count": 3,
+			"total_estimated_value": Decimal("1842.73"),
+			"material_positions_count": 2,
+			"dust_positions_count": 1,
+		},
+		"fee_summary": {
+			"asset_count": 2,
+			"fill_count": 7,
+			"rows": [
+				{"asset": "USDT", "total": Decimal("3.42"), "fill_count": 5},
+				{"asset": "BNB", "total": Decimal("0.0018"), "fill_count": 2},
+			],
+		},
+		"latest_trade": {
+			"row": SimpleNamespace(
+				side="BUY",
+				symbol="ETHUSDT",
+				status="FILLED",
+				executed_base_qty=Decimal("0.25000000"),
+				executed_at=now - timedelta(minutes=8),
+			),
+			"gross_quote": Decimal("812.40"),
+			"net_quote": Decimal("812.40"),
+		},
+		"reconciliation": {
+			"status": "ok",
+			"warning_count": 0,
+			"warnings": [],
+			"checked_count": 2,
+			"tolerance": DRIFT_TOLERANCE,
+		},
+		"data_error": None,
+		"is_demo": True,
+		"dashboard_user_label": "Public demo",
+	}
 	return DashboardReadModel(
 		context=context,
 		queries=_important_queries(),
@@ -133,6 +193,37 @@ def _empty_portfolio_summary():
 	}
 
 
+def _build_fee_summary():
+	rows = (
+		TradeFill.objects
+		.filter(commission__isnull=False)
+		.values("commission_asset")
+		.annotate(total=Sum("commission"), fill_count=Count("commission"))
+		.order_by("commission_asset")
+	)
+	fee_rows = [
+		{
+			"asset": row["commission_asset"] or "unknown",
+			"total": row["total"] or Decimal("0"),
+			"fill_count": row["fill_count"],
+		}
+		for row in rows
+	]
+	return {
+		"asset_count": len(fee_rows),
+		"fill_count": sum(row["fill_count"] for row in fee_rows),
+		"rows": fee_rows,
+	}
+
+
+def _empty_fee_summary():
+	return {
+		"asset_count": 0,
+		"fill_count": 0,
+		"rows": [],
+	}
+
+
 def _build_latest_trade():
 	row = TradeOperation.objects.order_by("-executed_at", "-created_at", "-id").first()
 	if row is None:
@@ -214,6 +305,7 @@ def _important_queries():
 	return [
 		"bot.bot_healthcheck: latest row ordered by created_at desc",
 		"bot.portfolio: count rows and sum Decimal quantity * current_price",
+		"bot.trade_fills: SUM(commission) GROUP BY commission_asset",
 		"bot.trade_operations: latest row ordered by executed_at/created_at/id desc",
 		"bot.position_lots: SUM(quantity_open) WHERE quantity_open > 0 GROUP BY symbol",
 	]
