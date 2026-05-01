@@ -23,8 +23,11 @@
 		<a class='navbar-brand mynav' href="{% url 'home' %}">Cantero Solutions!</a>
 		<ul class='nav navbar-nav navbar-right ml-auto'>
 			<li><a class="nav-link" href="{% url 'currencyconverter:cotizaciones' %}">Cotizaciones</a></li>
-			<li><a class="nav-link" href="{% url 'currencyconverter:calculadora' %}">Caluladora UVA</a></li>
+			<li><a class="nav-link" href="{% url 'currencyconverter:calculadora' %}">Calculadora UVA</a></li>
 			<li><a class="nav-link" href="{% url 'dashboard_demo' %}">Demo Dashboard</a></li>
+			{% if request.user.is_authenticated %}
+				<li><a class="nav-link" href="{% url 'dust_dashboard' %}">Dust / Residuals</a></li>
+			{% endif %}
 			<li><a class="nav-link" href="{% url 'aboutMe' %}">About me!</a></li>
 			{% if request.user.is_authenticated %}
 				<li>

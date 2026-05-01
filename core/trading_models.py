@@ -139,5 +139,39 @@ class Snapshot(ReadOnlyTradingModel):
 		app_label = "trading_read"
 
 
+class DustDetection(ReadOnlyTradingModel):
+	run_id = models.CharField(max_length=128, blank=True, null=True)
+	detected_at = models.DateTimeField(blank=True, null=True)
+	event_type = models.CharField(max_length=64, blank=True, null=True)
+	severity = models.CharField(max_length=32, blank=True, null=True)
+	symbol = models.CharField(max_length=32, blank=True, null=True)
+	asset = models.CharField(max_length=32, blank=True, null=True)
+	estimated_value_usdt = models.DecimalField(
+		max_digits=36,
+		decimal_places=18,
+		blank=True,
+		null=True,
+	)
+	quantity_delta = models.DecimalField(
+		max_digits=36,
+		decimal_places=18,
+		blank=True,
+		null=True,
+	)
+	estimated_delta_value_usdt = models.DecimalField(
+		max_digits=36,
+		decimal_places=18,
+		blank=True,
+		null=True,
+	)
+	reason = models.TextField(blank=True, null=True)
+	suggested_action = models.TextField(blank=True, null=True)
+
+	class Meta:
+		managed = False
+		db_table = '"bot"."dust_detections"'
+		app_label = "trading_read"
+
+
 PortfolioPosition = Portfolio
 Healthcheck = BotHealthcheck

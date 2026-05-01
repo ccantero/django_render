@@ -150,6 +150,77 @@
 		</div>
 	</div>
 
+	<div class="card mb-3">
+		<div class="card-body">
+			<div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
+				<div>
+					<h2 class="h5 mb-1">Dust / Residuals</h2>
+					<p class="text-muted small mb-0">Operational dust status. Approx exposure, not PnL.</p>
+				</div>
+				{% if not is_demo %}
+					<a class="btn btn-outline-primary btn-sm" href="{% url 'dust_dashboard' %}">View details</a>
+				{% endif %}
+			</div>
+
+			<div class="row">
+				<div class="col-md-3 mb-3">
+					<p class="mb-1">Critical detections</p>
+					<p class="h4 mb-0">{{ dust_summary.critical_count }}</p>
+				</div>
+				<div class="col-md-3 mb-3">
+					<p class="mb-1">Warning detections</p>
+					<p class="h4 mb-0">{{ dust_summary.warning_count }}</p>
+				</div>
+				<div class="col-md-3 mb-3">
+					<p class="mb-1">Approx exposure, not PnL</p>
+					<p class="h4 mb-0">{{ dust_summary.total_estimated_value_usdt|floatformat:2 }} USDT</p>
+				</div>
+				<div class="col-md-3 mb-3">
+					<p class="mb-1">Latest run</p>
+					<p class="mb-0"><strong>{{ dust_summary.latest_run_id|default:"-" }}</strong></p>
+				</div>
+			</div>
+
+			{% if dust_summary.latest_detection %}
+				<p class="mb-2">
+					Latest:
+					<strong>{{ dust_summary.latest_detection.detected_at|date:"Y-m-d H:i:s"|default:"-" }}</strong>
+					{{ dust_summary.latest_detection.symbol|default:"-" }}
+					<span class="text-muted">{{ dust_summary.latest_detection.reason|default:"-" }}</span>
+				</p>
+			{% else %}
+				<p class="text-muted mb-2">No dust detections found.</p>
+			{% endif %}
+
+			{% if dust_summary.top_detections %}
+				<div class="table-responsive">
+					<table class="table table-sm mb-0">
+						<thead>
+							<tr>
+								<th>Detected at</th>
+								<th>Symbol</th>
+								<th>Severity</th>
+								<th class="text-right">Approx exposure, not PnL</th>
+								<th>Reason</th>
+							</tr>
+						</thead>
+						<tbody>
+							{% for row in dust_summary.top_detections %}
+								<tr>
+									<td>{{ row.detected_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
+									<td>{{ row.symbol|default:"-" }}</td>
+									<td>{{ row.severity|default:"-" }}</td>
+									<td class="text-right">{{ row.estimated_value_usdt|floatformat:8|default:"-" }}</td>
+									<td>{{ row.reason|default:"-" }}</td>
+								</tr>
+							{% endfor %}
+						</tbody>
+					</table>
+				</div>
+			{% endif %}
+		</div>
+	</div>
+
 	{% if not is_demo %}
 	<div class="card">
 		<div class="card-body">

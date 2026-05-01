@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+	.dashboard-page .card,
+	.dashboard-page .card-body {
+		background-color: #fff !important;
+		color: #212529 !important;
+	}
+
+	.dashboard-page .card .text-muted {
+		color: #5f6f82 !important;
+	}
+</style>
+
+<div class="container-fluid py-4 dashboard-page">
+	<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+		<div>
+			<h1 class="h3 mb-1">Dust / Residuals</h1>
+			<p class="text-muted mb-0">Read-only view of bot dust detections. Values are approximate and not PnL.</p>
+		</div>
+		<a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Trading Dashboard</a>
+	</div>
+
+	{% if data_error %}
+		<div class="alert alert-warning">
+			<strong>No se pudo leer la tabla de dust.</strong>
+			<div class="small mt-1">{{ data_error }}</div>
+		</div>
+	{% endif %}
+
+	<div class="row">
+		<div class="col-lg-3 col-md-6 mb-3">
+			<div class="card h-100">
+				<div class="card-body">
+					<h2 class="h5">Critical</h2>
+					<p class="display-4 mb-0">{{ summary.critical_count }}</p>
+				</div>
+			</div>
+		</div>
+		<div class="col-lg-3 col-md-6 mb-3">
+			<div class="card h-100">
+				<div class="card-body">
+					<h2 class="h5">Warning</h2>
+					<p class="display-4 mb-0">{{ summary.warning_count }}</p>
+				</div>
+			</div>
+		</div>
+		<div class="col-lg-3 col-md-6 mb-3">
+			<div class="card h-100">
+				<div class="card-body">
+					<h2 class="h5">Approx exposure, not PnL</h2>
+					<p class="h4 mb-0">{{ summary.total_estimated_value_usdt|floatformat:2 }} USDT</p>
+				</div>
+			</div>
+		</div>
+		<div class="col-lg-3 col-md-6 mb-3">
+			<div class="card h-100">
+				<div class="card-body">
+					<h2 class="h5">Latest Run</h2>
+					<p class="mb-0"><strong>{{ summary.latest_run_id|default:"-" }}</strong></p>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="card mb-3">
+		<div class="card-body">
+			<form method="get" class="form-row align-items-end">
+				<div class="form-group col-md-3">
+					<label for="symbol">Symbol</label>
+					<select id="symbol" name="symbol" class="form-control">
+						<option value="">All</option>
+						{% for symbol in filter_options.symbols %}
+							<option value="{{ symbol }}" {% if filters.symbol == symbol %}selected{% endif %}>{{ symbol }}</option>
+						{% endfor %}
+					</select>
+				</div>
+				<div class="form-group col-md-3">
+					<label for="severity">Severity</label>
+					<select id="severity" name="severity" class="form-control">
+						<option value="">All</option>
+						{% for severity in filter_options.severities %}
+							<option value="{{ severity }}" {% if filters.severity == severity %}selected{% endif %}>{{ severity }}</option>
+						{% endfor %}
+					</select>
+				</div>
+				<div class="form-group col-md-3">
+					<label for="event_type">Event type</label>
+					<select id="event_type" name="event_type" class="form-control">
+						<option value="">All</option>
+						{% for event_type in filter_options.event_types %}
+							<option value="{{ event_type }}" {% if filters.event_type == event_type %}selected{% endif %}>{{ event_type }}</option>
+						{% endfor %}
+					</select>
+				</div>
+				<div class="form-group col-md-3">
+					<button type="submit" class="btn btn-primary">Filter</button>
+					<a class="btn btn-outline-secondary" href="{% url 'dust_dashboard' %}">Clear</a>
+				</div>
+			</form>
+		</div>
+	</div>
+
+	<div class="card">
+		<div class="card-body">
+			<div class="table-responsive">
+				<table class="table table-sm table-striped mb-0">
+					<thead>
+						<tr>
+							<th>Detected at</th>
+							<th>Symbol</th>
+							<th>Event type</th>
+							<th>Severity</th>
+							<th class="text-right">Approx exposure, not PnL</th>
+							{% if optional_columns.estimated_delta_value_usdt %}
+								<th class="text-right">Estimated delta USDT</th>
+							{% endif %}
+							<th class="text-right">Quantity delta</th>
+							{% if optional_columns.suggested_action %}
+								<th>Suggested action</th>
+							{% endif %}
+							<th>Reason</th>
+						</tr>
+					</thead>
+					<tbody>
+						{% for row in detections %}
+							<tr>
+								<td>{{ row.detected_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
+								<td>{{ row.symbol|default:"-" }}</td>
+								<td>{{ row.event_type|default:"-" }}</td>
+								<td>
+									{% if row.severity == "critical" %}
+										<span class="badge badge-danger">critical</span>
+									{% elif row.severity == "warning" %}
+										<span class="badge badge-warning">warning</span>
+									{% else %}
+										{{ row.severity|default:"-" }}
+									{% endif %}
+								</td>
+								<td class="text-right">{{ row.estimated_value_usdt|floatformat:8|default:"-" }}</td>
+								{% if optional_columns.estimated_delta_value_usdt %}
+									<td class="text-right">{{ row.estimated_delta_value_usdt|floatformat:8|default:"-" }}</td>
+								{% endif %}
+								<td class="text-right">{{ row.quantity_delta|floatformat:8|default:"-" }}</td>
+								{% if optional_columns.suggested_action %}
+									<td>{{ row.suggested_action|default:"-" }}</td>
+								{% endif %}
+								<td>{{ row.reason|default:"-" }}</td>
+							</tr>
+						{% empty %}
+							<tr>
+								<td colspan="9" class="text-muted">No dust detections found.</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+</div>
+{% endblock %}

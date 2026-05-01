@@ -8,6 +8,7 @@ from django.db import DatabaseError
 from django.db.models import Count, Sum
 from django.utils import timezone
 
+from core.dust_read_model import get_dust_overview_context
 from core.models import BotControl
 from core.trading_models import BotHealthcheck, Portfolio, PositionLot, TradeOperation
 
@@ -33,6 +34,7 @@ def get_dashboard_context():
 		"quote_fee_summary": _empty_quote_fee_summary(),
 		"latest_trade": None,
 		"reconciliation": _empty_reconciliation(),
+		"dust_summary": _empty_dust_summary(),
 		"data_error": None,
 		"is_demo": False,
 	}
@@ -69,6 +71,10 @@ def get_dashboard_context():
 		context["reconciliation"] = _build_reconciliation(portfolio_rows, open_lots)
 	except DatabaseError as exc:
 		_add_data_error(context, "reconciliation", exc)
+
+	context["dust_summary"] = get_dust_overview_context()
+	if context["dust_summary"].get("data_error"):
+		_add_data_error(context, "dust detections", context["dust_summary"]["data_error"])
 
 	return DashboardReadModel(
 		context=context,
@@ -129,6 +135,28 @@ def get_demo_dashboard_context():
 			"warnings": [],
 			"checked_count": 2,
 			"tolerance": DRIFT_TOLERANCE,
+		},
+		"dust_summary": {
+			"critical_count": 1,
+			"warning_count": 2,
+			"latest_run_id": "demo-run-001",
+			"latest_detection": SimpleNamespace(
+				detected_at=now - timedelta(minutes=3),
+				symbol="BNBUSDT",
+				reason="Residual quantity below configured notional threshold",
+				severity="warning",
+			),
+			"top_detections": [
+				SimpleNamespace(
+					detected_at=now - timedelta(minutes=3),
+					symbol="BNBUSDT",
+					severity="warning",
+					estimated_value_usdt=Decimal("1.42"),
+					reason="Residual quantity below configured notional threshold",
+				),
+			],
+			"total_estimated_value_usdt": Decimal("1.42"),
+			"data_error": None,
 		},
 		"data_error": None,
 		"is_demo": True,
@@ -370,6 +398,18 @@ def _empty_reconciliation():
 	}
 
 
+def _empty_dust_summary():
+	return {
+		"critical_count": 0,
+		"warning_count": 0,
+		"latest_run_id": None,
+		"latest_detection": None,
+		"top_detections": [],
+		"total_estimated_value_usdt": Decimal("0"),
+		"data_error": None,
+	}
+
+
 def _is_material(portfolio):
 	if portfolio is None:
 		return False
@@ -391,6 +431,7 @@ def _important_queries():
 		"bot.trade_operations: SUM(fee_amount_in_quote), COUNT(*) WHERE status = FILLED AND quote_asset = USDT GROUP BY side",
 		"bot.trade_operations: latest row ordered by executed_at/created_at/id desc",
 		"bot.position_lots: SUM(quantity_open) WHERE quantity_open > 0 GROUP BY symbol",
+		"bot.dust_detections: operational dust summary and top detections, read-only",
 	]
 
 

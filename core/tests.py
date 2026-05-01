@@ -12,6 +12,7 @@ from core.dashboard_read_model import (
     _build_fee_summary,
     _build_quote_fee_summary,
 )
+from core.dust_read_model import _clean_filters
 
 class TelegramWebhookTests(TestCase):
     def setUp(self):
@@ -146,6 +147,47 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'Fees (USDT)')
         self.assertContains(response, '0.25000000')
         self.assertContains(response, '0.25 USDT')
+        self.assertContains(response, 'Dust / Residuals')
+        self.assertContains(response, 'Approx exposure, not PnL')
+
+    @patch('core.views.get_dashboard_context')
+    def test_dashboard_shows_dust_summary(self, mock_get_dashboard_context):
+        context = self.empty_dashboard_context()
+        context['dust_summary'] = {
+            'critical_count': 2,
+            'warning_count': 3,
+            'latest_run_id': 'run-dust-001',
+            'latest_detection': SimpleNamespace(
+                detected_at=timezone.now(),
+                symbol='SOLUSDT',
+                reason='Balance without lot coverage',
+                severity='critical',
+            ),
+            'top_detections': [
+                SimpleNamespace(
+                    detected_at=timezone.now(),
+                    symbol='SOLUSDT',
+                    severity='critical',
+                    estimated_value_usdt=Decimal('4.20'),
+                    reason='Balance without lot coverage',
+                ),
+            ],
+            'total_estimated_value_usdt': Decimal('4.20'),
+            'data_error': None,
+        }
+        mock_get_dashboard_context.return_value.context = context
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.dashboard_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Dust / Residuals')
+        self.assertContains(response, 'Critical detections')
+        self.assertContains(response, 'Warning detections')
+        self.assertContains(response, 'run-dust-001')
+        self.assertContains(response, 'SOLUSDT')
+        self.assertContains(response, 'Balance without lot coverage')
+        self.assertContains(response, reverse('dust_dashboard'))
 
     def test_demo_dashboard_is_public_and_read_only(self):
         response = self.client.get(reverse('dashboard_demo'))
@@ -157,6 +199,50 @@ class DashboardEndpointTests(TestCase):
         self.assertNotContains(response, 'Control seguro')
         self.assertNotContains(response, 'Stop')
         self.assertNotContains(response, 'Resume')
+
+    def test_dust_dashboard_requires_authentication(self):
+        response = self.client.get(reverse('dust_dashboard'))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response['Location'])
+
+    @patch('core.views.get_dust_dashboard_context')
+    def test_dust_dashboard_authenticated_user_gets_page(self, mock_get_dust_context):
+        mock_get_dust_context.return_value.context = {
+            'data_error': None,
+            'detections': [],
+            'filters': {'symbol': '', 'severity': '', 'event_type': ''},
+            'filter_options': {'symbols': [], 'severities': [], 'event_types': []},
+            'optional_columns': {
+                'estimated_delta_value_usdt': True,
+                'suggested_action': True,
+            },
+            'summary': {
+                'critical_count': 1,
+                'warning_count': 2,
+                'total_estimated_value_usdt': Decimal('3.25'),
+                'latest_run_id': 'run-123',
+            },
+        }
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('dust_dashboard'), {'severity': 'critical'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Dust / Residuals')
+        self.assertContains(response, 'run-123')
+        mock_get_dust_context.assert_called_once()
+
+    def test_dust_filters_are_cleaned(self):
+        filters = _clean_filters({
+            'symbol': ' BTCUSDT ',
+            'severity': 'critical',
+            'event_type': ' dust_candidate_detected ',
+        })
+
+        self.assertEqual(filters['symbol'], 'BTCUSDT')
+        self.assertEqual(filters['severity'], 'critical')
+        self.assertEqual(filters['event_type'], 'dust_candidate_detected')
 
     def test_stale_healthcheck_detection(self):
         stale_row = SimpleNamespace(
@@ -290,6 +376,15 @@ class DashboardEndpointTests(TestCase):
                 'warnings': [],
                 'checked_count': 0,
                 'tolerance': Decimal('0.00000001'),
+            },
+            'dust_summary': {
+                'critical_count': 0,
+                'warning_count': 0,
+                'latest_run_id': None,
+                'latest_detection': None,
+                'top_detections': [],
+                'total_estimated_value_usdt': Decimal('0'),
+                'data_error': None,
             },
             'data_error': None,
             'is_demo': False,
