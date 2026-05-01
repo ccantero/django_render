@@ -7,7 +7,11 @@ from types import SimpleNamespace
 import json
 from unittest.mock import patch
 
-from core.dashboard_read_model import _build_bot_status, _build_fee_summary
+from core.dashboard_read_model import (
+    _build_bot_status,
+    _build_fee_summary,
+    _build_quote_fee_summary,
+)
 
 class TelegramWebhookTests(TestCase):
     def setUp(self):
@@ -98,6 +102,14 @@ class DashboardEndpointTests(TestCase):
                 'fill_count': 2,
                 'rows': [{'asset': 'USDT', 'total': Decimal('0.25'), 'fill_count': 2}],
             },
+            'quote_fee_summary': {
+                'total_fees_usdt': Decimal('0.25'),
+                'total_operations': 2,
+                'by_side': {
+                    'BUY': {'total_fee_usdt': Decimal('0.10'), 'operations_count': 1},
+                    'SELL': {'total_fee_usdt': Decimal('0.15'), 'operations_count': 1},
+                },
+            },
             'latest_trade': {
                 'row': SimpleNamespace(
                     side='BUY',
@@ -131,7 +143,9 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'BTCUSDT')
         self.assertContains(response, '1 warning')
         self.assertContains(response, 'Total Fees')
+        self.assertContains(response, 'Fees (USDT)')
         self.assertContains(response, '0.25000000')
+        self.assertContains(response, '0.25 USDT')
 
     def test_demo_dashboard_is_public_and_read_only(self):
         response = self.client.get(reverse('dashboard_demo'))
@@ -139,6 +153,7 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Public demo')
         self.assertContains(response, 'Total Fees')
+        self.assertContains(response, 'Fees (USDT)')
         self.assertNotContains(response, 'Control seguro')
         self.assertNotContains(response, 'Stop')
         self.assertNotContains(response, 'Resume')
@@ -193,6 +208,50 @@ class DashboardEndpointTests(TestCase):
         self.assertIn(('values', ('fee_asset',)), query.calls)
         self.assertIn(('order_by', ('fee_asset',)), query.calls)
 
+    def test_quote_fee_summary_uses_filled_usdt_trade_operations(self):
+        class FakeTradeOperationQuery:
+            def __init__(self):
+                self.calls = []
+
+            def filter(self, **kwargs):
+                self.calls.append(('filter', kwargs))
+                return self
+
+            def values(self, *fields):
+                self.calls.append(('values', fields))
+                return self
+
+            def annotate(self, **kwargs):
+                self.calls.append(('annotate', tuple(kwargs)))
+                return self
+
+            def order_by(self, *fields):
+                self.calls.append(('order_by', fields))
+                return [
+                    {
+                        'side': 'BUY',
+                        'total_fee_usdt': Decimal('2.10'),
+                        'operations_count': 3,
+                    },
+                    {
+                        'side': 'SELL',
+                        'total_fee_usdt': Decimal('1.32'),
+                        'operations_count': 2,
+                    },
+                ]
+
+        query = FakeTradeOperationQuery()
+        with patch('core.dashboard_read_model.TradeOperation.objects', query):
+            summary = _build_quote_fee_summary()
+
+        self.assertEqual(summary['total_fees_usdt'], Decimal('3.42'))
+        self.assertEqual(summary['total_operations'], 5)
+        self.assertEqual(summary['by_side']['BUY']['total_fee_usdt'], Decimal('2.10'))
+        self.assertEqual(summary['by_side']['SELL']['operations_count'], 2)
+        self.assertIn(('filter', {'status': 'FILLED', 'quote_asset': 'USDT'}), query.calls)
+        self.assertIn(('values', ('side',)), query.calls)
+        self.assertIn(('order_by', ('side',)), query.calls)
+
     def empty_dashboard_context(self):
         return {
             'bot_control': None,
@@ -215,6 +274,14 @@ class DashboardEndpointTests(TestCase):
                 'asset_count': 0,
                 'fill_count': 0,
                 'rows': [],
+            },
+            'quote_fee_summary': {
+                'total_fees_usdt': Decimal('0'),
+                'total_operations': 0,
+                'by_side': {
+                    'BUY': {'total_fee_usdt': Decimal('0'), 'operations_count': 0},
+                    'SELL': {'total_fee_usdt': Decimal('0'), 'operations_count': 0},
+                },
             },
             'latest_trade': {'row': None, 'gross_quote': None, 'net_quote': None},
             'reconciliation': {

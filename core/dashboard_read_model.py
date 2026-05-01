@@ -30,6 +30,7 @@ def get_dashboard_context():
 		"bot_status": _empty_bot_status(),
 		"portfolio_summary": _empty_portfolio_summary(),
 		"fee_summary": _empty_fee_summary(),
+		"quote_fee_summary": _empty_quote_fee_summary(),
 		"latest_trade": None,
 		"reconciliation": _empty_reconciliation(),
 		"data_error": None,
@@ -38,17 +39,36 @@ def get_dashboard_context():
 
 	try:
 		portfolio_rows = list(Portfolio.objects.all().order_by("symbol"))
-		open_lots = _open_lots_by_symbol()
-
-		context.update({
-			"bot_status": _build_bot_status(),
-			"portfolio_summary": _build_portfolio_summary(portfolio_rows),
-			"fee_summary": _build_fee_summary(),
-			"latest_trade": _build_latest_trade(),
-			"reconciliation": _build_reconciliation(portfolio_rows, open_lots),
-		})
+		context["portfolio_summary"] = _build_portfolio_summary(portfolio_rows)
 	except DatabaseError as exc:
-		context["data_error"] = str(exc)
+		_add_data_error(context, "portfolio", exc)
+		portfolio_rows = []
+
+	try:
+		context["bot_status"] = _build_bot_status()
+	except DatabaseError as exc:
+		_add_data_error(context, "bot status", exc)
+
+	try:
+		context["fee_summary"] = _build_fee_summary()
+	except DatabaseError as exc:
+		_add_data_error(context, "fees", exc)
+
+	try:
+		context["quote_fee_summary"] = _build_quote_fee_summary()
+	except DatabaseError as exc:
+		_add_data_error(context, "USDT fees", exc)
+
+	try:
+		context["latest_trade"] = _build_latest_trade()
+	except DatabaseError as exc:
+		_add_data_error(context, "latest trade", exc)
+
+	try:
+		open_lots = _open_lots_by_symbol()
+		context["reconciliation"] = _build_reconciliation(portfolio_rows, open_lots)
+	except DatabaseError as exc:
+		_add_data_error(context, "reconciliation", exc)
 
 	return DashboardReadModel(
 		context=context,
@@ -84,6 +104,14 @@ def get_demo_dashboard_context():
 				{"asset": "BNB", "total": Decimal("0.0018"), "fill_count": 2},
 			],
 		},
+		"quote_fee_summary": {
+			"total_fees_usdt": Decimal("3.42"),
+			"total_operations": 5,
+			"by_side": {
+				"BUY": {"total_fee_usdt": Decimal("2.10"), "operations_count": 3},
+				"SELL": {"total_fee_usdt": Decimal("1.32"), "operations_count": 2},
+			},
+		},
 		"latest_trade": {
 			"row": SimpleNamespace(
 				side="BUY",
@@ -118,6 +146,14 @@ def _get_bot_control():
 		return BotControl.get_solo()
 	except DatabaseError:
 		return None
+
+
+def _add_data_error(context, section, exc):
+	message = f"{section}: {exc}"
+	if context["data_error"]:
+		context["data_error"] = f"{context['data_error']} | {message}"
+	else:
+		context["data_error"] = message
 
 
 def _build_bot_status():
@@ -224,6 +260,52 @@ def _empty_fee_summary():
 	}
 
 
+def _build_quote_fee_summary():
+	rows = (
+		TradeOperation.objects
+		.filter(status="FILLED", quote_asset="USDT")
+		.values("side")
+		.annotate(
+			total_fee_usdt=Sum("fee_amount_in_quote"),
+			operations_count=Count("*"),
+		)
+		.order_by("side")
+	)
+	by_side = _empty_quote_fee_summary()["by_side"]
+	total_fees_usdt = Decimal("0")
+	total_operations = 0
+
+	for row in rows:
+		side = row["side"] or "unknown"
+		total_fee_usdt = row["total_fee_usdt"] or Decimal("0")
+		operations_count = row["operations_count"] or 0
+		total_fees_usdt += total_fee_usdt
+		total_operations += operations_count
+
+		if side in by_side:
+			by_side[side] = {
+				"total_fee_usdt": total_fee_usdt,
+				"operations_count": operations_count,
+			}
+
+	return {
+		"total_fees_usdt": total_fees_usdt,
+		"total_operations": total_operations,
+		"by_side": by_side,
+	}
+
+
+def _empty_quote_fee_summary():
+	return {
+		"total_fees_usdt": Decimal("0"),
+		"total_operations": 0,
+		"by_side": {
+			"BUY": {"total_fee_usdt": Decimal("0"), "operations_count": 0},
+			"SELL": {"total_fee_usdt": Decimal("0"), "operations_count": 0},
+		},
+	}
+
+
 def _build_latest_trade():
 	row = TradeOperation.objects.order_by("-executed_at", "-created_at", "-id").first()
 	if row is None:
@@ -306,6 +388,7 @@ def _important_queries():
 		"bot.bot_healthcheck: latest row ordered by created_at desc",
 		"bot.portfolio: count rows and sum Decimal quantity * current_price",
 		"bot.trade_operations: SUM(fee_amount) GROUP BY fee_asset",
+		"bot.trade_operations: SUM(fee_amount_in_quote), COUNT(*) WHERE status = FILLED AND quote_asset = USDT GROUP BY side",
 		"bot.trade_operations: latest row ordered by executed_at/created_at/id desc",
 		"bot.position_lots: SUM(quantity_open) WHERE quantity_open > 0 GROUP BY symbol",
 	]

@@ -1,6 +1,18 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+	.dashboard-page .card,
+	.dashboard-page .card-body {
+		background-color: #fff !important;
+		color: #212529 !important;
+	}
+
+	.dashboard-page .card .text-muted {
+		color: #5f6f82 !important;
+	}
+</style>
+
 <div class="container-fluid py-4 dashboard-page">
 	<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
 		<div>
@@ -106,6 +118,18 @@
 	</div>
 
 	<div class="row">
+		<div class="col-lg-3 col-md-6 mb-3">
+			<div class="card h-100">
+				<div class="card-body">
+					<h2 class="h5">Fees (USDT)</h2>
+					<p class="mb-1">Total: <strong>{{ quote_fee_summary.total_fees_usdt|floatformat:2 }} USDT</strong></p>
+					<p class="mb-1">BUY: {{ quote_fee_summary.by_side.BUY.total_fee_usdt|floatformat:2 }} USDT</p>
+					<p class="mb-1">SELL: {{ quote_fee_summary.by_side.SELL.total_fee_usdt|floatformat:2 }} USDT</p>
+					<p class="mb-0">Fills: {{ quote_fee_summary.total_operations }}</p>
+				</div>
+			</div>
+		</div>
+
 		<div class="col-lg-3 col-md-6 mb-3">
 			<div class="card h-100">
 				<div class="card-body">
