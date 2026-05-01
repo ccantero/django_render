@@ -43,3 +43,53 @@ class AppSetting(models.Model):
 	def __str__(self):
 		return self.key
 
+
+class DustSignalReview(models.Model):
+	STATUS_PENDING = "pending"
+	STATUS_REVIEWED = "reviewed"
+	STATUS_IGNORED = "ignored"
+	STATUS_REVIEW_LATER = "review_later"
+	STATUS_NEEDS_MANUAL_CORRECTION = "needs_manual_correction"
+	STATUS_EXTERNAL_OR_EARN = "external_or_earn"
+
+	STATUS_CHOICES = [
+		(STATUS_PENDING, "Pending"),
+		(STATUS_REVIEWED, "Reviewed"),
+		(STATUS_IGNORED, "Ignored"),
+		(STATUS_REVIEW_LATER, "Review later"),
+		(STATUS_NEEDS_MANUAL_CORRECTION, "Needs manual correction"),
+		(STATUS_EXTERNAL_OR_EARN, "External or Earn"),
+	]
+
+	symbol = models.CharField(max_length=32, blank=True, default="")
+	asset = models.CharField(max_length=32, blank=True, default="")
+	reason = models.TextField(blank=True, default="")
+	event_type = models.CharField(max_length=64, blank=True, default="")
+	severity = models.CharField(max_length=32, blank=True, default="")
+	status = models.CharField(
+		max_length=32,
+		choices=STATUS_CHOICES,
+		default=STATUS_PENDING,
+	)
+	note = models.TextField(blank=True)
+	reviewed_by = models.ForeignKey(
+		settings.AUTH_USER_MODEL,
+		null=True,
+		blank=True,
+		on_delete=models.SET_NULL,
+	)
+	reviewed_at = models.DateTimeField(blank=True, null=True)
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		db_table = "dust_signal_reviews"
+		constraints = [
+			models.UniqueConstraint(
+				fields=["symbol", "asset", "reason", "event_type", "severity"],
+				name="unique_dust_signal_review_identity",
+			),
+		]
+
+	def __str__(self):
+		return f"{self.symbol or '-'} {self.reason or '-'} ({self.status})"

@@ -35,6 +35,7 @@ currencyconverter/migrations/*
 core/migrations/*
 !core/migrations/0002_botcontrol.py
 !core/migrations/0003_appsetting.py
+!core/migrations/0004_dustsignalreview.py
 run_server.sh
 populate_database.py
 createsuperuser.py

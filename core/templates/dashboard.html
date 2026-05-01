@@ -11,6 +11,21 @@
 	.dashboard-page .card .text-muted {
 		color: #5f6f82 !important;
 	}
+
+	.dashboard-page .dust-row-critical {
+		background-color: #fff1f2 !important;
+		border-left: 4px solid #dc3545;
+	}
+
+	.dashboard-page .dust-row-warning {
+		background-color: #fff8e6 !important;
+		border-left: 4px solid #f0ad4e;
+	}
+
+	.dashboard-page .dust-row-info {
+		background-color: #f6fbff !important;
+		border-left: 4px solid #8cc7df;
+	}
 </style>
 
 <div class="container-fluid py-4 dashboard-page">
@@ -155,7 +170,7 @@
 			<div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
 				<div>
 					<h2 class="h5 mb-1">Dust / Residuals</h2>
-					<p class="text-muted small mb-0">Operational dust status. Approx exposure, not PnL.</p>
+					<p class="text-muted small mb-0">Grouped signals (not raw detections). Approx exposure uses latest grouped values, not PnL.</p>
 				</div>
 				{% if not is_demo %}
 					<a class="btn btn-outline-primary btn-sm" href="{% url 'dust_dashboard' %}">View details</a>
@@ -163,60 +178,82 @@
 			</div>
 
 			<div class="row">
-				<div class="col-md-3 mb-3">
+				<div class="col-md-2 mb-3">
 					<p class="mb-1">Critical detections</p>
 					<p class="h4 mb-0">{{ dust_summary.critical_count }}</p>
+					<p class="text-muted small mb-0">Grouped signals</p>
 				</div>
-				<div class="col-md-3 mb-3">
+				<div class="col-md-2 mb-3">
 					<p class="mb-1">Warning detections</p>
 					<p class="h4 mb-0">{{ dust_summary.warning_count }}</p>
+					<p class="text-muted small mb-0">Grouped signals</p>
+				</div>
+				<div class="col-md-2 mb-3">
+					<p class="mb-1">Info detections</p>
+					<p class="h4 mb-0">{{ dust_summary.info_count }}</p>
+					<p class="text-muted small mb-0">Grouped signals</p>
 				</div>
 				<div class="col-md-3 mb-3">
-					<p class="mb-1">Approx exposure, not PnL</p>
+					<p class="mb-1">Approx exposure</p>
 					<p class="h4 mb-0">{{ dust_summary.total_estimated_value_usdt|floatformat:2 }} USDT</p>
+					<p class="text-muted small mb-0">Latest grouped values, not PnL</p>
 				</div>
 				<div class="col-md-3 mb-3">
 					<p class="mb-1">Latest run</p>
 					<p class="mb-0"><strong>{{ dust_summary.latest_run_id|default:"-" }}</strong></p>
+					<p class="text-muted small mb-0">{{ dust_summary.latest_detected_at|date:"Y-m-d H:i:s"|default:"-" }}</p>
 				</div>
 			</div>
 
-			{% if dust_summary.latest_detection %}
-				<p class="mb-2">
-					Latest:
-					<strong>{{ dust_summary.latest_detection.detected_at|date:"Y-m-d H:i:s"|default:"-" }}</strong>
-					{{ dust_summary.latest_detection.symbol|default:"-" }}
-					<span class="text-muted">{{ dust_summary.latest_detection.reason|default:"-" }}</span>
-				</p>
-			{% else %}
-				<p class="text-muted mb-2">No dust detections found.</p>
-			{% endif %}
-
-			{% if dust_summary.top_detections %}
+			{% if dust_summary.top_grouped_detections %}
 				<div class="table-responsive">
 					<table class="table table-sm mb-0">
 						<thead>
 							<tr>
-								<th>Detected at</th>
 								<th>Symbol</th>
+								<th>Asset</th>
 								<th>Severity</th>
-								<th class="text-right">Approx exposure, not PnL</th>
+								<th>Event type</th>
 								<th>Reason</th>
+								<th class="text-right">Detections</th>
+								<th>Latest detected</th>
+								<th>Latest run</th>
+								<th class="text-right">Approx exposure, not PnL</th>
+								<th class="text-right">Estimated delta USDT</th>
+								<th>Suggested action</th>
 							</tr>
 						</thead>
 						<tbody>
-							{% for row in dust_summary.top_detections %}
-								<tr>
-									<td>{{ row.detected_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
+							{% for row in dust_summary.top_grouped_detections %}
+								<tr class="{% if row.severity == 'critical' %}dust-row-critical{% elif row.severity == 'warning' %}dust-row-warning{% elif row.severity == 'info' %}dust-row-info{% endif %}">
 									<td>{{ row.symbol|default:"-" }}</td>
-									<td>{{ row.severity|default:"-" }}</td>
-									<td class="text-right">{{ row.estimated_value_usdt|floatformat:8|default:"-" }}</td>
+									<td>{{ row.asset|default:"-" }}</td>
+									<td>
+										{% if row.severity == "critical" %}
+											<span class="badge badge-danger">critical</span>
+										{% elif row.severity == "warning" %}
+											<span class="badge badge-warning">warning</span>
+										{% elif row.severity == "info" %}
+											<span class="badge badge-info">info</span>
+										{% else %}
+											{{ row.severity|default:"-" }}
+										{% endif %}
+									</td>
+									<td>{{ row.event_type|default:"-" }}</td>
 									<td>{{ row.reason|default:"-" }}</td>
+									<td class="text-right" title="Number of times this signal was detected">{{ row.detections_count }}</td>
+									<td>{{ row.latest_detected_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
+									<td>{{ row.latest_run_id|default:"-" }}</td>
+									<td class="text-right" title="Approx value of this signal">{{ row.latest_estimated_value_usdt|floatformat:8|default:"-" }}</td>
+									<td class="text-right" title="Difference between spot and lot value">{{ row.latest_estimated_delta_value_usdt|floatformat:8|default:"-" }}</td>
+									<td>{{ row.latest_suggested_action|default:"-" }}</td>
 								</tr>
 							{% endfor %}
 						</tbody>
 					</table>
 				</div>
+			{% else %}
+				<p class="text-muted mb-0">No dust detections found.</p>
 			{% endif %}
 		</div>
 	</div>

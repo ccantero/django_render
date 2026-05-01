@@ -1,4 +1,5 @@
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.generic import TemplateView
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse, JsonResponse, HttpResponseForbidden
@@ -10,7 +11,11 @@ from django.views.decorators.http import require_GET, require_POST
 import json
 import requests
 from core.dashboard_read_model import get_dashboard_context, get_demo_dashboard_context
-from core.dust_read_model import get_dust_dashboard_context
+from core.dust_read_model import (
+	get_dust_dashboard_context,
+	get_dust_detail_context,
+	update_dust_signal_review,
+)
 from core.models import BotControl, TelegramMessage
 
 TELEGRAM_WEBHOOK_TOKEN = settings.TELEGRAM_WEBHOOK_TOKEN
@@ -54,6 +59,25 @@ def dashboard_demo(request):
 def dust_dashboard(request):
 	read_model = get_dust_dashboard_context(request.GET)
 	return render(request, "dust_dashboard.html", read_model.context)
+
+
+@login_required
+def dust_detail(request):
+	if request.method == "POST":
+		update_dust_signal_review(
+			request.POST,
+			request.POST.get("status", ""),
+			request.POST.get("note", ""),
+			request.user,
+		)
+		querystring = request.POST.get("group_querystring", "")
+		redirect_url = reverse("dust_detail")
+		if querystring:
+			redirect_url = f"{redirect_url}?{querystring}"
+		return redirect(redirect_url)
+
+	read_model = get_dust_detail_context(request.GET)
+	return render(request, "dust_detail.html", read_model.context)
 
 
 @login_required

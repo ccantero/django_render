@@ -11,15 +11,101 @@
 	.dashboard-page .card .text-muted {
 		color: #5f6f82 !important;
 	}
+
+	.dust-breadcrumb {
+		font-size: 0.875rem;
+	}
+
+	.summary-card {
+		border-left: 4px solid #d8dee9;
+	}
+
+	.summary-card-critical {
+		border-left-color: #dc3545;
+	}
+
+	.summary-card-warning {
+		border-left-color: #f0ad4e;
+	}
+
+	.summary-card-info {
+		border-left-color: #17a2b8;
+	}
+
+	.dust-row-critical {
+		background-color: #fff1f2 !important;
+		border-left: 4px solid #dc3545;
+	}
+
+	.dust-row-warning {
+		background-color: #fff8e6 !important;
+		border-left: 4px solid #f0ad4e;
+	}
+
+	.dust-row-info {
+		background-color: #f6fbff !important;
+		border-left: 4px solid #8cc7df;
+	}
+
+	.dust-row-ignored {
+		opacity: 0.55;
+	}
+
+	.filter-chip {
+		display: inline-block;
+		padding: 0.2rem 0.5rem;
+		margin: 0.15rem;
+		border-radius: 0.25rem;
+		background: #eef2f7;
+		color: #26313f;
+		font-size: 0.8125rem;
+	}
+
+	.sort-button {
+		background: transparent;
+		border: 0;
+		padding: 0;
+		color: inherit;
+		font: inherit;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.sort-button:after {
+		content: "sort";
+		margin-left: 0.25rem;
+		color: #7d8794;
+		font-size: 0.75rem;
+	}
+
+	.top-risk-card {
+		border-left: 4px solid #6c757d;
+	}
+
+	.top-risk-card.critical {
+		border-left-color: #dc3545;
+	}
+
+	.top-risk-card.warning {
+		border-left-color: #f0ad4e;
+	}
+
+	.top-risk-card.info {
+		border-left-color: #17a2b8;
+	}
 </style>
 
 <div class="container-fluid py-4 dashboard-page">
+	<nav class="dust-breadcrumb mb-3" aria-label="breadcrumb">
+		<a href="{% url 'dashboard' %}">Dashboard</a>
+		<span class="text-muted"> / Dust / Residuals</span>
+	</nav>
 	<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
 		<div>
 			<h1 class="h3 mb-1">Dust / Residuals</h1>
 			<p class="text-muted mb-0">Read-only view of bot dust detections. Values are approximate and not PnL.</p>
 		</div>
-		<a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Trading Dashboard</a>
+		<a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Back to Dashboard</a>
 	</div>
 
 	{% if data_error %}
@@ -31,34 +117,50 @@
 
 	<div class="row">
 		<div class="col-lg-3 col-md-6 mb-3">
-			<div class="card h-100">
+			<div class="card h-100 summary-card summary-card-critical">
 				<div class="card-body">
 					<h2 class="h5">Critical</h2>
 					<p class="display-4 mb-0">{{ summary.critical_count }}</p>
+					<p class="text-muted small mb-0">Grouped signals (not raw detections)</p>
 				</div>
 			</div>
 		</div>
 		<div class="col-lg-3 col-md-6 mb-3">
-			<div class="card h-100">
+			<div class="card h-100 summary-card summary-card-warning">
 				<div class="card-body">
 					<h2 class="h5">Warning</h2>
 					<p class="display-4 mb-0">{{ summary.warning_count }}</p>
+					<p class="text-muted small mb-0">Grouped signals (not raw detections)</p>
 				</div>
 			</div>
 		</div>
 		<div class="col-lg-3 col-md-6 mb-3">
-			<div class="card h-100">
+			<div class="card h-100 summary-card">
 				<div class="card-body">
-					<h2 class="h5">Approx exposure, not PnL</h2>
+					<h2 class="h5">Approx exposure</h2>
 					<p class="h4 mb-0">{{ summary.total_estimated_value_usdt|floatformat:2 }} USDT</p>
+					<p class="text-muted small mb-0">Latest grouped values, not PnL</p>
 				</div>
 			</div>
 		</div>
 		<div class="col-lg-3 col-md-6 mb-3">
-			<div class="card h-100">
+			<div class="card h-100 summary-card">
 				<div class="card-body">
 					<h2 class="h5">Latest Run</h2>
 					<p class="mb-0"><strong>{{ summary.latest_run_id|default:"-" }}</strong></p>
+					<p class="text-muted small mb-0">{{ summary.latest_detected_at|date:"Y-m-d H:i:s"|default:"-" }}</p>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="row">
+		<div class="col-lg-3 col-md-6 mb-3">
+			<div class="card h-100 summary-card summary-card-info">
+				<div class="card-body">
+					<h2 class="h5">Info</h2>
+					<p class="display-4 mb-0">{{ summary.info_count }}</p>
+					<p class="text-muted small mb-0">Grouped signals (not raw detections)</p>
 				</div>
 			</div>
 		</div>
@@ -66,91 +168,154 @@
 
 	<div class="card mb-3">
 		<div class="card-body">
-			<form method="get" class="form-row align-items-end">
-				<div class="form-group col-md-3">
+			<form method="get" class="form-row align-items-end mb-2">
+				<div class="form-group col-lg-2 col-md-3">
 					<label for="symbol">Symbol</label>
-					<select id="symbol" name="symbol" class="form-control">
+					<select id="symbol" name="symbol" class="form-control form-control-sm">
 						<option value="">All</option>
 						{% for symbol in filter_options.symbols %}
 							<option value="{{ symbol }}" {% if filters.symbol == symbol %}selected{% endif %}>{{ symbol }}</option>
 						{% endfor %}
 					</select>
 				</div>
-				<div class="form-group col-md-3">
+				<div class="form-group col-lg-2 col-md-3">
 					<label for="severity">Severity</label>
-					<select id="severity" name="severity" class="form-control">
+					<select id="severity" name="severity" class="form-control form-control-sm">
 						<option value="">All</option>
 						{% for severity in filter_options.severities %}
 							<option value="{{ severity }}" {% if filters.severity == severity %}selected{% endif %}>{{ severity }}</option>
 						{% endfor %}
 					</select>
 				</div>
-				<div class="form-group col-md-3">
+				<div class="form-group col-lg-2 col-md-4">
 					<label for="event_type">Event type</label>
-					<select id="event_type" name="event_type" class="form-control">
+					<select id="event_type" name="event_type" class="form-control form-control-sm">
 						<option value="">All</option>
 						{% for event_type in filter_options.event_types %}
 							<option value="{{ event_type }}" {% if filters.event_type == event_type %}selected{% endif %}>{{ event_type }}</option>
 						{% endfor %}
 					</select>
 				</div>
-				<div class="form-group col-md-3">
-					<button type="submit" class="btn btn-primary">Filter</button>
-					<a class="btn btn-outline-secondary" href="{% url 'dust_dashboard' %}">Clear</a>
+				<div class="form-group col-lg-2 col-md-4">
+					<label for="reason">Reason</label>
+					<select id="reason" name="reason" class="form-control form-control-sm">
+						<option value="">All</option>
+						{% for reason in filter_options.reasons %}
+							<option value="{{ reason }}" {% if filters.reason == reason %}selected{% endif %}>{{ reason }}</option>
+						{% endfor %}
+					</select>
+				</div>
+				<div class="form-group col-lg-2 col-md-4">
+					<label for="review_status">Review</label>
+					<select id="review_status" name="review_status" class="form-control form-control-sm">
+						<option value="">All</option>
+						{% for value, label in filter_options.review_statuses %}
+							<option value="{{ value }}" {% if filters.review_status == value %}selected{% endif %}>{{ label }}</option>
+						{% endfor %}
+					</select>
+				</div>
+				<div class="form-group col-lg-2 col-md-6">
+					<button type="submit" class="btn btn-primary btn-sm">Filter</button>
+					<a class="btn btn-outline-secondary btn-sm" href="{% url 'dust_dashboard' %}">Reset</a>
 				</div>
 			</form>
+			<div>
+				{% if active_filters %}
+					<span class="text-muted small mr-1">Active filters:</span>
+					{% for filter in active_filters %}
+						<span class="filter-chip">{{ filter.label }}: <strong>{{ filter.value }}</strong></span>
+					{% endfor %}
+				{% else %}
+					<span class="text-muted small">No active filters.</span>
+				{% endif %}
+			</div>
 		</div>
 	</div>
 
+	{% if top_risk_signals %}
+		<div class="mb-3">
+			<h2 class="h5 mb-2">Top risk signals</h2>
+			<div class="row">
+				{% for row in top_risk_signals %}
+					<div class="col-lg-4 mb-2">
+						<div class="card h-100 top-risk-card {{ row.severity|default:'unknown' }}">
+							<div class="card-body py-3">
+								<div class="d-flex justify-content-between align-items-start">
+									<strong>{{ row.symbol|default:"-" }}</strong>
+									<span class="text-right">{{ row.latest_estimated_value_usdt|floatformat:8|default:"-" }} USDT</span>
+								</div>
+								<div class="small text-muted">{{ row.reason|default:"-" }}</div>
+								<div class="small">{{ row.event_type|default:"-" }}</div>
+							</div>
+						</div>
+					</div>
+				{% endfor %}
+			</div>
+		</div>
+	{% endif %}
+
 	<div class="card">
 		<div class="card-body">
+			<div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
+				<div>
+					<h2 class="h5 mb-1">Top grouped detections</h2>
+					<p class="text-muted small mb-0">Grouped by symbol, asset, reason, event type, and severity. Limited to 50 rows.</p>
+				</div>
+				<p class="text-muted small mb-0">Total detections: {{ summary.total_detections }}</p>
+			</div>
 			<div class="table-responsive">
-				<table class="table table-sm table-striped mb-0">
+				<table id="dustSignalsTable" class="table table-sm table-striped mb-0">
 					<thead>
 						<tr>
-							<th>Detected at</th>
-							<th>Symbol</th>
-							<th>Event type</th>
-							<th>Severity</th>
-							<th class="text-right">Approx exposure, not PnL</th>
-							{% if optional_columns.estimated_delta_value_usdt %}
-								<th class="text-right">Estimated delta USDT</th>
-							{% endif %}
-							<th class="text-right">Quantity delta</th>
-							{% if optional_columns.suggested_action %}
-								<th>Suggested action</th>
-							{% endif %}
-							<th>Reason</th>
+							<th><button class="sort-button" type="button" data-sort-index="0" data-sort-type="text">Symbol</button></th>
+							<th><button class="sort-button" type="button" data-sort-index="1" data-sort-type="text">Asset</button></th>
+							<th><button class="sort-button" type="button" data-sort-index="2" data-sort-type="text">Event type</button></th>
+							<th><button class="sort-button" type="button" data-sort-index="3" data-sort-type="severity">Severity</button></th>
+							<th><button class="sort-button" type="button" data-sort-index="4" data-sort-type="text">Reason</button></th>
+							<th class="text-right"><button class="sort-button" type="button" data-sort-index="5" data-sort-type="number" title="Number of times this signal was detected">Detections</button></th>
+							<th><button class="sort-button" type="button" data-sort-index="6" data-sort-type="number">Latest detected</button></th>
+							<th><button class="sort-button" type="button" data-sort-index="7" data-sort-type="text">Latest run</button></th>
+							<th class="text-right"><button class="sort-button" type="button" data-sort-index="8" data-sort-type="number" title="Approx value of this signal">Approx exposure, not PnL</button></th>
+							<th class="text-right"><button class="sort-button" type="button" data-sort-index="9" data-sort-type="number" title="Difference between spot and lot value">Estimated delta USDT</button></th>
+							<th><button class="sort-button" type="button" data-sort-index="10" data-sort-type="text">Suggested action</button></th>
+							<th><button class="sort-button" type="button" data-sort-index="11" data-sort-type="text">Review</button></th>
+							<th>Details</th>
 						</tr>
 					</thead>
 					<tbody>
-						{% for row in detections %}
-							<tr>
-								<td>{{ row.detected_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
+						{% for row in grouped_detections %}
+							<tr class="{% if row.severity == 'critical' %}dust-row-critical{% elif row.severity == 'warning' %}dust-row-warning{% elif row.severity == 'info' %}dust-row-info{% endif %} {% if row.review_status == 'ignored' %}dust-row-ignored{% endif %}">
 								<td>{{ row.symbol|default:"-" }}</td>
+								<td>{{ row.asset|default:"-" }}</td>
 								<td>{{ row.event_type|default:"-" }}</td>
-								<td>
+								<td data-sort-value="{% if row.severity == 'critical' %}0{% elif row.severity == 'warning' %}1{% elif row.severity == 'info' %}2{% else %}3{% endif %}">
 									{% if row.severity == "critical" %}
 										<span class="badge badge-danger">critical</span>
 									{% elif row.severity == "warning" %}
 										<span class="badge badge-warning">warning</span>
+									{% elif row.severity == "info" %}
+										<span class="badge badge-info">info</span>
 									{% else %}
 										{{ row.severity|default:"-" }}
 									{% endif %}
 								</td>
-								<td class="text-right">{{ row.estimated_value_usdt|floatformat:8|default:"-" }}</td>
-								{% if optional_columns.estimated_delta_value_usdt %}
-									<td class="text-right">{{ row.estimated_delta_value_usdt|floatformat:8|default:"-" }}</td>
-								{% endif %}
-								<td class="text-right">{{ row.quantity_delta|floatformat:8|default:"-" }}</td>
-								{% if optional_columns.suggested_action %}
-									<td>{{ row.suggested_action|default:"-" }}</td>
-								{% endif %}
 								<td>{{ row.reason|default:"-" }}</td>
+								<td class="text-right" data-sort-value="{{ row.detections_count }}" title="Number of times this signal was detected">{{ row.detections_count }}</td>
+								<td data-sort-value="{{ row.latest_detected_at|date:'U' }}">{{ row.latest_detected_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
+								<td>{{ row.latest_run_id|default:"-" }}</td>
+								<td class="text-right" data-sort-value="{{ row.latest_estimated_value_usdt|default:'0' }}" title="Approx value of this signal">{{ row.latest_estimated_value_usdt|floatformat:8|default:"-" }}</td>
+								<td class="text-right" data-sort-value="{{ row.latest_estimated_delta_value_usdt|default:'0' }}" title="Difference between spot and lot value">{{ row.latest_estimated_delta_value_usdt|floatformat:8|default:"-" }}</td>
+								<td>{{ row.latest_suggested_action|default:"-" }}</td>
+								<td>
+									<span class="badge {% if row.review_status == 'ignored' %}badge-secondary{% elif row.review_status == 'needs_manual_correction' %}badge-danger{% elif row.review_status == 'review_later' %}badge-warning{% elif row.review_status == 'reviewed' or row.review_status == 'external_or_earn' %}badge-success{% else %}badge-light{% endif %}">
+										{{ row.review_status|default:"pending" }}
+									</span>
+								</td>
+								<td><a class="btn btn-outline-primary btn-sm" href="{% url 'dust_detail' %}?{{ row.detail_querystring }}">View details</a></td>
 							</tr>
 						{% empty %}
 							<tr>
-								<td colspan="9" class="text-muted">No dust detections found.</td>
+								<td colspan="13" class="text-muted text-center py-4">No dust signals found for current filters.</td>
 							</tr>
 						{% endfor %}
 					</tbody>
@@ -159,4 +324,64 @@
 		</div>
 	</div>
 </div>
+<script>
+	(function () {
+		var table = document.getElementById("dustSignalsTable");
+		if (!table) {
+			return;
+		}
+
+		var tbody = table.querySelector("tbody");
+		var directions = {};
+		var severityOrder = {"critical": 0, "warning": 1, "info": 2};
+
+		function cellValue(row, index, type) {
+			var cell = row.children[index];
+			if (!cell) {
+				return "";
+			}
+			var value = cell.getAttribute("data-sort-value") || cell.textContent.trim();
+			if (type === "number" || type === "severity") {
+				var parsed = parseFloat(value);
+				if (!Number.isNaN(parsed)) {
+					return parsed;
+				}
+				if (type === "severity") {
+					return Object.prototype.hasOwnProperty.call(severityOrder, value.toLowerCase())
+							? severityOrder[value.toLowerCase()]
+							: 3;
+				}
+				return 0;
+			}
+			return value.toLowerCase();
+		}
+
+		table.querySelectorAll(".sort-button").forEach(function (button) {
+			button.addEventListener("click", function () {
+				var index = parseInt(button.getAttribute("data-sort-index"), 10);
+				var type = button.getAttribute("data-sort-type");
+				var key = String(index);
+				directions[key] = directions[key] === "asc" ? "desc" : "asc";
+				var multiplier = directions[key] === "asc" ? 1 : -1;
+				var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+
+				rows.sort(function (left, right) {
+					var leftValue = cellValue(left, index, type);
+					var rightValue = cellValue(right, index, type);
+					if (leftValue < rightValue) {
+						return -1 * multiplier;
+					}
+					if (leftValue > rightValue) {
+						return 1 * multiplier;
+					}
+					return 0;
+				});
+
+				rows.forEach(function (row) {
+					tbody.appendChild(row);
+				});
+			});
+		});
+	})();
+</script>
 {% endblock %}

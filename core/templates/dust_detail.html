@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+	.dashboard-page .card,
+	.dashboard-page .card-body {
+		background-color: #fff !important;
+		color: #212529 !important;
+	}
+
+	.dashboard-page .card .text-muted {
+		color: #5f6f82 !important;
+	}
+
+	.dust-breadcrumb {
+		font-size: 0.875rem;
+	}
+
+	.identity-chip {
+		display: inline-block;
+		padding: 0.2rem 0.5rem;
+		margin: 0.15rem;
+		border-radius: 0.25rem;
+		background: #eef2f7;
+		color: #26313f;
+		font-size: 0.8125rem;
+	}
+
+	.payload-block {
+		white-space: pre-wrap;
+		max-height: 24rem;
+		overflow: auto;
+		background: #f7f9fc;
+		border: 1px solid #d8dee9;
+		border-radius: 0.25rem;
+		padding: 0.75rem;
+	}
+
+	.review-meta {
+		background: #f7f9fc;
+		border-radius: 0.25rem;
+		padding: 0.75rem;
+	}
+</style>
+
+<div class="container-fluid py-4 dashboard-page">
+	<nav class="dust-breadcrumb mb-3" aria-label="breadcrumb">
+		<a href="{% url 'dashboard' %}">Dashboard</a>
+		<span class="text-muted"> / </span>
+		<a href="{% url 'dust_dashboard' %}">Dust / Residuals</a>
+		<span class="text-muted"> / Detail</span>
+	</nav>
+
+	<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+		<div>
+			<h1 class="h3 mb-1">Dust Signal Detail</h1>
+			<p class="text-muted mb-0">Read-only detection history for one grouped dust/residual signal.</p>
+		</div>
+		<a class="btn btn-outline-secondary" href="{% url 'dust_dashboard' %}?{{ back_querystring }}">Back to Dust / Residuals</a>
+	</div>
+
+	{% if data_error %}
+		<div class="alert alert-warning">
+			<strong>No se pudo leer la tabla de dust.</strong>
+			<div class="small mt-1">{{ data_error }}</div>
+		</div>
+	{% endif %}
+
+	<div class="card mb-3">
+		<div class="card-body">
+			<h2 class="h5 mb-2">Group identity</h2>
+			{% for item in group_identity %}
+				<span class="identity-chip">{{ item.label }}: <strong>{{ item.value|default:"-" }}</strong></span>
+			{% endfor %}
+		</div>
+	</div>
+
+	<div class="row">
+		<div class="col-lg-3 col-md-6 mb-3">
+			<div class="card h-100">
+				<div class="card-body">
+					<h2 class="h5">Detections</h2>
+					<p class="display-4 mb-0">{{ group_summary.detections_count|default:"0" }}</p>
+				</div>
+			</div>
+		</div>
+		<div class="col-lg-3 col-md-6 mb-3">
+			<div class="card h-100">
+				<div class="card-body">
+					<h2 class="h5">Latest detected</h2>
+					<p class="mb-0"><strong>{{ group_summary.latest_detected_at|date:"Y-m-d H:i:s"|default:"-" }}</strong></p>
+					<p class="text-muted small mb-0">{{ group_summary.latest_run_id|default:"-" }}</p>
+				</div>
+			</div>
+		</div>
+		<div class="col-lg-3 col-md-6 mb-3">
+			<div class="card h-100">
+				<div class="card-body">
+					<h2 class="h5">Approx exposure, not PnL</h2>
+					<p class="h4 mb-0">{{ group_summary.latest_estimated_value_usdt|floatformat:8|default:"-" }} USDT</p>
+				</div>
+			</div>
+		</div>
+		<div class="col-lg-3 col-md-6 mb-3">
+			<div class="card h-100">
+				<div class="card-body">
+					<h2 class="h5">Latest action</h2>
+					<p class="mb-1">{{ group_summary.latest_suggested_action|default:"-" }}</p>
+					<p class="text-muted small mb-0">Delta: {{ group_summary.latest_estimated_delta_value_usdt|floatformat:8|default:"-" }} USDT</p>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="card mb-3">
+		<div class="card-body">
+			<div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
+				<div>
+					<h2 class="h5 mb-1">Manual review</h2>
+					<p class="text-muted small mb-0">Review state is stored in the dashboard only. These labels do not perform trading actions.</p>
+				</div>
+				<span class="badge {% if review.status == 'ignored' %}badge-secondary{% elif review.status == 'needs_manual_correction' %}badge-danger{% elif review.status == 'review_later' %}badge-warning{% elif review.status == 'reviewed' or review.status == 'external_or_earn' %}badge-success{% else %}badge-light{% endif %}">
+					{{ review.status|default:"pending" }}
+				</span>
+			</div>
+
+			<form method="post">
+				{% csrf_token %}
+				<input type="hidden" name="symbol" value="{{ filters.symbol|default:'' }}">
+				<input type="hidden" name="asset" value="{{ filters.asset|default:'' }}">
+				<input type="hidden" name="reason" value="{{ filters.reason|default:'' }}">
+				<input type="hidden" name="event_type" value="{{ filters.event_type|default:'' }}">
+				<input type="hidden" name="severity" value="{{ filters.severity|default:'' }}">
+				<input type="hidden" name="group_querystring" value="{{ back_querystring }}">
+
+				<div class="form-row">
+					<div class="form-group col-md-4">
+						<label for="status">Status</label>
+						<select id="status" name="status" class="form-control">
+							{% for value, label in review_status_choices %}
+								<option value="{{ value }}" {% if review_status == value %}selected{% endif %}>{{ label }}</option>
+							{% endfor %}
+						</select>
+					</div>
+					<div class="form-group col-md-8">
+						<label for="note">Note</label>
+						<textarea id="note" name="note" class="form-control" rows="3">{{ review.note|default:"" }}</textarea>
+					</div>
+				</div>
+				<button type="submit" class="btn btn-primary">Update review</button>
+			</form>
+
+			<div class="review-meta mt-3 small">
+				<p class="mb-1">Reviewed by: <strong>{{ review.reviewed_by|default:"-" }}</strong></p>
+				<p class="mb-1">Reviewed at: <strong>{{ review.reviewed_at|date:"Y-m-d H:i:s"|default:"-" }}</strong></p>
+				<p class="mb-0">Updated at: <strong>{{ review.updated_at|date:"Y-m-d H:i:s"|default:"-" }}</strong></p>
+			</div>
+		</div>
+	</div>
+
+	<div class="card">
+		<div class="card-body">
+			<div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
+				<div>
+					<h2 class="h5 mb-1">Latest raw detections</h2>
+					<p class="text-muted small mb-0">Latest 100 rows for this exact grouped signal.</p>
+				</div>
+			</div>
+			<div class="table-responsive">
+				<table class="table table-sm table-striped mb-0">
+					<thead>
+						<tr>
+							<th>ID</th>
+							<th>Detected at</th>
+							<th>Run</th>
+							<th class="text-right">Spot qty</th>
+							<th class="text-right">Open lot qty</th>
+							<th class="text-right">Qty delta</th>
+							<th class="text-right">Price USDT</th>
+							<th class="text-right">Approx exposure, not PnL</th>
+							<th class="text-right">Estimated delta USDT</th>
+							<th>Suggested action</th>
+							<th>Source</th>
+							<th>Payload</th>
+						</tr>
+					</thead>
+					<tbody>
+						{% for item in raw_detections %}
+							<tr>
+								<td>{{ item.row.id }}</td>
+								<td>{{ item.row.detected_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
+								<td>{{ item.row.run_id|default:"-" }}</td>
+								<td class="text-right">{{ item.row.spot_quantity|floatformat:8|default:"-" }}</td>
+								<td class="text-right">{{ item.row.open_lot_quantity|floatformat:8|default:"-" }}</td>
+								<td class="text-right">{{ item.row.quantity_delta|floatformat:8|default:"-" }}</td>
+								<td class="text-right">{{ item.row.price_usdt|floatformat:8|default:"-" }}</td>
+								<td class="text-right">{{ item.row.estimated_value_usdt|floatformat:8|default:"-" }}</td>
+								<td class="text-right">{{ item.row.estimated_delta_value_usdt|floatformat:8|default:"-" }}</td>
+								<td>{{ item.row.suggested_action|default:"-" }}</td>
+								<td>{{ item.row.source|default:"-" }}</td>
+								<td>
+									{% if item.has_payload %}
+										<details>
+											<summary>View payload</summary>
+											<pre class="payload-block mt-2">{{ item.payload_text }}</pre>
+										</details>
+									{% else %}
+										<span class="text-muted">No payload</span>
+									{% endif %}
+								</td>
+							</tr>
+						{% empty %}
+							<tr>
+								<td colspan="12" class="text-muted text-center py-4">No detections found for this dust signal.</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+</div>
+{% endblock %}

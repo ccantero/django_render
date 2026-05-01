@@ -2,9 +2,11 @@ from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.urls import reverse
+from django.db import DatabaseError
 from decimal import Decimal
 from types import SimpleNamespace
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 from core.dashboard_read_model import (
@@ -12,7 +14,18 @@ from core.dashboard_read_model import (
     _build_fee_summary,
     _build_quote_fee_summary,
 )
-from core.dust_read_model import _clean_filters
+from core.dust_read_model import (
+    _build_summary,
+    _clean_filters,
+    _dashboard_queryset,
+    _filtered_group_detections,
+    _format_payload,
+    _reviews_for_rows,
+    get_dust_dashboard_context,
+    update_dust_signal_review,
+)
+from core.models import DustSignalReview
+from core.trading_models import DustDetection
 
 class TelegramWebhookTests(TestCase):
     def setUp(self):
@@ -154,23 +167,26 @@ class DashboardEndpointTests(TestCase):
     def test_dashboard_shows_dust_summary(self, mock_get_dashboard_context):
         context = self.empty_dashboard_context()
         context['dust_summary'] = {
+            'total_detections': 6,
             'critical_count': 2,
             'warning_count': 3,
+            'info_count': 1,
             'latest_run_id': 'run-dust-001',
-            'latest_detection': SimpleNamespace(
-                detected_at=timezone.now(),
-                symbol='SOLUSDT',
-                reason='Balance without lot coverage',
-                severity='critical',
-            ),
-            'top_detections': [
-                SimpleNamespace(
-                    detected_at=timezone.now(),
-                    symbol='SOLUSDT',
-                    severity='critical',
-                    estimated_value_usdt=Decimal('4.20'),
-                    reason='Balance without lot coverage',
-                ),
+            'latest_detected_at': timezone.now(),
+            'top_grouped_detections': [
+                {
+                    'symbol': 'SOLUSDT',
+                    'asset': 'SOL',
+                    'severity': 'critical',
+                    'event_type': 'dust_candidate_detected',
+                    'reason': 'below_min_notional',
+                    'detections_count': 2,
+                    'latest_detected_at': timezone.now(),
+                    'latest_run_id': 'run-dust-001',
+                    'latest_estimated_value_usdt': Decimal('4.20'),
+                    'latest_estimated_delta_value_usdt': Decimal('0'),
+                    'latest_suggested_action': 'monitor',
+                },
             ],
             'total_estimated_value_usdt': Decimal('4.20'),
             'data_error': None,
@@ -184,9 +200,11 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'Dust / Residuals')
         self.assertContains(response, 'Critical detections')
         self.assertContains(response, 'Warning detections')
+        self.assertContains(response, 'Info detections')
         self.assertContains(response, 'run-dust-001')
         self.assertContains(response, 'SOLUSDT')
-        self.assertContains(response, 'Balance without lot coverage')
+        self.assertContains(response, 'below_min_notional')
+        self.assertContains(response, 'monitor')
         self.assertContains(response, reverse('dust_dashboard'))
 
     def test_demo_dashboard_is_public_and_read_only(self):
@@ -206,22 +224,55 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse('login'), response['Location'])
 
+    def test_dust_detail_requires_authentication(self):
+        response = self.client.get(reverse('dust_detail'))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response['Location'])
+
     @patch('core.views.get_dust_dashboard_context')
     def test_dust_dashboard_authenticated_user_gets_page(self, mock_get_dust_context):
         mock_get_dust_context.return_value.context = {
             'data_error': None,
-            'detections': [],
-            'filters': {'symbol': '', 'severity': '', 'event_type': ''},
-            'filter_options': {'symbols': [], 'severities': [], 'event_types': []},
-            'optional_columns': {
-                'estimated_delta_value_usdt': True,
-                'suggested_action': True,
+            'grouped_detections': [{
+                'symbol': 'BTCUSDT',
+                'asset': 'BTC',
+                'severity': 'info',
+                'event_type': 'dust_candidate_detected',
+                'reason': 'below_min_notional',
+                'detections_count': 1,
+                'latest_detected_at': timezone.now(),
+                'latest_run_id': 'run-123',
+                'latest_estimated_value_usdt': Decimal('0.77962320'),
+                'latest_estimated_delta_value_usdt': None,
+                'latest_suggested_action': 'monitor',
+                'review_status': 'ignored',
+                'detail_querystring': 'symbol=BTCUSDT&asset=BTC&reason=below_min_notional&event_type=dust_candidate_detected&severity=info',
+            }],
+            'top_risk_signals': [{
+                'symbol': 'ETHUSDT',
+                'severity': 'info',
+                'event_type': 'lot_below_min_notional_detected',
+                'reason': 'possible_incomplete_sell',
+                'latest_estimated_value_usdt': Decimal('0.415022396'),
+            }],
+            'active_filters': [{'label': 'Severity', 'value': 'critical'}],
+            'filters': {'symbol': '', 'severity': '', 'event_type': '', 'reason': ''},
+            'filter_options': {
+                'symbols': [],
+                'severities': [],
+                'event_types': [],
+                'reasons': [],
+                'review_statuses': DustSignalReview.STATUS_CHOICES,
             },
             'summary': {
+                'total_detections': 3,
                 'critical_count': 1,
                 'warning_count': 2,
+                'info_count': 0,
                 'total_estimated_value_usdt': Decimal('3.25'),
                 'latest_run_id': 'run-123',
+                'latest_detected_at': timezone.now(),
             },
         }
         self.client.force_login(self.user)
@@ -231,18 +282,423 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Dust / Residuals')
         self.assertContains(response, 'run-123')
+        self.assertContains(response, 'Back to Dashboard')
+        self.assertContains(response, 'Top risk signals')
+        self.assertContains(response, 'ETHUSDT')
+        self.assertContains(response, 'possible_incomplete_sell')
+        self.assertContains(response, 'Top grouped detections')
+        self.assertContains(response, 'data-sort-index')
+        self.assertContains(response, 'Reset')
+        self.assertContains(response, 'Active filters')
+        self.assertContains(response, 'Severity')
+        self.assertContains(response, 'ignored')
+        self.assertContains(response, 'dust-row-ignored')
+        self.assertContains(response, 'View details')
         mock_get_dust_context.assert_called_once()
+
+    @patch('core.views.get_dust_detail_context')
+    def test_dust_detail_renders_latest_rows_and_null_payload(self, mock_get_detail_context):
+        mock_get_detail_context.return_value.context = {
+            'data_error': None,
+            'filters': {
+                'symbol': 'ETHUSDT',
+                'asset': 'ETH',
+                'reason': 'possible_incomplete_sell',
+                'event_type': 'lot_below_min_notional_detected',
+                'severity': 'info',
+            },
+            'group_identity': [
+                {'label': 'Symbol', 'value': 'ETHUSDT'},
+                {'label': 'Asset', 'value': 'ETH'},
+                {'label': 'Reason', 'value': 'possible_incomplete_sell'},
+                {'label': 'Event type', 'value': 'lot_below_min_notional_detected'},
+                {'label': 'Severity', 'value': 'info'},
+            ],
+            'group_summary': {
+                'detections_count': 2,
+                'latest_detected_at': timezone.now(),
+                'latest_run_id': 'run-detail-001',
+                'latest_estimated_value_usdt': Decimal('0.415022396'),
+                'latest_estimated_delta_value_usdt': Decimal('0'),
+                'latest_suggested_action': 'review_recent_sell',
+            },
+            'review': None,
+            'review_status': DustSignalReview.STATUS_PENDING,
+            'review_status_choices': DustSignalReview.STATUS_CHOICES,
+            'raw_detections': [
+                {
+                    'row': SimpleNamespace(
+                        id=9,
+                        detected_at=timezone.now(),
+                        run_id='run-detail-001',
+                        spot_quantity=None,
+                        open_lot_quantity=Decimal('0.00017708'),
+                        quantity_delta=None,
+                        price_usdt=Decimal('2343.70'),
+                        estimated_value_usdt=Decimal('0.415022396'),
+                        estimated_delta_value_usdt=None,
+                        suggested_action='review_recent_sell',
+                        source='dust_detection_service',
+                    ),
+                    'payload_text': 'No payload',
+                    'has_payload': False,
+                },
+            ],
+            'back_querystring': 'symbol=ETHUSDT&asset=ETH&reason=possible_incomplete_sell&event_type=lot_below_min_notional_detected&severity=info',
+        }
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('dust_detail'), {
+            'symbol': 'ETHUSDT',
+            'asset': 'ETH',
+            'reason': 'possible_incomplete_sell',
+            'event_type': 'lot_below_min_notional_detected',
+            'severity': 'info',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Dust Signal Detail')
+        self.assertContains(response, 'Dashboard')
+        self.assertContains(response, 'Dust / Residuals')
+        self.assertContains(response, 'Back to Dust / Residuals')
+        self.assertContains(response, 'ETHUSDT')
+        self.assertContains(response, 'possible_incomplete_sell')
+        self.assertContains(response, 'run-detail-001')
+        self.assertContains(response, 'review_recent_sell')
+        self.assertContains(response, 'dust_detection_service')
+        self.assertContains(response, 'No payload')
+        self.assertContains(response, 'Manual review')
+        self.assertContains(response, 'Update review')
+        self.assertNotContains(response, 'Stop')
+        self.assertNotContains(response, 'Resume')
+        mock_get_detail_context.assert_called_once()
+
+    def test_dust_detail_get_does_not_mutate_review_state(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('dust_detail'), {
+            'symbol': 'BTCUSDT',
+            'asset': 'BTC',
+            'reason': 'below_min_notional',
+            'event_type': 'dust_candidate_detected',
+            'severity': 'info',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(DustSignalReview.objects.count(), 0)
+
+    def test_dust_detail_post_marks_signal_ignored(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('dust_detail'), {
+            'symbol': 'BTCUSDT',
+            'asset': 'BTC',
+            'reason': 'below_min_notional',
+            'event_type': 'dust_candidate_detected',
+            'severity': 'info',
+            'status': DustSignalReview.STATUS_IGNORED,
+            'note': 'Known dust from old sell',
+            'group_querystring': 'symbol=BTCUSDT&asset=BTC&reason=below_min_notional&event_type=dust_candidate_detected&severity=info',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        review = DustSignalReview.objects.get(
+            symbol='BTCUSDT',
+            asset='BTC',
+            reason='below_min_notional',
+            event_type='dust_candidate_detected',
+            severity='info',
+        )
+        self.assertEqual(review.status, DustSignalReview.STATUS_IGNORED)
+        self.assertEqual(review.note, 'Known dust from old sell')
+        self.assertEqual(review.reviewed_by, self.user)
+        self.assertIsNotNone(review.reviewed_at)
+
+    def test_reviews_for_rows_handles_null_identity_without_name_error(self):
+        review = DustSignalReview.objects.create(
+            symbol='BTCUSDT',
+            asset='',
+            reason='below_min_notional',
+            event_type='dust_candidate_detected',
+            severity='info',
+            status=DustSignalReview.STATUS_IGNORED,
+        )
+
+        reviews = _reviews_for_rows([{
+            'symbol': 'BTCUSDT',
+            'asset': None,
+            'reason': 'below_min_notional',
+            'event_type': 'dust_candidate_detected',
+            'severity': 'info',
+        }])
+
+        self.assertEqual(
+            reviews[('BTCUSDT', '', 'info', 'dust_candidate_detected', 'below_min_notional')],
+            review,
+        )
+
+    def test_dust_review_null_identity_does_not_create_duplicates(self):
+        update_dust_signal_review({
+            'symbol': 'BTCUSDT',
+            'asset': '__null__',
+            'reason': 'below_min_notional',
+            'event_type': 'dust_candidate_detected',
+            'severity': 'info',
+        }, DustSignalReview.STATUS_IGNORED, 'First note', self.user)
+
+        update_dust_signal_review({
+            'symbol': 'BTCUSDT',
+            'asset': '',
+            'reason': 'below_min_notional',
+            'event_type': 'dust_candidate_detected',
+            'severity': 'info',
+        }, DustSignalReview.STATUS_REVIEWED, 'Updated note', self.user)
+
+        self.assertEqual(DustSignalReview.objects.count(), 1)
+        review = DustSignalReview.objects.get()
+        self.assertEqual(review.asset, '')
+        self.assertEqual(review.status, DustSignalReview.STATUS_REVIEWED)
+        self.assertEqual(review.note, 'Updated note')
+
+    def test_unauthenticated_user_cannot_update_dust_review(self):
+        response = self.client.post(reverse('dust_detail'), {
+            'symbol': 'BTCUSDT',
+            'asset': 'BTC',
+            'reason': 'below_min_notional',
+            'event_type': 'dust_candidate_detected',
+            'severity': 'info',
+            'status': DustSignalReview.STATUS_REVIEWED,
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(DustSignalReview.objects.count(), 0)
+
+    def test_dust_review_migration_exists(self):
+        migration_path = Path('core/migrations/0004_dustsignalreview.py')
+
+        self.assertTrue(migration_path.exists())
+
+    @patch('core.views.get_dust_detail_context')
+    def test_dust_detail_empty_group_state(self, mock_get_detail_context):
+        mock_get_detail_context.return_value.context = {
+            'data_error': None,
+            'filters': {},
+            'group_identity': [],
+            'group_summary': None,
+            'review': None,
+            'review_status': DustSignalReview.STATUS_PENDING,
+            'review_status_choices': DustSignalReview.STATUS_CHOICES,
+            'raw_detections': [],
+            'back_querystring': '',
+        }
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('dust_detail'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'No detections found for this dust signal.')
 
     def test_dust_filters_are_cleaned(self):
         filters = _clean_filters({
             'symbol': ' BTCUSDT ',
             'severity': 'critical',
             'event_type': ' dust_candidate_detected ',
+            'reason': ' below_min_notional ',
         })
 
         self.assertEqual(filters['symbol'], 'BTCUSDT')
         self.assertEqual(filters['severity'], 'critical')
         self.assertEqual(filters['event_type'], 'dust_candidate_detected')
+        self.assertEqual(filters['reason'], 'below_min_notional')
+
+    def test_dust_detail_filters_by_exact_group_fields(self):
+        class FakeDustQuerySet:
+            def __init__(self):
+                self.filters = []
+
+            def filter(self, **kwargs):
+                self.filters.append(kwargs)
+                return self
+
+        query = FakeDustQuerySet()
+        with patch('core.dust_read_model.DustDetection.objects') as manager:
+            manager.all.return_value = query
+            _filtered_group_detections({
+                'symbol': 'BTCUSDT',
+                'asset': 'BTC',
+                'reason': 'below_min_notional',
+                'event_type': 'dust_candidate_detected',
+                'severity': 'info',
+            })
+
+        self.assertEqual(query.filters, [
+            {'symbol': 'BTCUSDT'},
+            {'asset': 'BTC'},
+            {'severity': 'info'},
+            {'event_type': 'dust_candidate_detected'},
+            {'reason': 'below_min_notional'},
+        ])
+
+    def test_dust_detail_null_group_filter_uses_isnull(self):
+        class FakeDustQuerySet:
+            def __init__(self):
+                self.filters = []
+
+            def filter(self, **kwargs):
+                self.filters.append(kwargs)
+                return self
+
+        query = FakeDustQuerySet()
+        with patch('core.dust_read_model.DustDetection.objects') as manager:
+            manager.all.return_value = query
+            _filtered_group_detections({
+                'symbol': 'BTCUSDT',
+                'asset': None,
+                'reason': 'below_min_notional',
+                'event_type': 'dust_candidate_detected',
+                'severity': 'info',
+            })
+
+        self.assertIn({'asset__isnull': True}, query.filters)
+
+    def test_payload_formatting_is_safe(self):
+        self.assertEqual(_format_payload(None), 'No payload')
+        self.assertIn('"asset": "BTC"', _format_payload({'asset': 'BTC'}))
+        self.assertIn('"asset": "BTC"', _format_payload('{"asset": "BTC"}'))
+        self.assertEqual(_format_payload('not-json'), 'not-json')
+
+    def test_dust_dashboard_default_scope_uses_latest_run_id(self):
+        class FakeDustQuerySet:
+            def __init__(self):
+                self.filters = []
+
+            def filter(self, **kwargs):
+                self.filters.append(kwargs)
+                return self
+
+        query = FakeDustQuerySet()
+        with patch('core.dust_read_model._filtered_detections', return_value=query):
+            with patch('core.dust_read_model._latest_run_id', return_value='latest-run-001'):
+                scoped = _dashboard_queryset({
+                    'symbol': '',
+                    'severity': '',
+                    'event_type': '',
+                    'reason': '',
+                })
+
+        self.assertIs(scoped, query)
+        self.assertEqual(query.filters, [{'run_id': 'latest-run-001'}])
+
+    def test_dust_dashboard_empty_table_uses_empty_queryset(self):
+        class FakeDustQuerySet:
+            def __init__(self):
+                self.none_called = False
+
+            def none(self):
+                self.none_called = True
+                return 'empty-queryset'
+
+        query = FakeDustQuerySet()
+        with patch('core.dust_read_model._filtered_detections', return_value=query):
+            with patch('core.dust_read_model._latest_run_id', return_value=None):
+                scoped = _dashboard_queryset({
+                    'symbol': '',
+                    'severity': '',
+                    'event_type': '',
+                    'reason': '',
+                })
+
+        self.assertEqual(scoped, 'empty-queryset')
+        self.assertTrue(query.none_called)
+
+    def test_dust_dashboard_filters_do_not_force_latest_run_scope(self):
+        class FakeDustQuerySet:
+            def __init__(self):
+                self.filters = []
+
+            def filter(self, **kwargs):
+                self.filters.append(kwargs)
+                return self
+
+        query = FakeDustQuerySet()
+        with patch('core.dust_read_model._filtered_detections', return_value=query):
+            with patch('core.dust_read_model._latest_run_id') as mock_latest_run_id:
+                scoped = _dashboard_queryset({
+                    'symbol': 'BTCUSDT',
+                    'severity': '',
+                    'event_type': '',
+                    'reason': '',
+                })
+
+        self.assertIs(scoped, query)
+        self.assertEqual(query.filters, [])
+        mock_latest_run_id.assert_not_called()
+
+    def test_dust_dashboard_timeout_returns_safe_defaults(self):
+        with patch('core.dust_read_model._dashboard_queryset', return_value=object()):
+            with patch('core.dust_read_model._build_filter_options', return_value={
+                'symbols': [],
+                'severities': [],
+                'event_types': [],
+                'reasons': [],
+            }):
+                with patch('core.dust_read_model._grouped_detections', side_effect=DatabaseError('statement timeout')):
+                    read_model = get_dust_dashboard_context({})
+
+        self.assertEqual(read_model.context['dust_error'], 'Query too slow')
+        self.assertEqual(read_model.context['grouped_detections'], [])
+        self.assertEqual(read_model.context['summary']['critical_count'], 0)
+
+    def test_dust_detection_model_is_read_only_bot_table(self):
+        self.assertFalse(DustDetection._meta.managed)
+        self.assertEqual(DustDetection._meta.db_table, '"bot"."dust_detections"')
+        fields = [field.name for field in DustDetection._meta.fields]
+        self.assertIn('spot_quantity', fields)
+        self.assertIn('open_lot_quantity', fields)
+        self.assertIn('price_usdt', fields)
+        self.assertIn('payload', fields)
+        self.assertIn('created_at', fields)
+        self.assertIn('estimated_value_usdt', fields)
+        self.assertIn('estimated_delta_value_usdt', fields)
+
+    def test_dust_summary_uses_latest_grouped_exposure(self):
+        class FakeDustQuerySet:
+            def count(self):
+                return 5
+
+        latest = SimpleNamespace(
+            run_id='latest-run',
+            detected_at=timezone.now(),
+        )
+        grouped_rows = [
+            {
+                'severity': 'critical',
+                'latest_estimated_value_usdt': Decimal('1.25'),
+            },
+            {
+                'severity': 'warning',
+                'latest_estimated_value_usdt': Decimal('2.50'),
+            },
+            {
+                'severity': 'warning',
+                'latest_estimated_value_usdt': None,
+            },
+            {
+                'severity': 'info',
+                'latest_estimated_value_usdt': Decimal('0.05'),
+            },
+        ]
+
+        with patch('core.dust_read_model._grouped_detections', return_value=grouped_rows):
+            with patch('core.dust_read_model._latest_detection_row', return_value=latest):
+                summary = _build_summary(FakeDustQuerySet())
+
+        self.assertEqual(summary['total_detections'], 5)
+        self.assertEqual(summary['critical_count'], 1)
+        self.assertEqual(summary['warning_count'], 2)
+        self.assertEqual(summary['info_count'], 1)
+        self.assertEqual(summary['total_estimated_value_usdt'], Decimal('3.80'))
+        self.assertEqual(summary['latest_run_id'], 'latest-run')
 
     def test_stale_healthcheck_detection(self):
         stale_row = SimpleNamespace(
@@ -378,11 +834,13 @@ class DashboardEndpointTests(TestCase):
                 'tolerance': Decimal('0.00000001'),
             },
             'dust_summary': {
+                'total_detections': 0,
                 'critical_count': 0,
                 'warning_count': 0,
+                'info_count': 0,
                 'latest_run_id': None,
-                'latest_detection': None,
-                'top_detections': [],
+                'latest_detected_at': None,
+                'top_grouped_detections': [],
                 'total_estimated_value_usdt': Decimal('0'),
                 'data_error': None,
             },

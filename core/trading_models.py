@@ -146,13 +146,31 @@ class DustDetection(ReadOnlyTradingModel):
 	severity = models.CharField(max_length=32, blank=True, null=True)
 	symbol = models.CharField(max_length=32, blank=True, null=True)
 	asset = models.CharField(max_length=32, blank=True, null=True)
-	estimated_value_usdt = models.DecimalField(
+	spot_quantity = models.DecimalField(
+		max_digits=36,
+		decimal_places=18,
+		blank=True,
+		null=True,
+	)
+	open_lot_quantity = models.DecimalField(
 		max_digits=36,
 		decimal_places=18,
 		blank=True,
 		null=True,
 	)
 	quantity_delta = models.DecimalField(
+		max_digits=36,
+		decimal_places=18,
+		blank=True,
+		null=True,
+	)
+	price_usdt = models.DecimalField(
+		max_digits=36,
+		decimal_places=18,
+		blank=True,
+		null=True,
+	)
+	estimated_value_usdt = models.DecimalField(
 		max_digits=36,
 		decimal_places=18,
 		blank=True,
@@ -166,6 +184,9 @@ class DustDetection(ReadOnlyTradingModel):
 	)
 	reason = models.TextField(blank=True, null=True)
 	suggested_action = models.TextField(blank=True, null=True)
+	source = models.CharField(max_length=128, blank=True, null=True)
+	payload = models.JSONField(blank=True, null=True)
+	created_at = models.DateTimeField(blank=True, null=True)
 
 	class Meta:
 		managed = False

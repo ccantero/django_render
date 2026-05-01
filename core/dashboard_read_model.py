@@ -137,23 +137,26 @@ def get_demo_dashboard_context():
 			"tolerance": DRIFT_TOLERANCE,
 		},
 		"dust_summary": {
+			"total_detections": 3,
 			"critical_count": 1,
 			"warning_count": 2,
+			"info_count": 0,
 			"latest_run_id": "demo-run-001",
-			"latest_detection": SimpleNamespace(
-				detected_at=now - timedelta(minutes=3),
-				symbol="BNBUSDT",
-				reason="Residual quantity below configured notional threshold",
-				severity="warning",
-			),
-			"top_detections": [
-				SimpleNamespace(
-					detected_at=now - timedelta(minutes=3),
-					symbol="BNBUSDT",
-					severity="warning",
-					estimated_value_usdt=Decimal("1.42"),
-					reason="Residual quantity below configured notional threshold",
-				),
+			"latest_detected_at": now - timedelta(minutes=3),
+			"top_grouped_detections": [
+				{
+					"symbol": "BNBUSDT",
+					"asset": "BNB",
+					"severity": "warning",
+					"event_type": "dust_candidate_detected",
+					"reason": "below_min_notional",
+					"detections_count": 2,
+					"latest_detected_at": now - timedelta(minutes=3),
+					"latest_run_id": "demo-run-001",
+					"latest_estimated_value_usdt": Decimal("1.42"),
+					"latest_estimated_delta_value_usdt": Decimal("0"),
+					"latest_suggested_action": "monitor",
+				},
 			],
 			"total_estimated_value_usdt": Decimal("1.42"),
 			"data_error": None,
@@ -400,11 +403,13 @@ def _empty_reconciliation():
 
 def _empty_dust_summary():
 	return {
+		"total_detections": 0,
 		"critical_count": 0,
 		"warning_count": 0,
+		"info_count": 0,
 		"latest_run_id": None,
-		"latest_detection": None,
-		"top_detections": [],
+		"latest_detected_at": None,
+		"top_grouped_detections": [],
 		"total_estimated_value_usdt": Decimal("0"),
 		"data_error": None,
 	}
