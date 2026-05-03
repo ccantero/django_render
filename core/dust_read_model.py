@@ -247,14 +247,17 @@ def update_dust_signal_review(filters, status, note, user):
 	review_identity = _review_identity(filters)
 	if status not in dict(DustSignalReview.STATUS_CHOICES):
 		status = DustSignalReview.STATUS_PENDING
-	review, _ = DustSignalReview.objects.get_or_create(
-		symbol=review_identity["symbol"],
-		asset=review_identity["asset"],
-		reason=review_identity["reason"],
-		event_type=review_identity["event_type"],
-		severity=review_identity["severity"],
-		defaults={"status": DustSignalReview.STATUS_PENDING},
-	)
+	try:
+		review, _ = DustSignalReview.objects.get_or_create(
+			symbol=review_identity["symbol"],
+			asset=review_identity["asset"],
+			reason=review_identity["reason"],
+			event_type=review_identity["event_type"],
+			severity=review_identity["severity"],
+			defaults={"status": DustSignalReview.STATUS_PENDING},
+		)
+	except DatabaseError:
+		return None
 	review.status = status
 	review.note = note or ""
 	review.reviewed_by = user
@@ -454,7 +457,14 @@ def _reviews_for_rows(rows):
 	review_filter = Q()
 	for row in rows:
 		review_filter |= _review_filter_q(row)
-	reviews = DustSignalReview.objects.filter(review_filter).select_related("reviewed_by")
+	try:
+		reviews = list(
+			DustSignalReview.objects
+			.filter(review_filter)
+			.select_related("reviewed_by")
+		)
+	except DatabaseError:
+		return {}
 	return {
 		_review_key_from_obj(review): review
 		for review in reviews
@@ -471,12 +481,15 @@ def _filter_by_review_status(rows, status):
 
 
 def _review_for_identity(filters):
-	return (
-		DustSignalReview.objects
-		.filter(_review_filter_q(filters))
-		.select_related("reviewed_by")
-		.first()
-	)
+	try:
+		return (
+			DustSignalReview.objects
+			.filter(_review_filter_q(filters))
+			.select_related("reviewed_by")
+			.first()
+		)
+	except DatabaseError:
+		return None
 
 
 def _review_identity(values):

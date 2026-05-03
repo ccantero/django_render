@@ -25,11 +25,14 @@ STATIC_DIR = os.path.join(BASE_DIR,'static')
 env = environ.Env()
 environ.Env.read_env(BASE_DIR / '.env')
 
-if "pytest" in sys.argv[0]:
+RUNNING_TESTS = "pytest" in sys.argv[0] or (len(sys.argv) > 1 and sys.argv[1] == "test")
+
+if RUNNING_TESTS:
     os.environ.setdefault("CC_DEBUG", "True")
     os.environ.setdefault("SECRET_KEY", "test-secret-key")
     os.environ.setdefault("TUTORIAL_BOT_TOKEN", "test-telegram-bot-token")
     os.environ.setdefault("TELEGRAM_WEBHOOK_TOKEN", "test-telegram-webhook-token")
+    os.environ["DATABASE_URL"] = "sqlite:////tmp/django_render_test.sqlite3"
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/

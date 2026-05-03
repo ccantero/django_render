@@ -161,7 +161,7 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, '0.25000000')
         self.assertContains(response, '0.25 USDT')
         self.assertContains(response, 'Dust / Residuals')
-        self.assertContains(response, 'Approx exposure, not PnL')
+        self.assertContains(response, 'Latest grouped values, not PnL')
 
     @patch('core.views.get_dashboard_context')
     def test_dashboard_shows_dust_summary(self, mock_get_dashboard_context):
@@ -437,6 +437,21 @@ class DashboardEndpointTests(TestCase):
             review,
         )
 
+    def test_reviews_for_rows_missing_review_table_falls_back_to_pending(self):
+        with patch(
+            'core.dust_read_model.DustSignalReview.objects.filter',
+            side_effect=DatabaseError('relation "dust_signal_reviews" does not exist'),
+        ):
+            reviews = _reviews_for_rows([{
+                'symbol': 'BTCUSDT',
+                'asset': 'BTC',
+                'reason': 'below_min_notional',
+                'event_type': 'dust_candidate_detected',
+                'severity': 'info',
+            }])
+
+        self.assertEqual(reviews, {})
+
     def test_dust_review_null_identity_does_not_create_duplicates(self):
         update_dust_signal_review({
             'symbol': 'BTCUSDT',
@@ -459,6 +474,21 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(review.asset, '')
         self.assertEqual(review.status, DustSignalReview.STATUS_REVIEWED)
         self.assertEqual(review.note, 'Updated note')
+
+    def test_dust_review_update_missing_review_table_does_not_crash(self):
+        with patch(
+            'core.dust_read_model.DustSignalReview.objects.get_or_create',
+            side_effect=DatabaseError('relation "dust_signal_reviews" does not exist'),
+        ):
+            review = update_dust_signal_review({
+                'symbol': 'BTCUSDT',
+                'asset': 'BTC',
+                'reason': 'below_min_notional',
+                'event_type': 'dust_candidate_detected',
+                'severity': 'info',
+            }, DustSignalReview.STATUS_REVIEWED, 'note', self.user)
+
+        self.assertIsNone(review)
 
     def test_unauthenticated_user_cannot_update_dust_review(self):
         response = self.client.post(reverse('dust_detail'), {
