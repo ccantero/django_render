@@ -1,49 +1,136 @@
-# Design Document - django_render
+# Django Dashboard — Design Notes
 
-This document details the design decisions, patterns, and data structures implemented in the `django_render` project.
+## Design Principle
 
-## Design Decisions
+The dashboard is an operator console, not a trading engine.
 
-### 1. Custom User Model
-The project uses a custom `UserProfile` model (extending `AbstractBaseUser` and `PermissionsMixin`) instead of the default Django `User`.
-- **Reasoning**: To use `email` as the unique identifier (USERNAME_FIELD) instead of a username, providing a more modern authentication experience.
-- **Location**: [`profile/models.py`](profile/models.py).
+It should make the system observable, understandable, and auditable without hiding uncertainty or mutating accounting state directly.
 
-### 2. API-First Integration
-While the project serves HTML templates, it heavily leverages **Django REST Framework (DRF)** for data-driven features.
-- **Reasoning**: Decoupling data from representation allows for easier future integration with mobile apps or modern frontend frameworks (React/Vue).
-- **Location**: Viewsets in [`currencyconverter/views.py`](currencyconverter/views.py).
+---
 
-### 3. Service Integration via Views
-Currently, external API calls (Banco Ciudad, Dolar API) are handled directly within views or helper functions inside `views.py`.
-- **Observation**: This is a simple approach but creates tight coupling between the view layer and external service logic.
+## UX Goals
 
-## Design Patterns
+- Show the current bot status quickly.
+- Surface operational risks before financial KPIs.
+- Make dust/drift signals understandable to a human operator.
+- Prevent accidental direct DB corrections.
+- Guide users toward the manual correction workflow.
+- Keep all correction requests explicit and auditable.
 
-### MVT (Model-View-Template)
-The project follows the standard Django MVT pattern:
-- **Models**: Define the data structure and business logic (e.g., `ExchangeRate` in [`currencyconverter/models.py`](currencyconverter/models.py)).
-- **Views**: Handle request logic and data fetching.
-- **Templates**: Standard Django templates using Bootstrap 3 for styling.
+---
 
-### Repository/Service Layer (Missing)
-The project currently lacks a formal Service or Repository layer. Logic for fetching exchange rates and processing Telegram messages is embedded in views, which is a target for refactoring to improve testability.
+## Dashboard Sections
 
-## Database Schema (Key Entities)
+### Main dashboard
 
-### User Management (`profile`)
-- **UserProfile**: `email` (PK), `name`, `is_active`, `is_staff`, `password`.
+- Bot status
+- Portfolio summary
+- Latest trade
+- Drift summary
+- Fees by asset
+- Link to Dust / Residuals
 
-### Currency & Finance (`currencyconverter`)
-- **Currency**: `key` (Unique string), `description`.
-- **ExchangeRate**: `key` (Unique string), `last_quote` (Decimal), `last_update` (DateTime).
+### Dust / Residuals
 
-### Communication (`core`)
-- **TelegramMessage**: `message_id`, `chat_id`, `from_username`, `message`, `received_at`.
+Source: `bot.dust_detections`
 
-## Authentication & Authorization
+Shows:
 
-- **Session Authentication**: Used for the standard Django admin and web interface.
-- **Token Authentication**: Configured in DRF (`rest_framework.authtoken`) for API access.
-- **Webhook Security**: The Telegram webhook endpoint validates requests using a secret token passed in the `X-Telegram-Bot-Api-Secret-Token` header.
-- **Permissions**: DRF views use `IsAuthenticatedOrReadOnly` to protect write operations while allowing public read access to financial data.
+- grouped detections
+- severity
+- reason
+- event type
+- latest run id
+- approximate exposure
+- estimated delta
+- suggested action
+- review status
+- operator guidance
+
+### Dust detail
+
+Shows latest grouped signal details:
+
+- spot quantity
+- open lot quantity
+- quantity delta
+- price USDT
+- estimated values
+- payload
+- run id
+- manual review actions
+
+### Manual corrections
+
+Source: `bot.manual_corrections`
+
+Shows:
+
+- pending/applied/rejected/failed correction requests
+- correction detail
+- request metadata
+- error message if failed
+- payload
+
+---
+
+## Operator Guidance
+
+Guidance should favor safety:
+
+- Never classify unknown signals as safe.
+- Use “Unclassified signal / needs review” as fallback.
+- Use approximate values only for prioritization.
+- Display “Do not correct from DB directly. Use manual correction workflow.”
+
+Recommended labels:
+
+- Below min notional
+- Lots > Binance
+- Binance > Lots
+- Possible incomplete sell
+- Unclassified signal
+
+---
+
+## Manual Correction Request Design
+
+The dashboard form creates only a request.
+
+It must show a safety confirmation:
+
+- This does not execute Binance orders.
+- This does not convert dust.
+- This is an accounting correction request.
+- Bot-owned service/CLI must apply it.
+
+For `CLOSE_LOTS_EXTERNAL_SELL`, prefill quantity only when safe:
+
+```text
+quantity = open_lot_quantity - spot_quantity
+only when open_lot_quantity > spot_quantity
+```
+
+Never prefill a negative quantity.
+
+---
+
+## Decimal and Formatting Rules
+
+- Treat financial values as Decimal.
+- Round only for display.
+- Do not write rounded display values back to DB.
+- Do not recalculate trading PnL in the dashboard unless the contract defines the source fields.
+
+---
+
+## Notifications
+
+Notifications should be produced by the bot directly. The dashboard should display alert state but should not be a required relay for critical events.
+
+Preferred:
+
+```text
+Bot -> Telegram/Pushover
+Dashboard -> review UI
+```

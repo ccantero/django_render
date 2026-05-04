@@ -1133,9 +1133,39 @@ Semantics for `CLOSE_LOTS_EXTERNAL_SELL`:
 - Closes open lots FIFO by `opened_at`, then `lot_id`.
 - Writes `bot.lot_closures.quantity_closed`, `entry_price`, `exit_price`, `realized_pnl`, and `trade_operation_id`.
 - Creates a clearly marked `bot.trade_operations` row with `side = 'SELL'`, `status = 'FILLED'`, `order_id = null`, and manual correction metadata in `client_order_id`, `run_id`, and `raw_payload`.
-- Creates a synthetic `bot.trade_fills` row with `source = 'MANUAL_CORRECTION'` so existing `lot_closures.sell_fill_id` constraints are satisfied. Because there is no Binance order, `trade_fills.order_id` is `null`; the manual audit token is stored in `metadata.client_order_id`.
+- Creates a synthetic `bot.trade_fills` row with `source = 'MANUAL_CORRECTION'` so existing `lot_closures.sell_fill_id` constraints are satisfied.
+- Because there is no Binance order, `trade_fills.order_id` is `null`; the manual audit token is stored in fill metadata.
 - Does not call Binance and does not execute a market order.
 - Does not run during normal bot cycles.
+
+Fields:
+
+- `id BIGSERIAL PRIMARY KEY`
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`
+- `applied_at TIMESTAMPTZ NULL`
+- `status TEXT NOT NULL`
+- `correction_type TEXT NOT NULL`
+- `symbol TEXT NOT NULL`
+- `asset TEXT NOT NULL`
+- `quantity NUMERIC(38, 18) NULL`
+- `price_usdt NUMERIC(38, 18) NULL`
+- `estimated_value_usdt NUMERIC(38, 18) NULL`
+- `reason TEXT NOT NULL`
+- `requested_by TEXT NULL`
+- `reviewed_by TEXT NULL`
+- `review_note TEXT NULL`
+- `source_detection_id BIGINT NULL REFERENCES bot.dust_detections(id)`
+- `payload JSONB NOT NULL DEFAULT '{}'::jsonb`
+- `error_message TEXT NULL`
+
+Indexes:
+
+- `status`
+- `correction_type`
+- `symbol`
+- `asset`
+- `created_at DESC`
+- `source_detection_id`
 
 Important dashboard rule:
 
@@ -1143,6 +1173,7 @@ The dashboard may insert/request or review rows through this workflow only. It m
 
 - `bot.position_lots`
 - `bot.trade_operations`
+- `bot.trade_fills`
 - `bot.lot_closures`
 - `bot.portfolio`
 
@@ -1150,7 +1181,7 @@ Actual schema constraints confirmed for Phase 1:
 
 - `bot.position_lots.status`: `OPEN`, `CLOSED`
 - `bot.trade_operations.side`: `BUY`, `SELL`
-- `bot.trade_operations.status`: no current DB enum/check; repository requires a non-empty status. The manual correction backend uses `FILLED`.
+- `bot.trade_operations.status`: no current DB enum/check; the manual correction backend uses `FILLED`
 
 Validation SQL:
 
@@ -1182,3 +1213,56 @@ where mc.status = 'APPLIED'
 order by mc.applied_at desc, mc.id desc
 limit 50;
 ```
+
+---
+
+## 21. Dashboard Integration Contract
+
+The Django dashboard and bot are separate projects. They only share the database.
+
+Recommended dashboard model policy:
+
+- Use `managed = False` for bot-owned tables.
+- Do not create dashboard migrations for bot-owned tables.
+- Treat `portfolio` as projection only.
+- Treat `position_lots` as accounting truth.
+- Never calculate SELL coverage from `portfolio`.
+
+Dashboard may read bot-owned tables and may create `PENDING` manual correction requests in `bot.manual_corrections` only if the operator is authorized.
+
+Dashboard must not:
+
+- call Binance
+- execute trading logic
+- apply manual corrections
+- mutate accounting tables directly
+- treat dust sums as audited PnL
+
+Dashboard operator guidance should classify signals conservatively. Unknown/unclassified signals should require review rather than defaulting to low priority.
+
+---
+
+## 22. Notification / API Contract
+
+No bot-to-dashboard API is required for current alerting needs.
+
+Preferred alerting flow:
+
+```text
+Bot detects event
+→ Bot writes DB
+→ Bot sends Telegram/Pushover alert directly
+→ Dashboard remains read/review UI
+```
+
+The bot should own critical notifications because it is the component detecting live trading/accounting events.
+
+A new API should be considered only if there is a real product requirement such as:
+
+- multiple external consumers
+- mobile app with richer UX
+- stronger service boundary requirements
+- need to hide database access from all consumers
+- multi-user SaaS behavior
+
+For personal iPhone push, Telegram or Pushover alerts from the bot are simpler and safer than introducing a dashboard API.
