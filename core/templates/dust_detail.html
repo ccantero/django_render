@@ -114,6 +114,44 @@
 
 	<div class="card mb-3">
 		<div class="card-body">
+			<h2 class="h5 mb-2">Latest grouped signal</h2>
+			<div class="table-responsive">
+				<table class="table table-sm mb-0">
+					<tbody>
+						<tr><th>Latest detected at</th><td>{{ group_summary.latest_detected_at|date:"Y-m-d H:i:s"|default:"-" }}</td></tr>
+						<tr><th>Symbol</th><td>{{ group_summary.symbol|default:"-" }}</td></tr>
+						<tr><th>Asset</th><td>{{ group_summary.asset|default:"-" }}</td></tr>
+						<tr><th>Event type</th><td>{{ group_summary.event_type|default:"-" }}</td></tr>
+						<tr><th>Severity</th><td>{{ group_summary.severity|default:"-" }}</td></tr>
+						<tr><th>Reason</th><td>{{ group_summary.reason|default:"-" }}</td></tr>
+						<tr><th>Spot quantity</th><td>{{ group_summary.latest_spot_quantity|floatformat:8|default:"-" }}</td></tr>
+						<tr><th>Open lot quantity</th><td>{{ group_summary.latest_open_lot_quantity|floatformat:8|default:"-" }}</td></tr>
+						<tr><th>Quantity delta</th><td>{{ group_summary.latest_quantity_delta|floatformat:8|default:"-" }}</td></tr>
+						<tr><th>Estimated value USDT</th><td>{{ group_summary.latest_estimated_value_usdt|floatformat:8|default:"-" }}</td></tr>
+						<tr><th>Estimated delta value USDT</th><td>{{ group_summary.latest_estimated_delta_value_usdt|floatformat:8|default:"-" }}</td></tr>
+						<tr><th>Suggested action</th><td>{{ group_summary.latest_suggested_action|default:"-" }}</td></tr>
+						<tr><th>Run ID</th><td>{{ group_summary.latest_run_id|default:"-" }}</td></tr>
+						<tr>
+							<th>Payload</th>
+							<td>
+								{% if group_summary.latest_has_payload %}
+									<details>
+										<summary>View payload</summary>
+										<pre class="payload-block mt-2">{{ group_summary.latest_payload_text }}</pre>
+									</details>
+								{% else %}
+									<span class="text-muted">No payload</span>
+								{% endif %}
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+
+	<div class="card mb-3">
+		<div class="card-body">
 			<div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
 				<div>
 					<h2 class="h5 mb-1">Manual review</h2>
@@ -134,20 +172,16 @@
 				<input type="hidden" name="group_querystring" value="{{ back_querystring }}">
 
 				<div class="form-row">
-					<div class="form-group col-md-4">
-						<label for="status">Status</label>
-						<select id="status" name="status" class="form-control">
-							{% for value, label in review_status_choices %}
-								<option value="{{ value }}" {% if review_status == value %}selected{% endif %}>{{ label }}</option>
-							{% endfor %}
-						</select>
-					</div>
-					<div class="form-group col-md-8">
+					<div class="form-group col-md-12">
 						<label for="note">Note</label>
 						<textarea id="note" name="note" class="form-control" rows="3">{{ review.note|default:"" }}</textarea>
 					</div>
 				</div>
-				<button type="submit" class="btn btn-primary">Update review</button>
+				<button type="submit" name="status" value="ignored" class="btn btn-outline-secondary">Mark ignored</button>
+				<button type="submit" name="status" value="review_later" class="btn btn-outline-warning">Review later</button>
+				{% if request.user.is_staff or request.user.is_superuser %}
+					<a class="btn btn-danger" href="{% url 'manual_correction_new' %}?{{ back_querystring }}">Create manual correction request</a>
+				{% endif %}
 			</form>
 
 			<div class="review-meta mt-3 small">

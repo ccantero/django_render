@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4 dashboard-page">
+	<nav class="mb-3 small" aria-label="breadcrumb">
+		<a href="{% url 'manual_corrections' correction.status|lower %}">Manual corrections</a>
+		<span class="text-muted"> / {{ correction.id }}</span>
+	</nav>
+
+	<h1 class="h3 mb-3">Manual Correction {{ correction.id }}</h1>
+
+	<div class="alert alert-info">
+		This dashboard only requested the correction. Bot-owned service/CLI must apply or reject it.
+	</div>
+
+	<div class="card">
+		<div class="card-body">
+			<table class="table table-sm mb-0">
+				<tbody>
+					<tr><th>Status</th><td>{{ correction.status }}</td></tr>
+					<tr><th>Type</th><td>{{ correction.correction_type }}</td></tr>
+					<tr><th>Symbol</th><td>{{ correction.symbol }}</td></tr>
+					<tr><th>Asset</th><td>{{ correction.asset }}</td></tr>
+					<tr><th>Quantity</th><td>{{ correction.quantity|floatformat:8 }}</td></tr>
+					<tr><th>Price USDT</th><td>{{ correction.price_usdt|floatformat:8 }}</td></tr>
+					<tr><th>Estimated value USDT</th><td>{{ correction.estimated_value_usdt|floatformat:8|default:"-" }}</td></tr>
+					<tr><th>Reason</th><td>{{ correction.reason }}</td></tr>
+					<tr><th>Source detection</th><td>{{ correction.source_detection_id|default:"-" }}</td></tr>
+					<tr><th>Review note</th><td>{{ correction.review_note|default:"-" }}</td></tr>
+					<tr><th>Requested by</th><td>{{ correction.requested_by|default:"-" }}</td></tr>
+					<tr><th>Reviewed by</th><td>{{ correction.reviewed_by|default:"-" }}</td></tr>
+					<tr><th>Created</th><td>{{ correction.created_at|date:"Y-m-d H:i:s"|default:"-" }}</td></tr>
+					<tr><th>Applied</th><td>{{ correction.applied_at|date:"Y-m-d H:i:s"|default:"-" }}</td></tr>
+					<tr><th>Error message</th><td>{{ correction.error_message|default:"-" }}</td></tr>
+					<tr><th>Payload</th><td>{{ correction.payload|default:"-" }}</td></tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+</div>
+{% endblock %}

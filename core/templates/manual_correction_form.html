@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4 dashboard-page">
+	<nav class="mb-3 small" aria-label="breadcrumb">
+		<a href="{% url 'dust_dashboard' %}">Dust / Residuals</a>
+		<span class="text-muted"> / Manual correction request</span>
+	</nav>
+
+	<h1 class="h3 mb-3">Create Manual Correction Request</h1>
+
+	<div class="alert alert-warning">
+		<strong>Safety confirmation</strong>
+		<ul class="mb-0 mt-2">
+			<li>This does not execute Binance orders.</li>
+			<li>This does not convert dust.</li>
+			<li>This is an accounting correction request.</li>
+			<li>Bot-owned service/CLI must apply it.</li>
+		</ul>
+	</div>
+
+	<form method="post" class="card">
+		{% csrf_token %}
+		<div class="card-body">
+			{% if form.non_field_errors %}
+				<div class="alert alert-danger">{{ form.non_field_errors }}</div>
+			{% endif %}
+
+			<div class="form-row">
+				{% for field in form %}
+					<div class="form-group col-md-6">
+						<label for="{{ field.id_for_label }}">{{ field.label }}</label>
+						{{ field }}
+						{% if field.errors %}
+							<div class="text-danger small">{{ field.errors }}</div>
+						{% endif %}
+					</div>
+				{% endfor %}
+			</div>
+			<button type="submit" class="btn btn-danger">Confirm request</button>
+			<a class="btn btn-outline-secondary" href="{% url 'dust_dashboard' %}">Cancel</a>
+		</div>
+	</form>
+</div>
+{% endblock %}

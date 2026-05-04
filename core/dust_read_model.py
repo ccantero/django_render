@@ -324,6 +324,7 @@ def _latest_rows_for_groups(queryset, grouped_rows):
 		queryset
 		.filter(group_filter)
 		.only(
+			"id",
 			"run_id",
 			"symbol",
 			"asset",
@@ -331,9 +332,14 @@ def _latest_rows_for_groups(queryset, grouped_rows):
 			"event_type",
 			"reason",
 			"detected_at",
+			"spot_quantity",
+			"open_lot_quantity",
+			"quantity_delta",
+			"price_usdt",
 			"estimated_value_usdt",
 			"estimated_delta_value_usdt",
 			"suggested_action",
+			"payload",
 		)
 	)
 	if connection.vendor == "postgresql":
@@ -378,12 +384,19 @@ def _group_key_from_obj(row):
 
 def _merge_group_with_latest(row, latest_rows):
 	latest = latest_rows.get(_group_key_from_row(row))
+	row["latest_detection_id"] = latest.id if latest else None
 	row["latest_run_id"] = latest.run_id if latest else None
+	row["latest_spot_quantity"] = latest.spot_quantity if latest else None
+	row["latest_open_lot_quantity"] = latest.open_lot_quantity if latest else None
+	row["latest_quantity_delta"] = latest.quantity_delta if latest else None
+	row["latest_price_usdt"] = latest.price_usdt if latest else None
 	row["latest_estimated_value_usdt"] = latest.estimated_value_usdt if latest else None
 	row["latest_estimated_delta_value_usdt"] = (
 		latest.estimated_delta_value_usdt if latest else None
 	)
 	row["latest_suggested_action"] = latest.suggested_action if latest else None
+	row["latest_payload_text"] = _format_payload(latest.payload) if latest else "No payload"
+	row["latest_has_payload"] = latest.payload is not None if latest else False
 	return row
 
 

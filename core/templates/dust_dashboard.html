@@ -105,7 +105,10 @@
 			<h1 class="h3 mb-1">Dust / Residuals</h1>
 			<p class="text-muted mb-0">Read-only view of bot dust detections. Values are approximate and not PnL.</p>
 		</div>
-		<a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Back to Dashboard</a>
+		<div>
+			<a class="btn btn-outline-primary" href="{% url 'manual_corrections' 'pending' %}">Pending corrections</a>
+			<a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Back to Dashboard</a>
+		</div>
 	</div>
 
 	{% if data_error %}

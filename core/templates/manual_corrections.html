@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4 dashboard-page">
+	<nav class="mb-3 small" aria-label="breadcrumb">
+		<a href="{% url 'dust_dashboard' %}">Dust / Residuals</a>
+		<span class="text-muted"> / Manual corrections</span>
+	</nav>
+
+	<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+		<h1 class="h3 mb-0">{{ status|title }} Manual Corrections</h1>
+		<div>
+			{% for value, label in status_choices %}
+				<a class="btn btn-sm {% if status == value %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{% url 'manual_corrections' value|lower %}">{{ label }}</a>
+			{% endfor %}
+		</div>
+	</div>
+
+	<div class="card">
+		<div class="card-body">
+			<div class="table-responsive">
+				<table class="table table-sm table-striped mb-0">
+					<thead>
+						<tr>
+							<th>ID</th>
+							<th>Created</th>
+							<th>Type</th>
+							<th>Symbol</th>
+							<th>Asset</th>
+							<th class="text-right">Quantity</th>
+							<th class="text-right">Price USDT</th>
+							<th class="text-right">Est. value USDT</th>
+							<th>Requested by</th>
+							<th>Reason</th>
+						</tr>
+					</thead>
+					<tbody>
+						{% for correction in corrections %}
+							<tr>
+								<td><a href="{% url 'manual_correction_detail' correction.id %}">{{ correction.id }}</a></td>
+								<td>{{ correction.created_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
+								<td>{{ correction.correction_type }}</td>
+								<td>{{ correction.symbol }}</td>
+								<td>{{ correction.asset }}</td>
+								<td class="text-right">{{ correction.quantity|floatformat:8 }}</td>
+								<td class="text-right">{{ correction.price_usdt|floatformat:8 }}</td>
+								<td class="text-right">{{ correction.estimated_value_usdt|floatformat:8|default:"-" }}</td>
+								<td>{{ correction.requested_by|default:"-" }}</td>
+								<td>{{ correction.reason|truncatechars:80 }}</td>
+							</tr>
+						{% empty %}
+							<tr>
+								<td colspan="10" class="text-center text-muted py-4">No {{ status|lower }} correction requests.</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+</div>
+{% endblock %}

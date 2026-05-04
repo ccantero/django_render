@@ -1,8 +1,8 @@
-from django.test import TestCase, Client
+from django.test import TestCase, TransactionTestCase, Client
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.urls import reverse
-from django.db import DatabaseError
+from django.db import DatabaseError, connection
 from decimal import Decimal
 from types import SimpleNamespace
 import json
@@ -24,8 +24,10 @@ from core.dust_read_model import (
     get_dust_dashboard_context,
     update_dust_signal_review,
 )
-from core.models import DustSignalReview
+from core.forms import ManualCorrectionRequestForm
+from core.models import DustSignalReview, ManualCorrection
 from core.trading_models import DustDetection
+from core.views import _manual_correction_quantity
 
 class TelegramWebhookTests(TestCase):
     def setUp(self):
@@ -368,7 +370,8 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'dust_detection_service')
         self.assertContains(response, 'No payload')
         self.assertContains(response, 'Manual review')
-        self.assertContains(response, 'Update review')
+        self.assertContains(response, 'Mark ignored')
+        self.assertContains(response, 'Review later')
         self.assertNotContains(response, 'Stop')
         self.assertNotContains(response, 'Resume')
         mock_get_detail_context.assert_called_once()
@@ -877,3 +880,155 @@ class DashboardEndpointTests(TestCase):
             'data_error': None,
             'is_demo': False,
         }
+
+
+class ManualCorrectionWorkflowTests(TransactionTestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        with connection.schema_editor() as schema_editor:
+            schema_editor.create_model(ManualCorrection)
+
+    @classmethod
+    def tearDownClass(cls):
+        with connection.schema_editor() as schema_editor:
+            schema_editor.delete_model(ManualCorrection)
+        super().tearDownClass()
+
+    def setUp(self):
+        ManualCorrection.objects.all().delete()
+        self.client = Client()
+        self.url = reverse('manual_correction_new')
+        self.user = get_user_model().objects.create_user(
+            email='reviewer@example.com',
+            password='TestPassword123',
+            name='Reviewer User',
+        )
+        self.staff_user = get_user_model().objects.create_user(
+            email='staff-reviewer@example.com',
+            password='TestPassword123',
+            name='Staff Reviewer',
+            is_staff=True,
+        )
+        self.payload = {
+            'correction_type': ManualCorrection.TYPE_CLOSE_LOTS_EXTERNAL_SELL,
+            'symbol': 'BTCUSDT',
+            'asset': 'BTC',
+            'quantity': '0.000100000000000000',
+            'price_usdt': '60000.000000000000000000',
+            'reason': 'Manual Binance sell left lot accounting drift',
+            'source_detection_id': '99',
+            'review_note': 'Requested from dust review',
+        }
+
+    def test_unauthenticated_user_cannot_create_correction(self):
+        response = self.client.post(self.url, self.payload)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(ManualCorrection.objects.count(), 0)
+
+    def test_non_staff_user_cannot_create_correction(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(self.url, self.payload)
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(ManualCorrection.objects.count(), 0)
+
+    def test_staff_user_can_create_pending_correction(self):
+        self.client.force_login(self.staff_user)
+
+        response = self.client.post(self.url, self.payload)
+
+        self.assertEqual(response.status_code, 302)
+        correction = ManualCorrection.objects.get()
+        self.assertEqual(correction.status, ManualCorrection.STATUS_PENDING)
+        self.assertEqual(correction.correction_type, ManualCorrection.TYPE_CLOSE_LOTS_EXTERNAL_SELL)
+        self.assertEqual(correction.symbol, 'BTCUSDT')
+        self.assertEqual(correction.asset, 'BTC')
+        self.assertEqual(correction.requested_by, 'staff-reviewer@example.com')
+        self.assertEqual(correction.estimated_value_usdt, Decimal('6.000000000000000000000000000000000000'))
+        self.assertEqual(correction.payload['source'], 'django_dashboard')
+
+    def test_manual_correction_model_matches_bot_table_fields(self):
+        fields = [field.name for field in ManualCorrection._meta.fields]
+
+        self.assertEqual(fields, [
+            'id',
+            'created_at',
+            'applied_at',
+            'status',
+            'correction_type',
+            'symbol',
+            'asset',
+            'quantity',
+            'price_usdt',
+            'estimated_value_usdt',
+            'reason',
+            'requested_by',
+            'reviewed_by',
+            'review_note',
+            'source_detection_id',
+            'payload',
+            'error_message',
+        ])
+        self.assertFalse(ManualCorrection._meta.managed)
+
+    def test_create_form_does_not_expose_status_or_applied_fields(self):
+        form = ManualCorrectionRequestForm()
+
+        self.assertNotIn('status', form.fields)
+        self.assertNotIn('applied_at', form.fields)
+        self.assertNotIn('estimated_value_usdt', form.fields)
+
+    def test_lots_greater_than_spot_prefills_quantity_to_close(self):
+        quantity = _manual_correction_quantity({
+            'latest_open_lot_quantity': Decimal('0.005'),
+            'latest_spot_quantity': Decimal('0.002'),
+            'latest_quantity_delta': Decimal('-99'),
+        })
+
+        self.assertEqual(quantity, Decimal('0.003'))
+
+    def test_negative_quantity_delta_does_not_prefill_negative_quantity(self):
+        quantity = _manual_correction_quantity({
+            'latest_open_lot_quantity': None,
+            'latest_spot_quantity': None,
+            'latest_quantity_delta': Decimal('-0.003'),
+        })
+
+        self.assertEqual(quantity, Decimal('0.003'))
+
+    def test_quantity_prefill_is_blank_when_drift_is_not_lots_greater_than_spot(self):
+        self.assertEqual(_manual_correction_quantity({
+            'latest_open_lot_quantity': Decimal('0.002'),
+            'latest_spot_quantity': Decimal('0.005'),
+            'latest_quantity_delta': Decimal('-99'),
+        }), '')
+        self.assertEqual(_manual_correction_quantity({
+            'latest_quantity_delta': Decimal('0.003'),
+        }), '')
+
+    def test_correction_form_validates_positive_decimal_quantity(self):
+        payload = dict(self.payload)
+        payload['quantity'] = '0'
+
+        form = ManualCorrectionRequestForm(data=payload)
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('quantity', form.errors)
+
+        payload['quantity'] = '-0.0001'
+        form = ManualCorrectionRequestForm(data=payload)
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('quantity', form.errors)
+
+    def test_get_confirmation_page_does_not_create_correction(self):
+        self.client.force_login(self.staff_user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'This does not execute Binance orders.')
+        self.assertEqual(ManualCorrection.objects.count(), 0)

@@ -682,6 +682,37 @@ Columns:
 - fees
 - realized PnL when available
 
+## 7.4.1 Fees (USDT) Card
+
+For normalized fee display on USDT pairs, prefer `bot.trade_operations.fee_amount_in_quote` over raw `trade_fills.commission` because it already stores the fee converted to the quote asset.
+
+Recommended query:
+
+```sql
+select
+    side,
+    sum(fee_amount_in_quote) as total_fee_usdt,
+    count(*) as operations_count
+from bot.trade_operations
+where status = 'FILLED'
+  and quote_asset = 'USDT'
+group by side
+order by side;
+```
+
+Dashboard display:
+
+- Total fees in USDT = sum of all returned `total_fee_usdt` values
+- BUY fees = BUY row
+- SELL fees = SELL row
+- Operations = sum of `operations_count`
+
+Important:
+
+- This is operational fee reporting, not full audited PnL.
+- Do not call Binance from the dashboard to recalculate these values.
+- Keep calculations Decimal-safe and round only for display.
+
 ## 7.5 Operational Alerts
 
 Start with simple DB-derived alerts:
@@ -808,7 +839,8 @@ Recommended first version:
 4. Drift alerts between portfolio and lots
 5. Recent operations from `trade_operations`
 6. Basic dust candidates
-7. Existing Stop / Resume UI wired only if a safe backend exists
+7. Fees by asset and normalized Fees (USDT) card
+8. Existing Stop / Resume UI wired only if a safe backend exists
 
 Avoid in first version:
 
@@ -851,6 +883,7 @@ If dashboard interpretation could change, DATA_CONTRACT.md must change in the sa
 - Reconciliation may detect external lots or historical incompleteness.
 - Portfolio may be temporarily stale during cycle execution.
 - Dashboard should display uncertainty rather than force false precision.
+- Normalized fee cards should use `trade_operations.fee_amount_in_quote` when available instead of attempting external price conversion.
 
 ---
 
@@ -894,17 +927,20 @@ Expected behavior:
 
 ---
 
-## 18. DustDetectionService Log Contract (Wave 1)
+## 18. DustDetectionService Contract
 
-`DustDetectionService` currently emits structured logs only. It does not write a dedicated dust table yet.
+`DustDetectionService` emits structured logs and, when `DATABASE_URL` is configured, writes observations to `bot.dust_detections`.
 
-Wave 1 events may include:
+Persistence is observational only. It must never sell, convert dust, move assets to Earn, mutate lots, mutate portfolio, or participate in trading transactions. Insert failures are logged as `dust_detection_persistence_failed` and must not crash an otherwise healthy bot cycle.
+
+Events may include:
 
 - `dust_detection_started`
 - `dust_candidate_detected`
 - `lot_below_min_notional_detected`
 - `balance_without_lot_coverage_detected`
 - `lot_balance_drift_detected`
+- `sell_residual_detected` (persisted event type for recent SELL residual observations)
 - `dust_detection_completed`
 - `dust_detection_failed`
 
@@ -927,14 +963,13 @@ Price / valuation rules:
 
 - Use `portfolio.current_price` as the preferred source for `price_usdt`.
 - Use `price_usdt = 1` for USDT.
-- Do not call Binance for prices in Wave 1.
+- Do not call Binance for prices from dust detection.
 - Missing prices are allowed.
 - If price is missing, `estimated_value_usdt` should be `null` / `None`.
 - Valuation is approximate and intended for prioritization, not final accounting.
 
-Wave 1 constraints:
+Constraints:
 
-- No DB writes for dust detections.
 - No automatic selling.
 - No automatic Binance dust conversion.
 - No automatic Earn movement.
@@ -943,36 +978,55 @@ Wave 1 constraints:
 
 ---
 
-## 19. Future `dust_detections` Table Contract (Wave 2 Proposal)
+## 19. `dust_detections` Table Contract (Wave 2)
 
-Recommended future table owned by the bot:
+Table owned by the bot:
 
 ```text
 bot.dust_detections
 ```
 
-Suggested conceptual fields:
+Fields:
 
-- id
-- run_id
-- detected_at
-- event_type
-- severity
-- asset
-- symbol
-- spot_quantity
-- open_lot_quantity
-- quantity_delta
-- price_usdt
-- estimated_value_usdt
-- estimated_delta_value_usdt
-- reason
-- suggested_action
-- source
-- reviewed_at
-- reviewed_by
-- review_note
-- payload/json details
+- `id` primary key
+- `run_id` nullable cycle id
+- `detected_at` timestamp used by dashboard ordering
+- `event_type` required detection path:
+  - `dust_candidate_detected`
+  - `lot_below_min_notional_detected`
+  - `balance_without_lot_coverage_detected`
+  - `lot_balance_drift_detected`
+  - `sell_residual_detected`
+- `severity`
+- `asset`
+- `symbol`
+- `spot_quantity NUMERIC(38, 18)`
+- `open_lot_quantity NUMERIC(38, 18)`
+- `quantity_delta NUMERIC(38, 18)`
+- `price_usdt NUMERIC(38, 18)`
+- `estimated_value_usdt NUMERIC(38, 18)`
+- `estimated_delta_value_usdt NUMERIC(38, 18)`
+- `reason`
+- `suggested_action`
+- `source`
+- `payload JSONB`
+- `created_at`
+
+Indexes:
+
+- `detected_at`
+- `asset`
+- `symbol`
+- `severity`
+- `reason`
+- `run_id`
+- `event_type`
+
+Important:
+
+- Numeric fields are Decimal-safe `NUMERIC`, not floats.
+- Same asset/symbol may legitimately produce multiple rows in one run only when `event_type` distinguishes the detection path.
+- `payload` is detail/context for dashboards and manual review. It is not an instruction to correct accounting state.
 
 Dashboard usage after Wave 2:
 
@@ -980,4 +1034,151 @@ Dashboard usage after Wave 2:
 - Group by symbol/asset.
 - Surface warning/critical detections first.
 - Do not treat summed dust values as audited financial PnL.
-- Allow manual review state only if the table explicitly supports it.
+- Manual reviewed/unreviewed state is not part of Wave 2. Add review fields in a future explicit migration before relying on review workflow queries.
+
+Validation SQL:
+
+```sql
+-- Latest dust detections
+select
+    detected_at,
+    run_id,
+    event_type,
+    severity,
+    symbol,
+    asset,
+    reason,
+    spot_quantity,
+    open_lot_quantity,
+    quantity_delta,
+    estimated_value_usdt,
+    estimated_delta_value_usdt,
+    suggested_action
+from bot.dust_detections
+order by detected_at desc, id desc
+limit 50;
+
+-- Grouped detections by symbol/reason
+select
+    symbol,
+    reason,
+    event_type,
+    severity,
+    count(*) as detections,
+    max(detected_at) as latest_detected_at
+from bot.dust_detections
+group by symbol, reason, event_type, severity
+order by latest_detected_at desc;
+
+-- High severity / operationally important detections
+select *
+from bot.dust_detections
+where severity in ('warning', 'critical')
+order by detected_at desc, id desc
+limit 100;
+
+-- Latest run_id detections
+with latest_run as (
+    select run_id
+    from bot.dust_detections
+    where run_id is not null
+    order by detected_at desc, id desc
+    limit 1
+)
+select d.*
+from bot.dust_detections d
+join latest_run r on r.run_id = d.run_id
+order by d.detected_at desc, d.id desc;
+```
+
+---
+
+## 20. `manual_corrections` Table Contract (Wave 4)
+
+Table owned by the bot:
+
+```text
+bot.manual_corrections
+```
+
+Purpose:
+
+- Explicit, reviewed correction requests for dust/drift/external operations.
+- Audit state for manual backend correction application.
+- Safe dashboard-to-bot workflow without direct dashboard writes to accounting tables.
+
+Allowed statuses:
+
+- `PENDING`
+- `APPLIED`
+- `REJECTED`
+- `FAILED`
+
+Allowed correction types:
+
+- `CLOSE_LOTS_EXTERNAL_SELL`
+- `REDUCE_LOTS_EXTERNAL_MOVEMENT`
+- `CREATE_EXTERNAL_LOT`
+- `MARK_DUST_IGNORED`
+
+Phase 1 applied type:
+
+- `CLOSE_LOTS_EXTERNAL_SELL`
+
+Semantics for `CLOSE_LOTS_EXTERNAL_SELL`:
+
+- Used when `bot.position_lots.quantity_open` is greater than actual Binance SPOT balance because of a manual sell, convert, or external action.
+- Requires positive Decimal `quantity`.
+- Requires positive Decimal `price_usdt`; the backend does not fetch a price.
+- Closes open lots FIFO by `opened_at`, then `lot_id`.
+- Writes `bot.lot_closures.quantity_closed`, `entry_price`, `exit_price`, `realized_pnl`, and `trade_operation_id`.
+- Creates a clearly marked `bot.trade_operations` row with `side = 'SELL'`, `status = 'FILLED'`, `order_id = null`, and manual correction metadata in `client_order_id`, `run_id`, and `raw_payload`.
+- Creates a synthetic `bot.trade_fills` row with `source = 'MANUAL_CORRECTION'` so existing `lot_closures.sell_fill_id` constraints are satisfied. Because there is no Binance order, `trade_fills.order_id` is `null`; the manual audit token is stored in `metadata.client_order_id`.
+- Does not call Binance and does not execute a market order.
+- Does not run during normal bot cycles.
+
+Important dashboard rule:
+
+The dashboard may insert/request or review rows through this workflow only. It must not directly mutate:
+
+- `bot.position_lots`
+- `bot.trade_operations`
+- `bot.lot_closures`
+- `bot.portfolio`
+
+Actual schema constraints confirmed for Phase 1:
+
+- `bot.position_lots.status`: `OPEN`, `CLOSED`
+- `bot.trade_operations.side`: `BUY`, `SELL`
+- `bot.trade_operations.status`: no current DB enum/check; repository requires a non-empty status. The manual correction backend uses `FILLED`.
+
+Validation SQL:
+
+```sql
+-- Pending corrections for review/application
+select *
+from bot.manual_corrections
+where status = 'PENDING'
+order by created_at asc, id asc;
+
+-- Recently applied corrections with linked operation metadata
+select
+    mc.id as correction_id,
+    mc.applied_at,
+    mc.correction_type,
+    mc.symbol,
+    mc.asset,
+    mc.quantity,
+    mc.price_usdt,
+    op.id as trade_operation_id,
+    op.side,
+    op.status,
+    op.client_order_id,
+    op.raw_payload
+from bot.manual_corrections mc
+left join bot.trade_operations op
+    on op.raw_payload->>'correction_id' = mc.id::text
+where mc.status = 'APPLIED'
+order by mc.applied_at desc, mc.id desc
+limit 50;
+```
