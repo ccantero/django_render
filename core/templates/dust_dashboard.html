@@ -61,6 +61,10 @@
 		font-size: 0.8125rem;
 	}
 
+	.operator-action {
+		min-width: 16rem;
+	}
+
 	.sort-button {
 		background: transparent;
 		border: 0;
@@ -104,6 +108,7 @@
 		<div>
 			<h1 class="h3 mb-1">Dust / Residuals</h1>
 			<p class="text-muted mb-0">Read-only view of bot dust detections. Values are approximate and not PnL.</p>
+			<p class="text-muted small mb-0">Do not correct from DB directly. Use manual correction workflow.</p>
 		</div>
 		<div>
 			<a class="btn btn-outline-primary" href="{% url 'manual_corrections' 'pending' %}">Pending corrections</a>
@@ -216,6 +221,7 @@
 							<option value="{{ value }}" {% if filters.review_status == value %}selected{% endif %}>{{ label }}</option>
 						{% endfor %}
 					</select>
+					<div class="small text-muted">Use Pending for pending review.</div>
 				</div>
 				<div class="form-group col-lg-2 col-md-6">
 					<button type="submit" class="btn btn-primary btn-sm">Filter</button>
@@ -249,6 +255,10 @@
 								</div>
 								<div class="small text-muted">{{ row.reason|default:"-" }}</div>
 								<div class="small">{{ row.event_type|default:"-" }}</div>
+								<div class="mt-2">
+									<span class="badge {{ row.operator_badge|default:'badge-secondary' }}">{{ row.operator_label|default:"Dust only" }}</span>
+									<span class="small text-muted">{{ row.operator_priority|default:"low priority" }}</span>
+								</div>
 							</div>
 						</div>
 					</div>
@@ -281,7 +291,8 @@
 							<th class="text-right"><button class="sort-button" type="button" data-sort-index="8" data-sort-type="number" title="Approx value of this signal">Approx exposure, not PnL</button></th>
 							<th class="text-right"><button class="sort-button" type="button" data-sort-index="9" data-sort-type="number" title="Difference between spot and lot value">Estimated delta USDT</button></th>
 							<th><button class="sort-button" type="button" data-sort-index="10" data-sort-type="text">Suggested action</button></th>
-							<th><button class="sort-button" type="button" data-sort-index="11" data-sort-type="text">Review</button></th>
+							<th><button class="sort-button" type="button" data-sort-index="11" data-sort-type="text">Operator decision</button></th>
+							<th><button class="sort-button" type="button" data-sort-index="12" data-sort-type="text">Review</button></th>
 							<th>Details</th>
 						</tr>
 					</thead>
@@ -309,6 +320,11 @@
 								<td class="text-right" data-sort-value="{{ row.latest_estimated_value_usdt|default:'0' }}" title="Approx value of this signal">{{ row.latest_estimated_value_usdt|floatformat:8|default:"-" }}</td>
 								<td class="text-right" data-sort-value="{{ row.latest_estimated_delta_value_usdt|default:'0' }}" title="Difference between spot and lot value">{{ row.latest_estimated_delta_value_usdt|floatformat:8|default:"-" }}</td>
 								<td>{{ row.latest_suggested_action|default:"-" }}</td>
+								<td class="operator-action">
+									<span class="badge {{ row.operator_badge|default:'badge-secondary' }}">{{ row.operator_label|default:"Dust only" }}</span>
+									<div class="small text-muted">{{ row.operator_priority|default:"low priority" }}</div>
+									<div class="small">{{ row.operator_action|default:"Monitor / optionally ignore" }}</div>
+								</td>
 								<td>
 									<span class="badge {% if row.review_status == 'ignored' %}badge-secondary{% elif row.review_status == 'needs_manual_correction' %}badge-danger{% elif row.review_status == 'review_later' %}badge-warning{% elif row.review_status == 'reviewed' or row.review_status == 'external_or_earn' %}badge-success{% else %}badge-light{% endif %}">
 										{{ row.review_status|default:"pending" }}
@@ -318,7 +334,7 @@
 							</tr>
 						{% empty %}
 							<tr>
-								<td colspan="13" class="text-muted text-center py-4">No dust signals found for current filters.</td>
+								<td colspan="14" class="text-muted text-center py-4">No dust signals found for current filters.</td>
 							</tr>
 						{% endfor %}
 					</tbody>

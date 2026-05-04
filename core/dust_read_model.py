@@ -397,7 +397,65 @@ def _merge_group_with_latest(row, latest_rows):
 	row["latest_suggested_action"] = latest.suggested_action if latest else None
 	row["latest_payload_text"] = _format_payload(latest.payload) if latest else "No payload"
 	row["latest_has_payload"] = latest.payload is not None if latest else False
+	row.update(_operator_guidance(row))
 	return row
+
+
+def _operator_guidance(row):
+	reason = row.get("reason") or ""
+	event_type = row.get("event_type") or ""
+	open_lot_quantity = row.get("latest_open_lot_quantity")
+	spot_quantity = row.get("latest_spot_quantity")
+
+	if reason == "below_min_notional":
+		return {
+			"operator_label": "Below min notional",
+			"operator_badge": "badge-info",
+			"operator_priority": "informational",
+			"operator_action": "Monitor / optionally ignore",
+		}
+	if reason == "possible_incomplete_sell":
+		return {
+			"operator_label": "Possible incomplete sell",
+			"operator_badge": "badge-warning",
+			"operator_priority": "warning",
+			"operator_action": "Inspect Binance history, then create correction request if external operation confirmed",
+		}
+	if reason == "lot_balance_drift" or event_type == "lot_balance_drift_detected":
+		if open_lot_quantity is not None and spot_quantity is not None:
+			if open_lot_quantity > spot_quantity:
+				return {
+					"operator_label": "Lots > Binance",
+					"operator_badge": "badge-danger",
+					"operator_priority": "accounting drift, needs review",
+					"operator_action": "Compare open_lot_quantity vs spot_quantity",
+				}
+			if spot_quantity > open_lot_quantity:
+				return {
+					"operator_label": "Binance > Lots",
+					"operator_badge": "badge-warning",
+					"operator_priority": "external balance, needs review",
+					"operator_action": "Compare open_lot_quantity vs spot_quantity",
+				}
+		return {
+			"operator_label": "Lot balance drift",
+			"operator_badge": "badge-warning",
+			"operator_priority": "needs review",
+			"operator_action": "Compare open_lot_quantity vs spot_quantity",
+		}
+	if reason == "balance_without_lot_coverage" or event_type == "balance_without_lot_coverage_detected":
+		return {
+			"operator_label": "Binance > Lots",
+			"operator_badge": "badge-warning",
+			"operator_priority": "external balance, needs review",
+			"operator_action": "Investigate manual buy/deposit/Earn return",
+		}
+	return {
+		"operator_label": "Unclassified signal",
+		"operator_badge": "badge-dark",
+		"operator_priority": "needs review",
+		"operator_action": "Inspect details before taking action",
+		}
 
 
 def _group_sort_key(row):

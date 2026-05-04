@@ -20,6 +20,8 @@ from core.dust_read_model import (
     _dashboard_queryset,
     _filtered_group_detections,
     _format_payload,
+    _operator_guidance,
+    _filter_by_review_status,
     _reviews_for_rows,
     get_dust_dashboard_context,
     update_dust_signal_review,
@@ -236,27 +238,56 @@ class DashboardEndpointTests(TestCase):
     def test_dust_dashboard_authenticated_user_gets_page(self, mock_get_dust_context):
         mock_get_dust_context.return_value.context = {
             'data_error': None,
-            'grouped_detections': [{
-                'symbol': 'BTCUSDT',
-                'asset': 'BTC',
-                'severity': 'info',
-                'event_type': 'dust_candidate_detected',
-                'reason': 'below_min_notional',
-                'detections_count': 1,
-                'latest_detected_at': timezone.now(),
-                'latest_run_id': 'run-123',
-                'latest_estimated_value_usdt': Decimal('0.77962320'),
-                'latest_estimated_delta_value_usdt': None,
-                'latest_suggested_action': 'monitor',
-                'review_status': 'ignored',
-                'detail_querystring': 'symbol=BTCUSDT&asset=BTC&reason=below_min_notional&event_type=dust_candidate_detected&severity=info',
-            }],
+            'grouped_detections': [
+                {
+                    'symbol': 'BTCUSDT',
+                    'asset': 'BTC',
+                    'severity': 'info',
+                    'event_type': 'dust_candidate_detected',
+                    'reason': 'below_min_notional',
+                    'detections_count': 1,
+                    'latest_detected_at': timezone.now(),
+                    'latest_run_id': 'run-123',
+                    'latest_estimated_value_usdt': Decimal('0.77962320'),
+                    'latest_estimated_delta_value_usdt': None,
+                    'latest_suggested_action': 'monitor',
+                    'operator_label': 'Below min notional',
+                    'operator_badge': 'badge-info',
+                    'operator_priority': 'informational',
+                    'operator_action': 'Monitor / optionally ignore',
+                    'review_status': 'ignored',
+                    'detail_querystring': 'symbol=BTCUSDT&asset=BTC&reason=below_min_notional&event_type=dust_candidate_detected&severity=info',
+                },
+                {
+                    'symbol': 'ETHUSDT',
+                    'asset': 'ETH',
+                    'severity': 'warning',
+                    'event_type': 'lot_below_min_notional_detected',
+                    'reason': 'possible_incomplete_sell',
+                    'detections_count': 1,
+                    'latest_detected_at': timezone.now(),
+                    'latest_run_id': 'run-123',
+                    'latest_estimated_value_usdt': Decimal('0.415022396'),
+                    'latest_estimated_delta_value_usdt': Decimal('0'),
+                    'latest_suggested_action': 'review_recent_sell',
+                    'operator_label': 'Possible incomplete sell',
+                    'operator_badge': 'badge-warning',
+                    'operator_priority': 'warning',
+                    'operator_action': 'Inspect Binance history, then create correction request if external operation confirmed',
+                    'review_status': 'pending',
+                    'detail_querystring': 'symbol=ETHUSDT&asset=ETH&reason=possible_incomplete_sell&event_type=lot_below_min_notional_detected&severity=warning',
+                },
+            ],
             'top_risk_signals': [{
                 'symbol': 'ETHUSDT',
                 'severity': 'info',
                 'event_type': 'lot_below_min_notional_detected',
                 'reason': 'possible_incomplete_sell',
                 'latest_estimated_value_usdt': Decimal('0.415022396'),
+                'operator_label': 'Possible incomplete sell',
+                'operator_badge': 'badge-warning',
+                'operator_priority': 'warning',
+                'operator_action': 'Inspect Binance history, then create correction request if external operation confirmed',
             }],
             'active_filters': [{'label': 'Severity', 'value': 'critical'}],
             'filters': {'symbol': '', 'severity': '', 'event_type': '', 'reason': ''},
@@ -296,6 +327,13 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'ignored')
         self.assertContains(response, 'dust-row-ignored')
         self.assertContains(response, 'View details')
+        self.assertContains(response, 'Do not correct from DB directly. Use manual correction workflow.')
+        self.assertContains(response, 'Pending for pending review')
+        self.assertContains(response, 'Below min notional')
+        self.assertContains(response, 'informational')
+        self.assertContains(response, 'Monitor / optionally ignore')
+        self.assertContains(response, 'Possible incomplete sell')
+        self.assertContains(response, 'Inspect Binance history')
         mock_get_dust_context.assert_called_once()
 
     @patch('core.views.get_dust_detail_context')
@@ -666,6 +704,45 @@ class DashboardEndpointTests(TestCase):
         self.assertIs(scoped, query)
         self.assertEqual(query.filters, [])
         mock_latest_run_id.assert_not_called()
+
+    def test_operator_guidance_labels_dust_and_drift_signals(self):
+        below_min = _operator_guidance({
+            'reason': 'below_min_notional',
+            'event_type': 'dust_candidate_detected',
+        })
+        lots_greater = _operator_guidance({
+            'reason': 'lot_balance_drift',
+            'event_type': 'lot_balance_drift_detected',
+            'latest_open_lot_quantity': Decimal('0.5'),
+            'latest_spot_quantity': Decimal('0.2'),
+        })
+        binance_greater = _operator_guidance({
+            'reason': 'balance_without_lot_coverage',
+            'event_type': 'balance_without_lot_coverage_detected',
+        })
+        incomplete_sell = _operator_guidance({
+            'reason': 'possible_incomplete_sell',
+            'event_type': 'lot_below_min_notional_detected',
+        })
+
+        self.assertEqual(below_min['operator_label'], 'Below min notional')
+        self.assertEqual(below_min['operator_action'], 'Monitor / optionally ignore')
+        self.assertEqual(lots_greater['operator_label'], 'Lots > Binance')
+        self.assertEqual(lots_greater['operator_priority'], 'accounting drift, needs review')
+        self.assertEqual(binance_greater['operator_label'], 'Binance > Lots')
+        self.assertEqual(binance_greater['operator_action'], 'Investigate manual buy/deposit/Earn return')
+        self.assertEqual(incomplete_sell['operator_label'], 'Possible incomplete sell')
+        self.assertIn('Inspect Binance history', incomplete_sell['operator_action'])
+
+    def test_pending_review_filter_keeps_only_pending_rows(self):
+        rows = [
+            {'symbol': 'BTCUSDT', 'review_status': DustSignalReview.STATUS_PENDING},
+            {'symbol': 'ETHUSDT', 'review_status': DustSignalReview.STATUS_IGNORED},
+        ]
+
+        filtered = _filter_by_review_status(rows, DustSignalReview.STATUS_PENDING)
+
+        self.assertEqual(filtered, [{'symbol': 'BTCUSDT', 'review_status': DustSignalReview.STATUS_PENDING}])
 
     def test_dust_dashboard_timeout_returns_safe_defaults(self):
         with patch('core.dust_read_model._dashboard_queryset', return_value=object()):
