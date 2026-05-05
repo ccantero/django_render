@@ -21,6 +21,8 @@ It should make the system observable, understandable, and auditable without hidi
 
 ## Dashboard Sections
 
+Dashboard operator pages are implemented in the `dashboard` Django app.
+
 ### Main dashboard
 
 - Bot status
@@ -29,6 +31,14 @@ It should make the system observable, understandable, and auditable without hidi
 - Drift summary
 - Fees by asset
 - Link to Dust / Residuals
+
+### Public and auth pages
+
+- Home page at `/`
+- Login and logout pages
+- Public demo dashboard at `/dashboard/demo/`
+- About-me page at `/me`
+- Thanks page at `/thanks/`
 
 ### Dust / Residuals
 
@@ -134,3 +144,10 @@ Preferred:
 Bot -> Telegram/Pushover
 Dashboard -> review UI
 ```
+
+## API / Admin Behavior
+
+- Currency and exchange-rate resources expose read access to unauthenticated users and write access to authenticated users through DRF permissions.
+- Profile API uses token authentication and an own-profile update permission.
+- Django admin is enabled at `/admin/` for registered models.
+- API schema and Swagger UI are available through drf-spectacular.

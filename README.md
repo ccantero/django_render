@@ -101,11 +101,42 @@ python manage.py migrate
 python manage.py runserver
 ```
 
+Development uses Django settings from `django_render/settings.py`. By default, the database falls back to local SQLite at `db.sqlite3`; production-style deployments can provide `DATABASE_URL`.
+
+Required environment variables:
+
+- `CC_DEBUG`
+- `SECRET_KEY`
+- `TUTORIAL_BOT_TOKEN`
+- `TELEGRAM_WEBHOOK_TOKEN`
+- `DATABASE_URL` when `CC_DEBUG` is false
+
 Run tests:
 
 ```bash
 python manage.py test core
+pytest
 ```
+
+The test settings provide safe defaults for required secrets and use SQLite at `/tmp/django_render_test.sqlite3`.
+
+## Detected Stack
+
+- Django 3.2.25
+- Dedicated `dashboard` app for dashboard routes, read models, forms, and templates
+- Django REST Framework with token auth
+- drf-spectacular OpenAPI schema/docs
+- pytest-django and Django `TestCase`/`TransactionTestCase`
+- SQLite by default through `dj-database-url`
+- PostgreSQL supported through `DATABASE_URL`; Docker Compose defines a PostgreSQL service
+- WhiteNoise for static files
+- Bootstrap 3 package
+- No Celery or Redis integration detected
+- No Django management commands detected
+
+## Codex Workflow
+
+All Codex tasks must follow `AGENTS.md`: planner, implementer, tester, documentator. Missing steps are hard failures.
 
 ---
 

@@ -8,7 +8,7 @@ from django.db import DatabaseError
 from django.db.models import Count, Sum
 from django.utils import timezone
 
-from core.dust_read_model import get_dust_overview_context
+from dashboard.dust_read_model import get_dust_overview_context
 from core.models import BotControl
 from core.trading_models import BotHealthcheck, Portfolio, PositionLot, TradeOperation
 

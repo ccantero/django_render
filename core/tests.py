@@ -9,12 +9,12 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from core.dashboard_read_model import (
+from dashboard.dashboard_read_model import (
     _build_bot_status,
     _build_fee_summary,
     _build_quote_fee_summary,
 )
-from core.dust_read_model import (
+from dashboard.dust_read_model import (
     _build_summary,
     _clean_filters,
     _dashboard_queryset,
@@ -26,10 +26,10 @@ from core.dust_read_model import (
     get_dust_dashboard_context,
     update_dust_signal_review,
 )
-from core.forms import ManualCorrectionRequestForm
+from dashboard.forms import ManualCorrectionRequestForm
 from core.models import DustSignalReview, ManualCorrection
 from core.trading_models import DustDetection
-from core.views import _manual_correction_quantity
+from dashboard.views import _manual_correction_quantity
 
 class TelegramWebhookTests(TestCase):
     def setUp(self):
@@ -74,7 +74,12 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse('login'), response['Location'])
 
-    @patch('core.views.get_dashboard_context')
+    def test_dashboard_route_is_owned_by_dashboard_app(self):
+        response = self.client.get(self.dashboard_url)
+
+        self.assertEqual(response.resolver_match.func.__module__, "dashboard.views")
+
+    @patch('dashboard.views.get_dashboard_context')
     def test_dashboard_authenticated_user_gets_dashboard(self, mock_get_dashboard_context):
         mock_get_dashboard_context.return_value.context = self.empty_dashboard_context()
         self.client.force_login(self.user)
@@ -85,7 +90,7 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'Trading Dashboard')
         mock_get_dashboard_context.assert_called_once()
 
-    @patch('core.views.get_dashboard_context')
+    @patch('dashboard.views.get_dashboard_context')
     def test_dashboard_loads_when_bot_tables_are_empty(self, mock_get_dashboard_context):
         mock_get_dashboard_context.return_value.context = self.empty_dashboard_context()
         self.client.force_login(self.user)
@@ -96,7 +101,7 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'No data yet.')
         self.assertContains(response, 'Portfolio Summary')
 
-    @patch('core.views.get_dashboard_context')
+    @patch('dashboard.views.get_dashboard_context')
     def test_dashboard_loads_with_sample_read_model_data(self, mock_get_dashboard_context):
         context = self.empty_dashboard_context()
         context.update({
@@ -167,7 +172,7 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'Dust / Residuals')
         self.assertContains(response, 'Latest grouped values, not PnL')
 
-    @patch('core.views.get_dashboard_context')
+    @patch('dashboard.views.get_dashboard_context')
     def test_dashboard_shows_dust_summary(self, mock_get_dashboard_context):
         context = self.empty_dashboard_context()
         context['dust_summary'] = {
@@ -234,7 +239,7 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse('login'), response['Location'])
 
-    @patch('core.views.get_dust_dashboard_context')
+    @patch('dashboard.views.get_dust_dashboard_context')
     def test_dust_dashboard_authenticated_user_gets_page(self, mock_get_dust_context):
         mock_get_dust_context.return_value.context = {
             'data_error': None,
@@ -336,7 +341,7 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'Inspect Binance history')
         mock_get_dust_context.assert_called_once()
 
-    @patch('core.views.get_dust_detail_context')
+    @patch('dashboard.views.get_dust_detail_context')
     def test_dust_detail_renders_latest_rows_and_null_payload(self, mock_get_detail_context):
         mock_get_detail_context.return_value.context = {
             'data_error': None,
@@ -480,7 +485,7 @@ class DashboardEndpointTests(TestCase):
 
     def test_reviews_for_rows_missing_review_table_falls_back_to_pending(self):
         with patch(
-            'core.dust_read_model.DustSignalReview.objects.filter',
+            'dashboard.dust_read_model.DustSignalReview.objects.filter',
             side_effect=DatabaseError('relation "dust_signal_reviews" does not exist'),
         ):
             reviews = _reviews_for_rows([{
@@ -518,7 +523,7 @@ class DashboardEndpointTests(TestCase):
 
     def test_dust_review_update_missing_review_table_does_not_crash(self):
         with patch(
-            'core.dust_read_model.DustSignalReview.objects.get_or_create',
+            'dashboard.dust_read_model.DustSignalReview.objects.get_or_create',
             side_effect=DatabaseError('relation "dust_signal_reviews" does not exist'),
         ):
             review = update_dust_signal_review({
@@ -549,7 +554,7 @@ class DashboardEndpointTests(TestCase):
 
         self.assertTrue(migration_path.exists())
 
-    @patch('core.views.get_dust_detail_context')
+    @patch('dashboard.views.get_dust_detail_context')
     def test_dust_detail_empty_group_state(self, mock_get_detail_context):
         mock_get_detail_context.return_value.context = {
             'data_error': None,
@@ -592,7 +597,7 @@ class DashboardEndpointTests(TestCase):
                 return self
 
         query = FakeDustQuerySet()
-        with patch('core.dust_read_model.DustDetection.objects') as manager:
+        with patch('dashboard.dust_read_model.DustDetection.objects') as manager:
             manager.all.return_value = query
             _filtered_group_detections({
                 'symbol': 'BTCUSDT',
@@ -620,7 +625,7 @@ class DashboardEndpointTests(TestCase):
                 return self
 
         query = FakeDustQuerySet()
-        with patch('core.dust_read_model.DustDetection.objects') as manager:
+        with patch('dashboard.dust_read_model.DustDetection.objects') as manager:
             manager.all.return_value = query
             _filtered_group_detections({
                 'symbol': 'BTCUSDT',
@@ -648,8 +653,8 @@ class DashboardEndpointTests(TestCase):
                 return self
 
         query = FakeDustQuerySet()
-        with patch('core.dust_read_model._filtered_detections', return_value=query):
-            with patch('core.dust_read_model._latest_run_id', return_value='latest-run-001'):
+        with patch('dashboard.dust_read_model._filtered_detections', return_value=query):
+            with patch('dashboard.dust_read_model._latest_run_id', return_value='latest-run-001'):
                 scoped = _dashboard_queryset({
                     'symbol': '',
                     'severity': '',
@@ -670,8 +675,8 @@ class DashboardEndpointTests(TestCase):
                 return 'empty-queryset'
 
         query = FakeDustQuerySet()
-        with patch('core.dust_read_model._filtered_detections', return_value=query):
-            with patch('core.dust_read_model._latest_run_id', return_value=None):
+        with patch('dashboard.dust_read_model._filtered_detections', return_value=query):
+            with patch('dashboard.dust_read_model._latest_run_id', return_value=None):
                 scoped = _dashboard_queryset({
                     'symbol': '',
                     'severity': '',
@@ -692,8 +697,8 @@ class DashboardEndpointTests(TestCase):
                 return self
 
         query = FakeDustQuerySet()
-        with patch('core.dust_read_model._filtered_detections', return_value=query):
-            with patch('core.dust_read_model._latest_run_id') as mock_latest_run_id:
+        with patch('dashboard.dust_read_model._filtered_detections', return_value=query):
+            with patch('dashboard.dust_read_model._latest_run_id') as mock_latest_run_id:
                 scoped = _dashboard_queryset({
                     'symbol': 'BTCUSDT',
                     'severity': '',
@@ -745,14 +750,14 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(filtered, [{'symbol': 'BTCUSDT', 'review_status': DustSignalReview.STATUS_PENDING}])
 
     def test_dust_dashboard_timeout_returns_safe_defaults(self):
-        with patch('core.dust_read_model._dashboard_queryset', return_value=object()):
-            with patch('core.dust_read_model._build_filter_options', return_value={
+        with patch('dashboard.dust_read_model._dashboard_queryset', return_value=object()):
+            with patch('dashboard.dust_read_model._build_filter_options', return_value={
                 'symbols': [],
                 'severities': [],
                 'event_types': [],
                 'reasons': [],
             }):
-                with patch('core.dust_read_model._grouped_detections', side_effect=DatabaseError('statement timeout')):
+                with patch('dashboard.dust_read_model._grouped_detections', side_effect=DatabaseError('statement timeout')):
                     read_model = get_dust_dashboard_context({})
 
         self.assertEqual(read_model.context['dust_error'], 'Query too slow')
@@ -799,8 +804,8 @@ class DashboardEndpointTests(TestCase):
             },
         ]
 
-        with patch('core.dust_read_model._grouped_detections', return_value=grouped_rows):
-            with patch('core.dust_read_model._latest_detection_row', return_value=latest):
+        with patch('dashboard.dust_read_model._grouped_detections', return_value=grouped_rows):
+            with patch('dashboard.dust_read_model._latest_detection_row', return_value=latest):
                 summary = _build_summary(FakeDustQuerySet())
 
         self.assertEqual(summary['total_detections'], 5)
@@ -817,7 +822,7 @@ class DashboardEndpointTests(TestCase):
             created_at=timezone.now() - timezone.timedelta(minutes=16),
             details={'read_only': True},
         )
-        with patch('core.dashboard_read_model.BotHealthcheck.objects') as manager:
+        with patch('dashboard.dashboard_read_model.BotHealthcheck.objects') as manager:
             manager.order_by.return_value.first.return_value = stale_row
 
             status = _build_bot_status()
@@ -850,7 +855,7 @@ class DashboardEndpointTests(TestCase):
                 ]
 
         query = FakeTradeOperationQuery()
-        with patch('core.dashboard_read_model.TradeOperation.objects', query):
+        with patch('dashboard.dashboard_read_model.TradeOperation.objects', query):
             summary = _build_fee_summary()
 
         self.assertEqual(summary['asset_count'], 2)
@@ -893,7 +898,7 @@ class DashboardEndpointTests(TestCase):
                 ]
 
         query = FakeTradeOperationQuery()
-        with patch('core.dashboard_read_model.TradeOperation.objects', query):
+        with patch('dashboard.dashboard_read_model.TradeOperation.objects', query):
             summary = _build_quote_fee_summary()
 
         self.assertEqual(summary['total_fees_usdt'], Decimal('3.42'))

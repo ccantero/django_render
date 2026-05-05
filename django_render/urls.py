@@ -19,6 +19,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('', include('dashboard.urls')),
     path('', include('core.urls')),
     path("currencyconverter/", include("currencyconverter.urls", namespace="currencyconverter")),
     path("api/", include("profile.urls", namespace="profile")),

@@ -33,6 +33,49 @@ Responsible for:
 
 The dashboard must not execute trading logic.
 
+### Current Django model mappings
+
+Dashboard routes, read models, forms, and templates live in the `dashboard` Django app. Database table mappings remain in the apps below.
+
+The dashboard currently maps bot-owned tables in `core.trading_models` with `managed = False` and read-only save/delete guards:
+
+- `bot.bot_healthcheck`
+- `bot.portfolio`
+- `bot.position_lots`
+- `bot.trade_operations`
+- `bot.trade_fills`
+- `bot.lot_closures`
+- `bot.snapshots`
+- `bot.dust_detections`
+
+The dashboard also maps workflow tables in `core.models`:
+
+- `bot.dust_signal_reviews`
+- `bot.manual_corrections`
+
+When the configured database engine is SQLite, `bot_table_name()` maps selected workflow tables to plain table names for local/test compatibility. PostgreSQL deployments use the `bot` schema table names.
+
+### Current API serializers
+
+DRF serializers currently exist for:
+
+- `profile.UserProfile` through `ProfileSerializer`
+- `currencyconverter.Currency` through `CurrencySerializer` and `CurrencyDetailSerializer`
+- `currencyconverter.ExchangeRate` through `ExchangeRateSerializer`
+
+No DRF serializer currently wraps bot-owned trading tables.
+
+### Current API routes
+
+- `/api/login/` returns an auth token through DRF `ObtainAuthToken`.
+- `/api/profiles/` exposes the profile viewset.
+- `/currencyconverter/json/currencies/` exposes currency list/detail endpoints.
+- `/currencyconverter/json/exchangerates/` exposes exchange-rate list/detail endpoints.
+- `/api/schema` exposes the OpenAPI schema.
+- `/api/docs` exposes Swagger UI.
+
+Compatibility note: bot-owned table schemas are external contracts. Dashboard model field changes must be reviewed against the bot schema before release.
+
 ---
 
 ## 2. Core Principle

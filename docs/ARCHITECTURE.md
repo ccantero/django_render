@@ -31,7 +31,32 @@ It provides visibility, review, and request workflows over bot-owned database ta
 
 ## 3. Recommended App Structure
 
-Current code may still live mostly under `core`, but the preferred evolution is:
+### Current app structure
+
+```text
+django_render/
+  settings.py, urls.py, env_validation.py
+
+core/
+  home/auth-adjacent views, Telegram webhook listener, bot control endpoints,
+  workflow models, and managed=False bot table mappings
+
+dashboard/
+  dashboard views, dashboard URL routes, read models, forms, and templates
+
+currencyconverter/
+  currency and exchange-rate models, UVA calculator, DRF viewsets,
+  serializers, templates, and staff-only rate updates
+
+profile/
+  custom email-based user model, profile serializer/viewset,
+  token login, admin, and permissions
+
+investments/
+  Invest model exists, but the app is not currently installed
+```
+
+The dashboard app split is in place. The remaining preferred evolution is:
 
 ```text
 core/
@@ -39,7 +64,8 @@ core/
 
 dashboard/
   views.py
-  read_models.py
+  dashboard_read_model.py
+  dust_read_model.py
   templates/dashboard/
   forms.py
 
@@ -50,7 +76,7 @@ bot_control/
   optional safe control-plane UI
 ```
 
-This split is P2 tech debt, not an immediate blocker.
+Moving bot-owned models out of `core` remains P2 tech debt, not an immediate blocker.
 
 ---
 
@@ -66,6 +92,30 @@ Bot applies corrections
 ```
 
 Use `managed = False` for existing bot-owned tables.
+
+Local development defaults to SQLite through `dj_database_url`. Production-style configuration can use PostgreSQL through `DATABASE_URL`; when PostgreSQL is detected, settings apply a `bot,public` search path option.
+
+## 4.1 Request Flow
+
+```text
+Browser dashboard pages -> django_render.urls -> dashboard.urls -> dashboard.views -> read model/forms -> templates
+Browser core pages/bot controls -> django_render.urls -> core.urls -> core.views
+API client -> django_render.urls -> currencyconverter/profile routers -> DRF viewsets -> serializers/models
+Swagger UI -> /api/docs -> drf-spectacular schema at /api/schema
+Telegram -> /telegramapi/listener/ -> token check -> TelegramMessage row and optional Telegram response
+```
+
+State-changing dashboard actions are protected with login, staff checks where required, POST-only decorators where present, and Django CSRF except for the Telegram webhook listener, which uses the Telegram secret-token header.
+
+## 4.2 External Services
+
+Detected external calls:
+
+- Telegram Bot API in `core.views.send_message`.
+- Banco Ciudad quote endpoint in `currencyconverter.views.get_ARSUVA_rate`.
+- dolarapi.com quote endpoint in `currencyconverter.views.update_ARSUSD_rate`.
+
+No Celery, Redis, or asynchronous worker service is currently wired in this project.
 
 ---
 
