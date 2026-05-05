@@ -27,6 +27,7 @@ Dashboard operator pages are implemented in the `dashboard` Django app.
 
 - Bot status
 - Portfolio summary
+- Valuation consistency between portfolio projection and lots accounting value
 - Latest trade
 - Drift summary
 - Fees by asset
@@ -130,6 +131,7 @@ Never prefill a negative quantity.
 
 - Treat financial values as Decimal.
 - Round only for display.
+- Count and warn on missing prices instead of silently treating them as zero.
 - Do not write rounded display values back to DB.
 - Do not recalculate trading PnL in the dashboard unless the contract defines the source fields.
 

@@ -13,6 +13,7 @@ from dashboard.dashboard_read_model import (
     _build_bot_status,
     _build_fee_summary,
     _build_quote_fee_summary,
+    _build_valuation_consistency,
 )
 from dashboard.dust_read_model import (
     _build_summary,
@@ -139,6 +140,18 @@ class DashboardEndpointTests(TestCase):
                 'material_positions_count': 1,
                 'dust_positions_count': 1,
             },
+            'valuation_consistency': {
+                'portfolio_value': Decimal('25.50'),
+                'lots_value': Decimal('24.75'),
+                'drift_value': Decimal('0.75'),
+                'portfolio_missing_price_count': 0,
+                'lots_missing_price_count': 0,
+                'missing_price_count': 0,
+                'has_missing_prices': False,
+                'portfolio_rows_count': 2,
+                'open_lots_symbol_count': 2,
+                'dust_positions_count': 1,
+            },
             'fee_summary': {
                 'asset_count': 1,
                 'fill_count': 2,
@@ -186,6 +199,10 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, '1 warning')
         self.assertContains(response, 'Total Fees')
         self.assertContains(response, 'Fees (USDT)')
+        self.assertContains(response, 'Portfolio projection')
+        self.assertContains(response, 'Lots accounting value')
+        self.assertContains(response, 'Portfolio vs lots drift')
+        self.assertContains(response, '0.75 USDT')
         self.assertContains(response, '0.25000000')
         self.assertContains(response, '0.25 USDT')
         self.assertContains(response, 'Dust / Residuals')
@@ -928,6 +945,98 @@ class DashboardEndpointTests(TestCase):
         self.assertIn(('values', ('side',)), query.calls)
         self.assertIn(('order_by', ('side',)), query.calls)
 
+    def test_valuation_consistency_matching_portfolio_and_lots_values(self):
+        portfolio_rows = [
+            SimpleNamespace(
+                symbol='BTCUSDT',
+                quantity=Decimal('0.001'),
+                current_price=Decimal('20000.00'),
+            ),
+        ]
+        open_lots = {
+            'BTCUSDT': {'open_quantity': Decimal('0.001'), 'open_lot_count': 1},
+        }
+
+        summary = _build_valuation_consistency(portfolio_rows, open_lots)
+
+        self.assertEqual(summary['portfolio_value'], Decimal('20.00000'))
+        self.assertEqual(summary['lots_value'], Decimal('20.00000'))
+        self.assertEqual(summary['drift_value'], Decimal('0.00000'))
+        self.assertEqual(summary['portfolio_missing_price_count'], 0)
+        self.assertEqual(summary['lots_missing_price_count'], 0)
+
+    def test_valuation_consistency_surfaces_drift(self):
+        portfolio_rows = [
+            SimpleNamespace(
+                symbol='ETHUSDT',
+                quantity=Decimal('0.010'),
+                current_price=Decimal('2000.00'),
+            ),
+        ]
+        open_lots = {
+            'ETHUSDT': {'open_quantity': Decimal('0.009'), 'open_lot_count': 1},
+        }
+
+        summary = _build_valuation_consistency(portfolio_rows, open_lots)
+
+        self.assertEqual(summary['portfolio_value'], Decimal('20.00000'))
+        self.assertEqual(summary['lots_value'], Decimal('18.00000'))
+        self.assertEqual(summary['drift_value'], Decimal('2.00000'))
+
+    def test_valuation_consistency_counts_missing_current_prices(self):
+        portfolio_rows = [
+            SimpleNamespace(
+                symbol='BNBUSDT',
+                quantity=Decimal('0.25'),
+                current_price=None,
+            ),
+        ]
+        open_lots = {
+            'BNBUSDT': {'open_quantity': Decimal('0.25'), 'open_lot_count': 1},
+            'ADAUSDT': {'open_quantity': Decimal('10'), 'open_lot_count': 1},
+        }
+
+        summary = _build_valuation_consistency(portfolio_rows, open_lots)
+
+        self.assertEqual(summary['portfolio_value'], Decimal('0'))
+        self.assertEqual(summary['lots_value'], Decimal('0'))
+        self.assertEqual(summary['drift_value'], Decimal('0'))
+        self.assertEqual(summary['portfolio_missing_price_count'], 1)
+        self.assertEqual(summary['lots_missing_price_count'], 2)
+        self.assertTrue(summary['has_missing_prices'])
+
+    def test_valuation_consistency_handles_empty_portfolio_and_lots(self):
+        summary = _build_valuation_consistency([], {})
+
+        self.assertEqual(summary['portfolio_value'], Decimal('0'))
+        self.assertEqual(summary['lots_value'], Decimal('0'))
+        self.assertEqual(summary['drift_value'], Decimal('0'))
+        self.assertEqual(summary['portfolio_rows_count'], 0)
+        self.assertEqual(summary['open_lots_symbol_count'], 0)
+
+    def test_valuation_consistency_uses_decimal_safe_calculations(self):
+        portfolio_rows = [
+            SimpleNamespace(
+                symbol='SOLUSDT',
+                quantity=Decimal('0.333333333333333333'),
+                current_price=Decimal('19.700000000000000000'),
+            ),
+        ]
+        open_lots = {
+            'SOLUSDT': {
+                'open_quantity': Decimal('0.333333333333333333'),
+                'open_lot_count': 1,
+            },
+        }
+
+        summary = _build_valuation_consistency(portfolio_rows, open_lots)
+
+        self.assertIsInstance(summary['portfolio_value'], Decimal)
+        self.assertEqual(
+            summary['portfolio_value'],
+            Decimal('6.566666666666666660100000000000000000'),
+        )
+
     def empty_dashboard_context(self):
         return {
             'bot_control': None,
@@ -944,6 +1053,18 @@ class DashboardEndpointTests(TestCase):
                 'rows_count': 0,
                 'total_estimated_value': Decimal('0'),
                 'material_positions_count': 0,
+                'dust_positions_count': 0,
+            },
+            'valuation_consistency': {
+                'portfolio_value': Decimal('0'),
+                'lots_value': Decimal('0'),
+                'drift_value': Decimal('0'),
+                'portfolio_missing_price_count': 0,
+                'lots_missing_price_count': 0,
+                'missing_price_count': 0,
+                'has_missing_prices': False,
+                'portfolio_rows_count': 0,
+                'open_lots_symbol_count': 0,
                 'dust_positions_count': 0,
             },
             'fee_summary': {

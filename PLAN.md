@@ -31,7 +31,7 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - `ManualCorrection` is aligned to bot-owned `bot.manual_corrections`.
 - Manual correction requests validate positive quantity and never prefill a negative correction quantity.
 - Dust / drift workflow supports grouped detections, latest run metadata, detail payloads, operator guidance, ignored/review-later actions, and manual correction request links.
-- Monitoring cards exist for bot status, portfolio summary, latest operation/recent trade, drift alerts, and fees by asset.
+- Monitoring cards exist for bot status, portfolio summary, valuation consistency, latest operation/recent trade, drift alerts, and fees by asset.
 - Tests cover dashboard access, manual correction permissions, form validation, model contract alignment, drift prefill behavior, and environment validation.
 - Public `/health/` liveness endpoint exists for Render keepalive/cron pings.
 
@@ -46,7 +46,7 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 
 1. Add normalized Fees (USDT) card from `trade_operations.fee_amount_in_quote`.
 2. Add manual corrections pending count to the main dashboard.
-3. Add lots summary from `position_lots`.
+3. Add detailed lots summary from `position_lots`.
 4. Show linked source dust detection detail from correction detail.
 5. Add filter for operator guidance category.
 6. Add better pagination for large detection history.

@@ -11,6 +11,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Authenticated dashboard overview
 - Bot health/status cards
 - Portfolio summary
+- Valuation consistency between `bot.portfolio` projection value and open `bot.position_lots` accounting value
 - Recent operations/latest trade
 - Fees by asset
 - Drift alerts between `bot.portfolio` and `bot.position_lots`

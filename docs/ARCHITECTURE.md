@@ -146,6 +146,8 @@ The dust dashboard reads `bot.dust_detections`, groups signals, and adds operato
 
 The dashboard must display uncertainty and avoid treating approximate exposure as audited PnL.
 
+The main dashboard also compares `bot.portfolio` projection value against open `bot.position_lots` valued with `portfolio.current_price`. Missing prices are counted and shown as warnings; they are not silently converted to zero-value audited PnL.
+
 ---
 
 ## 7. Manual Correction Request Flow

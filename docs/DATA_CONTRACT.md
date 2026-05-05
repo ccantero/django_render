@@ -279,6 +279,7 @@ Dashboard usage:
 - Main positions table
 - Approximate current value
 - Unrealized PnL if entry/current prices are available
+- Price source for dashboard-side open-lots valuation consistency checks
 
 Important:
 
@@ -300,9 +301,12 @@ Suggested dashboard calculations:
 ```text
 position_value = quantity * current_price
 unrealized_pnl = (current_price - entry_price) * quantity
+open_lots_value = SUM(position_lots.remaining_quantity by symbol) * portfolio.current_price
+portfolio_vs_lots_drift = SUM(position_value) - SUM(open_lots_value)
 ```
 
 Only calculate if all required values exist.
+If `current_price` is missing, expose a missing price count/warning instead of silently valuing the row or lot at zero.
 
 ---
 
@@ -689,7 +693,10 @@ Use `trade_operations` / `lot_closures` for realized PnL if available.
 Suggested cards:
 
 - Open positions count
-- Approximate portfolio value
+- Portfolio projection value from `bot.portfolio`
+- Lots accounting value from open `bot.position_lots` joined to `bot.portfolio.current_price`
+- Portfolio vs lots drift
+- Missing current price count
 - Realized PnL
 - Total fees
 - Drift warnings count

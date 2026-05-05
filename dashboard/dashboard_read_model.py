@@ -30,6 +30,7 @@ def get_dashboard_context():
 		"bot_control": _get_bot_control(),
 		"bot_status": _empty_bot_status(),
 		"portfolio_summary": _empty_portfolio_summary(),
+		"valuation_consistency": _empty_valuation_consistency(),
 		"fee_summary": _empty_fee_summary(),
 		"quote_fee_summary": _empty_quote_fee_summary(),
 		"latest_trade": None,
@@ -69,6 +70,7 @@ def get_dashboard_context():
 	try:
 		open_lots = _open_lots_by_symbol()
 		context["reconciliation"] = _build_reconciliation(portfolio_rows, open_lots)
+		context["valuation_consistency"] = _build_valuation_consistency(portfolio_rows, open_lots)
 	except DatabaseError as exc:
 		_add_data_error(context, "reconciliation", exc)
 
@@ -100,6 +102,18 @@ def get_demo_dashboard_context():
 			"rows_count": 3,
 			"total_estimated_value": Decimal("1842.73"),
 			"material_positions_count": 2,
+			"dust_positions_count": 1,
+		},
+		"valuation_consistency": {
+			"portfolio_value": Decimal("1842.73"),
+			"lots_value": Decimal("1842.73"),
+			"drift_value": Decimal("0"),
+			"portfolio_missing_price_count": 0,
+			"lots_missing_price_count": 0,
+			"missing_price_count": 0,
+			"has_missing_prices": False,
+			"portfolio_rows_count": 3,
+			"open_lots_symbol_count": 2,
 			"dust_positions_count": 1,
 		},
 		"fee_summary": {
@@ -256,6 +270,59 @@ def _empty_portfolio_summary():
 		"rows_count": 0,
 		"total_estimated_value": Decimal("0"),
 		"material_positions_count": 0,
+		"dust_positions_count": 0,
+	}
+
+
+def _build_valuation_consistency(portfolio_rows, open_lots):
+	portfolio_value = Decimal("0")
+	lots_value = Decimal("0")
+	portfolio_missing_price_count = 0
+	lots_missing_price_count = 0
+	portfolio_by_symbol = {row.symbol: row for row in portfolio_rows}
+
+	for row in portfolio_rows:
+		value = _position_value(row.quantity, row.current_price)
+		if value is None:
+			portfolio_missing_price_count += 1
+			continue
+		portfolio_value += value
+
+	for symbol, open_lot in open_lots.items():
+		portfolio = portfolio_by_symbol.get(symbol)
+		current_price = portfolio.current_price if portfolio else None
+		value = _position_value(open_lot["open_quantity"], current_price)
+		if value is None:
+			lots_missing_price_count += 1
+			continue
+		lots_value += value
+
+	missing_price_count = portfolio_missing_price_count + lots_missing_price_count
+	return {
+		"portfolio_value": portfolio_value,
+		"lots_value": lots_value,
+		"drift_value": portfolio_value - lots_value,
+		"portfolio_missing_price_count": portfolio_missing_price_count,
+		"lots_missing_price_count": lots_missing_price_count,
+		"missing_price_count": missing_price_count,
+		"has_missing_prices": missing_price_count > 0,
+		"portfolio_rows_count": len(portfolio_rows),
+		"open_lots_symbol_count": len(open_lots),
+		"dust_positions_count": _build_portfolio_summary(portfolio_rows)["dust_positions_count"],
+	}
+
+
+def _empty_valuation_consistency():
+	return {
+		"portfolio_value": Decimal("0"),
+		"lots_value": Decimal("0"),
+		"drift_value": Decimal("0"),
+		"portfolio_missing_price_count": 0,
+		"lots_missing_price_count": 0,
+		"missing_price_count": 0,
+		"has_missing_prices": False,
+		"portfolio_rows_count": 0,
+		"open_lots_symbol_count": 0,
 		"dust_positions_count": 0,
 	}
 
@@ -432,6 +499,7 @@ def _important_queries():
 	return [
 		"bot.bot_healthcheck: latest row ordered by created_at desc",
 		"bot.portfolio: count rows and sum Decimal quantity * current_price",
+		"bot.portfolio + bot.position_lots: Decimal valuation consistency using portfolio current_price",
 		"bot.trade_operations: SUM(fee_amount) GROUP BY fee_asset",
 		"bot.trade_operations: SUM(fee_amount_in_quote), COUNT(*) WHERE status = FILLED AND quote_asset = USDT GROUP BY side",
 		"bot.trade_operations: latest row ordered by executed_at/created_at/id desc",
@@ -446,4 +514,5 @@ def _assumptions():
 		"portfolio is used only as a projection/read model.",
 		"position_lots remains the accounting source of truth for open inventory.",
 		"Drift is surfaced as a dashboard warning; no trading action is executed.",
+		"Missing current_price values are counted and excluded from value totals.",
 	]

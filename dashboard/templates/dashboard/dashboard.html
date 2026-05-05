@@ -83,9 +83,15 @@
 				<div class="card-body">
 					<h2 class="h5">Portfolio Summary</h2>
 					<p class="mb-1">Rows: <strong>{{ portfolio_summary.rows_count }}</strong></p>
-					<p class="mb-1">Total value: <strong>{{ portfolio_summary.total_estimated_value|floatformat:2 }} USDT</strong></p>
+					<p class="mb-1">Portfolio projection: <strong>{{ valuation_consistency.portfolio_value|floatformat:2 }} USDT</strong></p>
+					<p class="mb-1">Lots accounting value: <strong>{{ valuation_consistency.lots_value|floatformat:2 }} USDT</strong></p>
+					<p class="mb-1">Portfolio vs lots drift: <strong>{{ valuation_consistency.drift_value|floatformat:2 }} USDT</strong></p>
+					{% if valuation_consistency.has_missing_prices %}
+						<p class="mb-1"><span class="badge badge-warning">Missing prices: {{ valuation_consistency.missing_price_count }}</span></p>
+						<p class="text-muted small mb-1">Portfolio rows: {{ valuation_consistency.portfolio_missing_price_count }} / lot symbols: {{ valuation_consistency.lots_missing_price_count }}</p>
+					{% endif %}
 					<p class="mb-1">Material: {{ portfolio_summary.material_positions_count }}</p>
-					<p class="mb-0">Dust: {{ portfolio_summary.dust_positions_count }}</p>
+					<p class="mb-0">Dust: {{ valuation_consistency.dust_positions_count }}</p>
 				</div>
 			</div>
 		</div>

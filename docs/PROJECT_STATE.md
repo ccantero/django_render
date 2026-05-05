@@ -17,6 +17,7 @@ Implemented capabilities:
 - Authenticated dashboard pages
 - Bot status card
 - Portfolio summary
+- Valuation consistency showing portfolio projection value, open-lots accounting value, drift, and missing price counts
 - Latest trade/recent operations card
 - Drift visibility between portfolio and lots
 - Fees by asset card
@@ -29,7 +30,7 @@ Implemented capabilities:
 - Manual correction list and detail pages
 - Staff-only creation of correction requests
 - Operator guidance labels for dust/drift signals
-- Tests for dashboard pages, permissions, form validation, and drift quantity prefill
+- Tests for dashboard pages, permissions, form validation, valuation consistency, and drift quantity prefill
 - DRF schema and Swagger UI through drf-spectacular
 - Project-level environment validation for required settings
 - Public Django app liveness endpoint at `/health/` for external keepalive checks
