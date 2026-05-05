@@ -31,6 +31,25 @@ from core.models import DustSignalReview, ManualCorrection
 from core.trading_models import DustDetection
 from dashboard.views import _manual_correction_quantity
 
+
+class HealthEndpointTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.health_url = reverse('health')
+
+    def test_health_endpoint_is_public_and_returns_ok(self):
+        response = self.client.get(self.health_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/json')
+        self.assertEqual(response.json(), {'status': 'ok'})
+
+    def test_health_endpoint_is_get_only(self):
+        response = self.client.post(self.health_url)
+
+        self.assertEqual(response.status_code, 405)
+
+
 class TelegramWebhookTests(TestCase):
     def setUp(self):
         self.client = Client()

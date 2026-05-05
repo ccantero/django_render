@@ -100,12 +100,15 @@ Local development defaults to SQLite through `dj_database_url`. Production-style
 ```text
 Browser dashboard pages -> django_render.urls -> dashboard.urls -> dashboard.views -> read model/forms -> templates
 Browser core pages/bot controls -> django_render.urls -> core.urls -> core.views
+External keepalive cron -> /health/ -> core.views.health -> JSON liveness response
 API client -> django_render.urls -> currencyconverter/profile routers -> DRF viewsets -> serializers/models
 Swagger UI -> /api/docs -> drf-spectacular schema at /api/schema
 Telegram -> /telegramapi/listener/ -> token check -> TelegramMessage row and optional Telegram response
 ```
 
 State-changing dashboard actions are protected with login, staff checks where required, POST-only decorators where present, and Django CSRF except for the Telegram webhook listener, which uses the Telegram secret-token header.
+
+`/health/` is public and side-effect-free. It reports only Django web-process liveness for hosting keepalive checks; bot operational health remains sourced from `bot.bot_healthcheck` in dashboard views.
 
 ## 4.2 External Services
 

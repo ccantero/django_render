@@ -33,6 +33,7 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - Dust / drift workflow supports grouped detections, latest run metadata, detail payloads, operator guidance, ignored/review-later actions, and manual correction request links.
 - Monitoring cards exist for bot status, portfolio summary, latest operation/recent trade, drift alerts, and fees by asset.
 - Tests cover dashboard access, manual correction permissions, form validation, model contract alignment, drift prefill behavior, and environment validation.
+- Public `/health/` liveness endpoint exists for Render keepalive/cron pings.
 
 ## P0 Safety / Correctness
 

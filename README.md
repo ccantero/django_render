@@ -22,6 +22,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Manual correction request workflow through `bot.manual_corrections`
 - Manual correction list/detail views
 - Staff-only correction request creation
+- Public app liveness endpoint at `/health/` for Render keepalive/cron pings
 
 ---
 
@@ -119,6 +120,14 @@ pytest
 ```
 
 The test settings provide safe defaults for required secrets and use SQLite at `/tmp/django_render_test.sqlite3`.
+
+Keepalive endpoint:
+
+```bash
+curl https://<your-render-host>/health/
+```
+
+The endpoint returns `{"status":"ok"}` when the Django web process is reachable. It does not check bot health or database state.
 
 ## Detected Stack
 

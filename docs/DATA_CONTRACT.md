@@ -73,6 +73,7 @@ No DRF serializer currently wraps bot-owned trading tables.
 - `/currencyconverter/json/exchangerates/` exposes exchange-rate list/detail endpoints.
 - `/api/schema` exposes the OpenAPI schema.
 - `/api/docs` exposes Swagger UI.
+- `/health/` exposes a public Django app liveness response for keepalive checks. It does not read or interpret bot-owned healthcheck data.
 
 Compatibility note: bot-owned table schemas are external contracts. Dashboard model field changes must be reviewed against the bot schema before release.
 

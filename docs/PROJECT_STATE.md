@@ -32,6 +32,7 @@ Implemented capabilities:
 - Tests for dashboard pages, permissions, form validation, and drift quantity prefill
 - DRF schema and Swagger UI through drf-spectacular
 - Project-level environment validation for required settings
+- Public Django app liveness endpoint at `/health/` for external keepalive checks
 
 Detected infrastructure and tooling:
 
@@ -92,6 +93,7 @@ Any change to bot-owned tables that affects dashboard interpretation must update
 - Dashboard still lacks normalized Fees (USDT) card if not yet merged.
 - Alerting is not implemented in dashboard and should likely be bot-owned.
 - More filters/pagination may be needed as dust detections grow.
+- `/health/` only confirms that the Django web process is reachable; it is not a bot/database health check.
 
 ---
 

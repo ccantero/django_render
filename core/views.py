@@ -27,6 +27,11 @@ def index(request):
     return render(request, 'core/index.html', {})
 
 
+@require_GET
+def health(request):
+	return JsonResponse({"status": "ok"})
+
+
 def bot_control_payload(control):
 	return {
 		"is_paused": control.is_paused,

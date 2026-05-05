@@ -37,6 +37,7 @@ Dashboard operator pages are implemented in the `dashboard` Django app.
 - Home page at `/`
 - Login and logout pages
 - Public demo dashboard at `/dashboard/demo/`
+- Public app liveness endpoint at `/health/`
 - About-me page at `/me`
 - Thanks page at `/thanks/`
 
