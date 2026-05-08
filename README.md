@@ -93,6 +93,23 @@ python src/scripts/manual_correction.py apply --id <id> --confirm
 
 The dashboard does not execute Binance orders and does not apply accounting corrections.
 
+### Validated Correction Path
+
+The dashboard request path has been validated for `CLOSE_LOTS_EXTERNAL_SELL`,
+including a 2026-05-08 ASIACOIN / `币安人生USDT` dust-closure case where Binance
+Small Amount Exchange removed the remaining SPOT balance while a FIFO lot stayed
+open. The dashboard created only the `PENDING` request; the bot CLI performed
+dry-run review and explicit confirmed application; and the dashboard then read
+the corrected state/history.
+
+Confirmed boundary:
+
+```text
+Dashboard = read/review/request UI
+Bot CLI/service = correction executor
+Binance = not called by the correction
+```
+
 ---
 
 ## Local Development

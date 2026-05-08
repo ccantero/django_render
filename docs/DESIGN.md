@@ -129,6 +129,13 @@ only when open_lot_quantity > spot_quantity
 
 Never prefill a negative quantity.
 
+Validated operator case:
+
+- For a reviewed external/manual balance loss where `spot_quantity = 0` and `open_lot_quantity > 0`, the expected request is usually `CLOSE_LOTS_EXTERNAL_SELL`.
+- The request should keep `status = PENDING`, a positive quantity, reviewed price, reason, requester identity, `source_detection_id` when available, and dashboard provenance in payload.
+- Labels should make Binance Small Amount Exchange / manual dust conversion understandable to operators when the raw detection reason is broader, such as `earn_or_external_transfer`.
+- Historical detections should stay visible as audit history after correction, but current views should avoid making old rows look newly unresolved.
+
 ---
 
 ## Decimal and Formatting Rules

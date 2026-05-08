@@ -37,6 +37,15 @@ Implemented capabilities:
 - Project-level environment validation for required settings
 - Public Django app liveness endpoint at `/health/` for external keepalive checks
 
+Validated operational correction path:
+
+- On 2026-05-08, an ASIACOIN / `币安人生USDT` dust-closure case validated the dashboard-created manual correction request flow.
+- Binance Small Amount Exchange removed the remaining SPOT balance while the bot still had an open FIFO lot of `0.0834` at entry price `0.3315`.
+- The dashboard displayed the persisted `lot_balance_drift_detected` signal and created a `PENDING` `bot.manual_corrections` row with `correction_type = CLOSE_LOTS_EXTERNAL_SELL`.
+- The request preserved dashboard provenance, requester identity, symbol, asset, quantity, price, reason, `source_detection_id`, and querystring context.
+- The dashboard did not apply the correction or mutate bot accounting tables directly; the bot CLI performed dry-run review and explicit confirmed application.
+- After application, validation showed no open lots and no portfolio row for the corrected symbol.
+
 Detected infrastructure and tooling:
 
 - Django REST Framework is present.
@@ -97,6 +106,7 @@ Any change to bot-owned tables that affects dashboard interpretation must update
 - Alerting is not implemented in dashboard and should likely be bot-owned.
 - More filters/pagination may be needed as dust detections grow.
 - `/health/` only confirms that the Django web process is reachable; it is not a bot/database health check.
+- Historical dust/drift rows remain visible after correction, so views must keep making active/latest state and linked correction status clear.
 
 ---
 

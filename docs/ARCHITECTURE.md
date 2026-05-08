@@ -93,7 +93,7 @@ Bot applies corrections
 
 Use `managed = False` for existing bot-owned tables.
 
-Local development defaults to SQLite through `dj_database_url`. Production-style configuration can use PostgreSQL through `DATABASE_URL`; when PostgreSQL is detected, settings apply a `bot,public` search path option.
+Local development defaults to SQLite through `dj_database_url`. Production-style configuration can use PostgreSQL through `DATABASE_URL`; when PostgreSQL is detected, settings currently apply a `django,public` search path option. Bot-owned table mappings use explicit `bot` schema table names.
 
 ## 4.1 Request Flow
 
@@ -167,6 +167,12 @@ Creation rules:
 - `payload.source = django_dashboard`
 
 The dashboard must not apply the correction. Application happens in the bot project through `ManualCorrectionService` or CLI.
+
+Validated flow:
+
+- `CLOSE_LOTS_EXTERNAL_SELL` has been validated end-to-end from dashboard request creation to bot CLI dry-run and confirmed application.
+- A 2026-05-08 ASIACOIN / `币安人生USDT` case confirmed that the dashboard can preserve `source_detection_id`, operator/request metadata, and context while leaving all accounting writes to the bot.
+- Binance is not called by this correction path; it is an accounting-only closure of reviewed lots.
 
 ---
 

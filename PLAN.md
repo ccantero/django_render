@@ -35,6 +35,7 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - Monitoring cards exist for bot status, portfolio summary, valuation consistency, latest operation/recent trade, drift alerts, and fees by asset.
 - Tests cover dashboard access, manual correction permissions, form validation, model contract alignment, drift prefill behavior, and environment validation.
 - Public `/health/` liveness endpoint exists for Render keepalive/cron pings.
+- The dashboard-created `CLOSE_LOTS_EXTERNAL_SELL` request flow was validated on 2026-05-08 with an ASIACOIN / `币安人生USDT` dust-closure case: dashboard request creation, bot CLI dry-run/confirmed apply, and post-apply dashboard state review all preserved the dashboard/bot boundary.
 
 ## P0 Safety / Correctness
 
@@ -45,14 +46,14 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 
 ## P1 Operator Workflow
 
-1. Add normalized Fees (USDT) card from `trade_operations.fee_amount_in_quote`.
-2. Add manual corrections pending count to the main dashboard.
-3. Add detailed lots summary from `position_lots`.
-4. Show linked source dust detection detail from correction detail.
-5. Add filter for operator guidance category.
-6. Add better pagination for large detection history.
-7. Add recent rejections/skips from `order_decisions` or `trade_operations` if the bot contract exposes them.
-8. Add explicit confirmation checkbox in the correction form if extra operator friction is desired.
+1. Add manual corrections pending count to the main dashboard.
+2. Add detailed lots summary from `position_lots`.
+3. Show linked source dust detection detail from correction detail.
+4. Add filter for operator guidance category.
+5. Add better pagination for large detection history.
+6. Add recent rejections/skips from `order_decisions` or `trade_operations` if the bot contract exposes them.
+7. Add explicit confirmation checkbox in the correction form if extra operator friction is desired.
+8. Add clearer labels for Binance Small Amount Exchange / manual dust conversion cases currently represented by broader reasons such as `earn_or_external_transfer`.
 9. Add dashboard action to mark a request as rejected only if the shared contract allows dashboard-side rejection.
 
 ## P2 Architecture / Tech Debt
@@ -95,3 +96,4 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - The dashboard relies on external bot-owned tables for production data.
 - Some bot-owned models use `managed = False`; migrations must not be generated for those tables unless ownership intentionally changes.
 - The dashboard is ready as a safe operator UI for controlled production usage only if the bot-side backend/CLI and `bot.manual_corrections` table are deployed.
+- Historical `dust_detections` rows remain visible after correction, so operator views should continue distinguishing active/latest signals from audit history.

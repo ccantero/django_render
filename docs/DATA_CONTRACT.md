@@ -1296,6 +1296,13 @@ Fields:
 - `payload JSONB NOT NULL DEFAULT '{}'::jsonb`
 - `error_message TEXT NULL`
 
+Dashboard-created request payloads should preserve provenance where available:
+
+- `payload.source = django_dashboard`
+- source querystring/context from the reviewed detection page
+- `source_detection_id` when the request was created from `bot.dust_detections`
+- operator-entered review note or reason text
+
 Indexes:
 
 - `status`
@@ -1474,6 +1481,15 @@ requiring schema changes:
 - Manual corrections remain accounting-only and must not be treated as Binance
   orders.
 
-Future duplicate-correction prevention or pending-correction linking may affect
-dashboard behavior. If implemented through new constraints, fields, statuses, or
-query semantics, this contract must be updated in the same task.
+An ASIACOIN / `币安人生USDT` dust-closure case on 2026-05-08 validated the same
+contract without schema changes. A Binance Small Amount Exchange removed the
+remaining SPOT balance while one FIFO lot stayed open; the dashboard inserted a
+`PENDING` manual correction request; the bot CLI applied
+`CLOSE_LOTS_EXTERNAL_SELL`; and the resulting manual trade operation, synthetic
+fill, lot closure, and corrected lot state remained in bot-owned audit tables.
+The request preserved dashboard provenance, requester identity, symbol, asset,
+quantity, price, reason, `source_detection_id`, and querystring context.
+
+Future changes to duplicate-correction matching or pending-correction linking
+may affect dashboard behavior. If implemented through new constraints, fields,
+statuses, or query semantics, this contract must be updated in the same task.
