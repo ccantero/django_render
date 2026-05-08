@@ -144,6 +144,8 @@ The dust dashboard reads `bot.dust_detections`, groups signals, and adds operato
 - Possible incomplete sell: inspect Binance history, then create correction request if confirmed
 - Unclassified signal: inspect details before taking action
 
+Dust list/detail views also batch-read `bot.manual_corrections` by `source_detection_id` to show whether a detection has no correction, a pending correction, an applied correction, a rejected correction, or a failed correction. The dashboard uses linked `PENDING` and `APPLIED` rows only to prevent obvious duplicate clicks in the UI; duplicate matching and rejection remain bot-owned.
+
 The dashboard must display uncertainty and avoid treating approximate exposure as audited PnL.
 
 The main dashboard also compares `bot.portfolio` projection value against open `bot.position_lots` valued with `portfolio.current_price`. Missing prices are counted and shown as warnings; they are not silently converted to zero-value audited PnL.

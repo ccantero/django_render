@@ -279,7 +279,6 @@ Dashboard usage:
 - Main positions table
 - Approximate current value
 - Unrealized PnL if entry/current prices are available
-- Price source for dashboard-side open-lots valuation consistency checks
 
 Important:
 
@@ -301,12 +300,9 @@ Suggested dashboard calculations:
 ```text
 position_value = quantity * current_price
 unrealized_pnl = (current_price - entry_price) * quantity
-open_lots_value = SUM(position_lots.remaining_quantity by symbol) * portfolio.current_price
-portfolio_vs_lots_drift = SUM(position_value) - SUM(open_lots_value)
 ```
 
 Only calculate if all required values exist.
-If `current_price` is missing, expose a missing price count/warning instead of silently valuing the row or lot at zero.
 
 ---
 
@@ -693,10 +689,7 @@ Use `trade_operations` / `lot_closures` for realized PnL if available.
 Suggested cards:
 
 - Open positions count
-- Portfolio projection value from `bot.portfolio`
-- Lots accounting value from open `bot.position_lots` joined to `bot.portfolio.current_price`
-- Portfolio vs lots drift
-- Missing current price count
+- Approximate portfolio value
 - Realized PnL
 - Total fees
 - Drift warnings count
@@ -789,7 +782,34 @@ Dust means small residual quantities or values that may be below Binance minimum
 
 Dashboard should detect and show dust candidates.
 
+Assets intentionally moved to Earn or held as long-term accumulation inventory should not be silently interpreted as trading drift.
+
+Until explicit Earn/location/accounting semantics exist, these movements should be treated as reviewed external operations.
+
 Do not auto-convert, auto-sell, or move to Earn from the dashboard unless a separate explicit and audited workflow is implemented.
+
+Repeated operational detections may generate multiple `bot.dust_detections`
+rows even when Telegram notifications are suppressed. Dashboard consumers must
+not assume one Telegram alert per row, one unresolved issue per row, or one
+operational incident per row. Repeated rows may represent historical observation
+continuity, heartbeat visibility, or unchanged suppressed signals.
+
+Ignored, reviewed, or suppressed rows in `bot.dust_signal_reviews` suppress
+matching Telegram paging only. Matching uses the stable available review
+signature: `event_type`, `symbol`, `asset`, `reason`, and `severity`.
+`bot.dust_signal_reviews` currently has no quantity field, so
+`quantity_delta` is not part of the persisted review signature yet. Matching
+detections continue to be inserted into `bot.dust_detections` and remain visible
+in dashboard history.
+
+Telegram cooldown/rate-limit suppression is runtime-only behavior. Cooldown
+state is in-memory, is not persisted, is not part of the shared DB contract,
+does not mutate accounting state, and does not imply review completion.
+
+Current DB accounting semantics are based on Binance SPOT visibility. Future
+visibility-only integrations may expose Earn, Flexible Earn, Locked Earn, or
+Staking balances without changing FIFO accounting ownership, lot closure
+semantics, or portfolio source-of-truth semantics.
 
 Suggested first version:
 
@@ -935,6 +955,7 @@ If dashboard interpretation could change, DATA_CONTRACT.md must change in the sa
 - Portfolio may be temporarily stale during cycle execution.
 - Dashboard should display uncertainty rather than force false precision.
 - Normalized fee cards should use `trade_operations.fee_amount_in_quote` when available instead of attempting external price conversion.
+- Long-term accumulation assets mixed with trading inventory may distort trading metrics and exposure calculations if not explicitly modeled.
 
 ---
 
@@ -1019,12 +1040,24 @@ Price / valuation rules:
 - If price is missing, `estimated_value_usdt` should be `null` / `None`.
 - Valuation is approximate and intended for prioritization, not final accounting.
 
+Classification rules:
+
+- `lot_below_min_notional_detected` remains the event type for small open lots
+  below the configured or exchange minNotional threshold.
+- A reconciled small open lot is an `info` `below_min_notional` observation
+  when Binance SPOT balance and open lots match within tolerance.
+- `possible_incomplete_sell` requires stronger evidence, such as a recent SELL
+  residual signal or an actual SPOT-vs-lot quantity mismatch. Dashboards should
+  not treat every partial open lot below minNotional as an incomplete SELL.
+
 Constraints:
 
 - No automatic selling.
 - No automatic Binance dust conversion.
 - No automatic Earn movement.
 - No mutation of `trade_operations`, `position_lots`, `lot_closures`, or `portfolio`.
+- Ignored/reviewed dashboard state may suppress Telegram paging only; it must
+  not suppress persistence or mutate accounting state.
 - Dust detection failure should be logged but should not crash a healthy trading cycle.
 
 ---
@@ -1079,13 +1112,49 @@ Important:
 - Same asset/symbol may legitimately produce multiple rows in one run only when `event_type` distinguishes the detection path.
 - `payload` is detail/context for dashboards and manual review. It is not an instruction to correct accounting state.
 
+## 19.1 `dust_signal_reviews` Table Contract
+
+Table shared with the dashboard:
+
+```text
+bot.dust_signal_reviews
+```
+
+Purpose:
+
+- Store operator review state for grouped dust/drift signals.
+- Let the bot skip Telegram paging for signals already marked ignored,
+  reviewed, or suppressed.
+- Preserve `bot.dust_detections` as the complete observation/history table.
+
+Current matching signature:
+
+- `event_type`
+- `symbol`
+- `asset`
+- `reason`
+- `severity`
+
+Important:
+
+- Review state is alert-only operational state.
+- Review state is not an accounting correction.
+- Review state does not mutate `bot.position_lots`, `bot.portfolio`,
+  `bot.trade_operations`, `bot.trade_fills`, `bot.lot_closures`, Binance
+  balances, or `bot.manual_corrections`.
+- Matching detections must continue to be inserted into `bot.dust_detections`
+  every cycle.
+- The current table has no quantity signature field. Future quantity-aware
+  review matching would require an explicit schema/contract update.
+
 Dashboard usage after Wave 2:
 
 - Show latest dust detections.
 - Group by symbol/asset.
 - Surface warning/critical detections first.
 - Do not treat summed dust values as audited financial PnL.
-- Manual reviewed/unreviewed state is not part of Wave 2. Add review fields in a future explicit migration before relying on review workflow queries.
+- Use `bot.dust_signal_reviews` only for operator review and alert
+  suppression state; do not treat it as detection history or accounting state.
 
 Validation SQL:
 
@@ -1181,6 +1250,8 @@ Semantics for `CLOSE_LOTS_EXTERNAL_SELL`:
 - Used when `bot.position_lots.quantity_open` is greater than actual Binance SPOT balance because of a manual sell, convert, or external action.
 - Requires positive Decimal `quantity`.
 - Requires positive Decimal `price_usdt`; the backend does not fetch a price.
+- Creation is rejected by the bot-owned correction workflow when an equivalent
+  `PENDING` or `APPLIED` correction already exists.
 - Closes open lots FIFO by `opened_at`, then `lot_id`.
 - Writes `bot.lot_closures.quantity_closed`, `entry_price`, `exit_price`, `realized_pnl`, and `trade_operation_id`.
 - Creates a clearly marked `bot.trade_operations` row with `side = 'SELL'`, `status = 'FILLED'`, `order_id = null`, and manual correction metadata in `client_order_id`, `run_id`, and `raw_payload`.
@@ -1188,6 +1259,22 @@ Semantics for `CLOSE_LOTS_EXTERNAL_SELL`:
 - Because there is no Binance order, `trade_fills.order_id` is `null`; the manual audit token is stored in fill metadata.
 - Does not call Binance and does not execute a market order.
 - Does not run during normal bot cycles.
+
+Duplicate prevention contract:
+
+- Matching is owned by the bot code, not by dashboard logic.
+- Blocking statuses are `PENDING` and `APPLIED`.
+- `REJECTED` rows do not block creation because they represent an explicit
+  operator decision not to proceed.
+- `FAILED` rows do not block creation so an operator can review the failure and
+  create a new explicit request.
+- Matching compares `correction_type`, `symbol`, quantity with Decimal-safe
+  tolerance, and `source_detection_id` when both compared rows have a non-null
+  value.
+- The current schema does not add a partial unique index for this rule because
+  tolerance-based quantity matching and optional source detection semantics are
+  application-level checks; a DB constraint could block legitimate future
+  corrections accidentally.
 
 Fields:
 
@@ -1297,16 +1384,70 @@ Dashboard operator guidance should classify signals conservatively. Unknown/uncl
 
 No bot-to-dashboard API is required for current alerting needs.
 
-Preferred alerting flow:
+Current alerting flow:
 
 ```text
 Bot detects event
 → Bot writes DB
-→ Bot sends Telegram/Pushover alert directly
+→ Bot sends Telegram alert directly when ALERTS_ENABLED=true
 → Dashboard remains read/review UI
 ```
 
 The bot should own critical notifications because it is the component detecting live trading/accounting events.
+
+Wave 5 phase 1 data contract impact:
+
+- No new database tables were added.
+- No existing table columns, status values, quantity semantics, or dashboard write permissions changed.
+- `bot.dust_detections` and `bot.manual_corrections` remain the dashboard-facing review/history surfaces.
+- Telegram alert dispatch is runtime behavior only and is not a shared database contract.
+- Dashboard interpretation is unchanged; dashboards should continue to read DB state and must not proxy bot notifications.
+- Dust/drift Telegram alert suppression does not hide, delete, collapse, or mark
+  `bot.dust_detections` rows. Repeated detections remain visible to database
+  consumers.
+- Suppression is not an accounting correction. It does not mutate lots,
+  portfolio, Binance balances, manual correction state, or dashboard review
+  state.
+
+Current bot-owned alert events:
+
+- manual correction created/applied/failed
+- `possible_incomplete_sell`
+- lot balance drift warning/critical
+- dust detection events with critical severity
+- safe bot-cycle unhandled failure catch points
+
+Current runtime alert config:
+
+- `ALERTS_ENABLED=false`
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+- `ALERTS_MIN_SEVERITY=warning`
+- `ALERTS_RATE_LIMIT_SECONDS=300`
+
+Dust/drift runtime dedupe behavior:
+
+- Repeated known dust/drift alerts are suppressed inside
+  `ALERTS_RATE_LIMIT_SECONDS` when event type, symbol, asset, reason, severity,
+  and normalized material quantity/value are unchanged.
+- Material changes can alert again, including severity increases, reason
+  changes, event type changes, symbol/asset changes, quantity delta changes, or
+  estimated USDT value changes.
+- The cooldown is in memory and follows `NotificationService` runtime lifetime;
+  it is not persisted in the shared database.
+
+Dashboard review suppression behavior:
+
+- The bot reads `bot.dust_signal_reviews` before sending eligible dust/drift
+  Telegram alerts.
+- Statuses `ignored`, `reviewed`, and `suppressed` suppress matching Telegram
+  paging.
+- The lookup is read-only and alert-only. It does not suppress
+  `bot.dust_detections` inserts, dashboard history, manual corrections, or any
+  accounting table.
+- Severity is part of the current match, so a warning-level review does not
+  automatically suppress a critical signal unless a matching critical review
+  row exists.
 
 A new API should be considered only if there is a real product requirement such as:
 
@@ -1316,4 +1457,23 @@ A new API should be considered only if there is a real product requirement such 
 - need to hide database access from all consumers
 - multi-user SaaS behavior
 
-For personal iPhone push, Telegram or Pushover alerts from the bot are simpler and safer than introducing a dashboard API.
+For personal iPhone push, Telegram alerts from the bot are simpler and safer than introducing a dashboard API. Pushover remains a future optional target and is not part of the current shared DB contract.
+
+---
+
+## 23. Operational Validation Notes
+
+An AVNTUSDT residual/drift case validated the current shared workflow without
+requiring schema changes:
+
+- `bot.dust_detections` remains the detection/history surface.
+- `bot.manual_corrections` remains the explicit request/outcome surface.
+- `CLOSE_LOTS_EXTERNAL_SELL` remains the only implemented apply path.
+- Telegram alerting is runtime behavior and does not change dashboard table
+  interpretation.
+- Manual corrections remain accounting-only and must not be treated as Binance
+  orders.
+
+Future duplicate-correction prevention or pending-correction linking may affect
+dashboard behavior. If implemented through new constraints, fields, statuses, or
+query semantics, this contract must be updated in the same task.

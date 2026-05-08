@@ -23,12 +23,14 @@ Implemented capabilities:
 - Fees by asset card
 - Dust / residual dashboard sourced from `bot.dust_detections`
 - Dust signal detail page
+- Linked correction badges for dust detections using `bot.manual_corrections.source_detection_id`
 - Manual review buttons:
   - mark ignored
   - review later
 - Manual correction request workflow through `bot.manual_corrections`
 - Manual correction list and detail pages
 - Staff-only creation of correction requests
+- UI-only duplicate click prevention for detections with linked `PENDING` or `APPLIED` corrections
 - Operator guidance labels for dust/drift signals
 - Tests for dashboard pages, permissions, form validation, valuation consistency, and drift quantity prefill
 - DRF schema and Swagger UI through drf-spectacular

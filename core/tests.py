@@ -23,6 +23,7 @@ from dashboard.dust_read_model import (
     _format_payload,
     _operator_guidance,
     _filter_by_review_status,
+    _with_correction_state,
     _reviews_for_rows,
     get_dust_dashboard_context,
     update_dust_signal_review,
@@ -297,6 +298,11 @@ class DashboardEndpointTests(TestCase):
                     'operator_priority': 'informational',
                     'operator_action': 'Monitor / optionally ignore',
                     'review_status': 'ignored',
+                    'correction_status_label': 'No correction',
+                    'correction_badge': 'badge-light',
+                    'correction_statuses': [],
+                    'has_blocking_correction': False,
+                    'is_actionable': False,
                     'detail_querystring': 'symbol=BTCUSDT&asset=BTC&reason=below_min_notional&event_type=dust_candidate_detected&severity=info',
                 },
                 {
@@ -316,6 +322,12 @@ class DashboardEndpointTests(TestCase):
                     'operator_priority': 'warning',
                     'operator_action': 'Inspect Binance history, then create correction request if external operation confirmed',
                     'review_status': 'pending',
+                    'correction_status_label': 'Pending correction',
+                    'correction_badge': 'badge-warning',
+                    'correction_statuses': ['PENDING'],
+                    'has_blocking_correction': True,
+                    'correction_block_message': 'A correction request is already pending for this detection.',
+                    'is_actionable': False,
                     'detail_querystring': 'symbol=ETHUSDT&asset=ETH&reason=possible_incomplete_sell&event_type=lot_below_min_notional_detected&severity=warning',
                 },
             ],
@@ -375,6 +387,9 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'Monitor / optionally ignore')
         self.assertContains(response, 'Possible incomplete sell')
         self.assertContains(response, 'Inspect Binance history')
+        self.assertContains(response, 'No correction')
+        self.assertContains(response, 'Pending correction')
+        self.assertContains(response, 'A correction request is already pending for this detection.')
         mock_get_dust_context.assert_called_once()
 
     @patch('dashboard.views.get_dust_detail_context')
@@ -397,11 +412,17 @@ class DashboardEndpointTests(TestCase):
             ],
             'group_summary': {
                 'detections_count': 2,
+                'latest_detection_id': 9,
                 'latest_detected_at': timezone.now(),
                 'latest_run_id': 'run-detail-001',
                 'latest_estimated_value_usdt': Decimal('0.415022396'),
                 'latest_estimated_delta_value_usdt': Decimal('0'),
                 'latest_suggested_action': 'review_recent_sell',
+                'correction_status_label': 'No correction',
+                'correction_badge': 'badge-light',
+                'correction_statuses': [],
+                'has_blocking_correction': False,
+                'is_actionable': True,
             },
             'review': None,
             'review_status': DustSignalReview.STATUS_PENDING,
@@ -451,6 +472,7 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'Manual review')
         self.assertContains(response, 'Mark ignored')
         self.assertContains(response, 'Review later')
+        self.assertContains(response, 'No correction')
         self.assertNotContains(response, 'Stop')
         self.assertNotContains(response, 'Resume')
         mock_get_detail_context.assert_called_once()
@@ -774,6 +796,79 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(binance_greater['operator_action'], 'Investigate manual buy/deposit/Earn return')
         self.assertEqual(incomplete_sell['operator_label'], 'Possible incomplete sell')
         self.assertIn('Inspect Binance history', incomplete_sell['operator_action'])
+
+    @patch('dashboard.dust_read_model.ManualCorrection.objects')
+    def test_detection_with_no_correction_shows_create_action_state(self, manager):
+        manager.filter.return_value.order_by.return_value = []
+        rows = _with_correction_state([{
+            'latest_detection_id': 101,
+            'latest_suggested_action': 'review_recent_sell',
+            'operator_priority': 'warning',
+            'review_status': DustSignalReview.STATUS_PENDING,
+        }])
+
+        self.assertEqual(rows[0]['correction_status_label'], 'No correction')
+        self.assertFalse(rows[0]['has_blocking_correction'])
+        self.assertTrue(rows[0]['is_actionable'])
+        manager.filter.assert_called_once_with(source_detection_id__in=[101])
+
+    @patch('dashboard.dust_read_model.ManualCorrection.objects')
+    def test_pending_correction_disables_create_action_state(self, manager):
+        manager.filter.return_value.order_by.return_value = [
+            SimpleNamespace(source_detection_id=102, status=ManualCorrection.STATUS_PENDING, id=1)
+        ]
+        rows = _with_correction_state([{'latest_detection_id': 102}])
+
+        self.assertEqual(rows[0]['correction_status_label'], 'Pending correction')
+        self.assertTrue(rows[0]['has_blocking_correction'])
+        self.assertFalse(rows[0]['is_actionable'])
+        self.assertEqual(rows[0]['correction_block_message'], 'A correction request is already pending for this detection.')
+
+    @patch('dashboard.dust_read_model.ManualCorrection.objects')
+    def test_applied_correction_disables_create_action_state(self, manager):
+        manager.filter.return_value.order_by.return_value = [
+            SimpleNamespace(source_detection_id=103, status=ManualCorrection.STATUS_APPLIED, id=2)
+        ]
+        rows = _with_correction_state([{'latest_detection_id': 103}])
+
+        self.assertEqual(rows[0]['correction_status_label'], 'Applied correction')
+        self.assertTrue(rows[0]['has_blocking_correction'])
+        self.assertFalse(rows[0]['is_actionable'])
+        self.assertEqual(rows[0]['correction_block_message'], 'A correction was already applied for this detection.')
+
+    @patch('dashboard.dust_read_model.ManualCorrection.objects')
+    def test_rejected_correction_allows_new_request_state(self, manager):
+        manager.filter.return_value.order_by.return_value = [
+            SimpleNamespace(source_detection_id=104, status=ManualCorrection.STATUS_REJECTED, id=3)
+        ]
+        rows = _with_correction_state([{'latest_detection_id': 104}])
+
+        self.assertEqual(rows[0]['correction_status_label'], 'Rejected correction')
+        self.assertFalse(rows[0]['has_blocking_correction'])
+        self.assertTrue(rows[0]['is_actionable'])
+
+    @patch('dashboard.dust_read_model.ManualCorrection.objects')
+    def test_failed_correction_allows_new_request_state(self, manager):
+        manager.filter.return_value.order_by.return_value = [
+            SimpleNamespace(source_detection_id=105, status=ManualCorrection.STATUS_FAILED, id=4)
+        ]
+        rows = _with_correction_state([{'latest_detection_id': 105}])
+
+        self.assertEqual(rows[0]['correction_status_label'], 'Failed correction')
+        self.assertFalse(rows[0]['has_blocking_correction'])
+        self.assertTrue(rows[0]['is_actionable'])
+
+    @patch('dashboard.dust_read_model.ManualCorrection.objects')
+    def test_correction_state_batches_by_source_detection_id(self, manager):
+        manager.filter.return_value.order_by.return_value = []
+        _with_correction_state([
+            {'latest_detection_id': 201},
+            {'latest_detection_id': 202},
+            {'latest_detection_id': 201},
+            {'latest_detection_id': None},
+        ])
+
+        manager.filter.assert_called_once_with(source_detection_id__in=[201, 202])
 
     def test_pending_review_filter_keeps_only_pending_rows(self):
         rows = [
@@ -1253,4 +1348,15 @@ class ManualCorrectionWorkflowTests(TransactionTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'This does not execute Binance orders.')
+        self.assertEqual(ManualCorrection.objects.count(), 0)
+
+    @patch('dashboard.views.ManualCorrection.save', side_effect=DatabaseError('duplicate correction'))
+    def test_bot_side_duplicate_rejection_error_is_user_friendly(self, mock_save):
+        self.client.force_login(self.staff_user)
+
+        response = self.client.post(self.url, self.payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'The correction request could not be saved.')
+        self.assertContains(response, 'The bot remains the source of truth for duplicate correction validation.')
         self.assertEqual(ManualCorrection.objects.count(), 0)

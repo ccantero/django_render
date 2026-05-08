@@ -58,6 +58,7 @@ Shows:
 - suggested action
 - review status
 - operator guidance
+- linked correction status
 
 ### Dust detail
 
@@ -71,6 +72,7 @@ Shows latest grouped signal details:
 - payload
 - run id
 - manual review actions
+- correction status for the latest detection and raw detections
 
 ### Manual corrections
 
@@ -115,6 +117,8 @@ It must show a safety confirmation:
 - This does not convert dust.
 - This is an accounting correction request.
 - Bot-owned service/CLI must apply it.
+
+When a dust detection is linked to a `PENDING` or `APPLIED` correction through `source_detection_id`, the dashboard should disable the create action and show a clear message. This is only click-prevention UX; bot-side duplicate prevention remains the source of truth.
 
 For `CLOSE_LOTS_EXTERNAL_SELL`, prefill quantity only when safe:
 

@@ -19,7 +19,7 @@ from django.db.models import (
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from core.models import DustSignalReview
+from core.models import DustSignalReview, ManualCorrection
 from core.trading_models import DustDetection
 
 
@@ -80,6 +80,7 @@ def get_dust_dashboard_context(filters=None):
 		context["filter_options"] = _build_filter_options(queryset)
 		context["grouped_detections"] = _grouped_detections(queryset)
 		context["grouped_detections"] = _with_review_state(context["grouped_detections"])
+		context["grouped_detections"] = _with_correction_state(context["grouped_detections"])
 		context["grouped_detections"] = _filter_by_review_status(
 			context["grouped_detections"],
 			context["filters"]["review_status"],
@@ -118,11 +119,14 @@ def get_dust_detail_context(filters=None):
 	try:
 		queryset = _filtered_group_detections(filters)
 		grouped_rows = _grouped_detections(queryset, limit=1)
+		grouped_rows = _with_correction_state(grouped_rows)
 		context["group_summary"] = grouped_rows[0] if grouped_rows else None
 		context["review"] = _review_for_identity(filters)
 		if context["review"]:
 			context["review_status"] = context["review"].status
-		context["raw_detections"] = _latest_raw_detections(queryset)
+		context["raw_detections"] = _with_raw_detection_correction_state(
+			_latest_raw_detections(queryset)
+		)
 	except DatabaseError as exc:
 		context["dust_error"] = "Query too slow"
 		context["data_error"] = f"Query too slow: {exc}"
@@ -151,6 +155,7 @@ def get_dust_overview_context():
 		queryset = _latest_run_queryset()
 		context["top_grouped_detections"] = _grouped_detections(queryset)
 		context["top_grouped_detections"] = _with_review_state(context["top_grouped_detections"])
+		context["top_grouped_detections"] = _with_correction_state(context["top_grouped_detections"])
 		context.update(_build_summary(queryset, context["top_grouped_detections"]))
 	except DatabaseError as exc:
 		context["data_error"] = f"Query too slow: {exc}"
@@ -522,6 +527,101 @@ def _with_review_state(rows):
 	return rows
 
 
+def _with_correction_state(rows):
+	corrections_by_detection_id = _corrections_for_detection_ids(
+		row.get("latest_detection_id") for row in rows
+	)
+	for row in rows:
+		corrections = corrections_by_detection_id.get(row.get("latest_detection_id"), [])
+		row.update(_correction_state(corrections))
+		row["suggested_action_text"] = _suggested_action_text(row)
+	return rows
+
+
+def _with_raw_detection_correction_state(items):
+	corrections_by_detection_id = _corrections_for_detection_ids(
+		item["row"].id for item in items
+	)
+	for item in items:
+		item.update(_correction_state(corrections_by_detection_id.get(item["row"].id, [])))
+	return items
+
+
+def _corrections_for_detection_ids(detection_ids):
+	ids = sorted({detection_id for detection_id in detection_ids if detection_id is not None})
+	if not ids:
+		return {}
+	try:
+		corrections = list(
+			ManualCorrection.objects
+			.filter(source_detection_id__in=ids)
+			.order_by("source_detection_id", "-created_at", "-id")
+		)
+	except DatabaseError:
+		return {}
+	corrections_by_detection_id = {}
+	for correction in corrections:
+		corrections_by_detection_id.setdefault(correction.source_detection_id, []).append(correction)
+	return corrections_by_detection_id
+
+
+def _correction_state(corrections):
+	statuses = [correction.status for correction in corrections]
+	status_set = set(statuses)
+	if ManualCorrection.STATUS_PENDING in status_set:
+		return {
+			"correction_status_label": "Pending correction",
+			"correction_badge": "badge-warning",
+			"correction_statuses": statuses,
+			"has_blocking_correction": True,
+			"correction_block_message": "A correction request is already pending for this detection.",
+			"is_actionable": False,
+		}
+	if ManualCorrection.STATUS_APPLIED in status_set:
+		return {
+			"correction_status_label": "Applied correction",
+			"correction_badge": "badge-success",
+			"correction_statuses": statuses,
+			"has_blocking_correction": True,
+			"correction_block_message": "A correction was already applied for this detection.",
+			"is_actionable": False,
+		}
+	if ManualCorrection.STATUS_REJECTED in status_set:
+		return {
+			"correction_status_label": "Rejected correction",
+			"correction_badge": "badge-secondary",
+			"correction_statuses": statuses,
+			"has_blocking_correction": False,
+			"correction_block_message": "",
+			"is_actionable": True,
+		}
+	if ManualCorrection.STATUS_FAILED in status_set:
+		return {
+			"correction_status_label": "Failed correction",
+			"correction_badge": "badge-danger",
+			"correction_statuses": statuses,
+			"has_blocking_correction": False,
+			"correction_block_message": "",
+			"is_actionable": True,
+		}
+	return {
+		"correction_status_label": "No correction",
+		"correction_badge": "badge-light",
+		"correction_statuses": [],
+		"has_blocking_correction": False,
+		"correction_block_message": "",
+		"is_actionable": True,
+	}
+
+
+def _suggested_action_text(row):
+	if row.get("has_blocking_correction"):
+		return row.get("correction_block_message")
+	if row.get("latest_suggested_action"):
+		return row["latest_suggested_action"]
+	return row.get("operator_action") or "Inspect details before taking action"
+
+
 def _reviews_for_rows(rows):
 	if not rows:
 		return {}
@@ -729,6 +829,7 @@ def _important_queries():
 		"bot.dust_detections: Sum of latest grouped estimated_value_usdt values as approximate exposure, not PnL; not historical cumulative exposure",
 		"bot.dust_detections: grouped by symbol, asset, reason, event_type, severity with COUNT and MAX(detected_at)",
 		"bot.dust_detections: latest values fetched in one latest-row lookup for bounded groups",
+		"bot.manual_corrections: correction states fetched in one source_detection_id batch for bounded groups",
 		"Recommended production index, not managed by Django: CREATE INDEX idx_dust_run_detected ON bot.dust_detections (run_id, detected_at DESC);",
 	]
 
@@ -738,12 +839,14 @@ def _detail_queries():
 		"bot.dust_detections: exact group filter by symbol, asset, reason, event_type, severity",
 		"bot.dust_detections: grouped summary for the selected group using latest row values",
 		"bot.dust_detections: latest 100 raw detections for the selected group ordered by detected_at desc, id desc",
+		"bot.manual_corrections: correction states fetched in one source_detection_id batch for latest detail rows",
 	]
 
 
 def _assumptions():
 	return [
 		"Dashboard reads bot.dust_detections only; it never mutates bot-owned tables.",
+		"Dashboard reads bot.manual_corrections for review state and may create PENDING requests only.",
 		"estimated_value_usdt is approximate and is not interpreted as PnL.",
 		"severity ordering treats critical, warning, info, then unknown as the display priority.",
 	]

@@ -1,4 +1,5 @@
 from django.contrib.auth.decorators import login_required
+from django.db import DatabaseError
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -72,8 +73,15 @@ def manual_correction_new(request):
 				"source": "django_dashboard",
 				"source_querystring": request.GET.urlencode(),
 			}
-			correction.save()
-			return redirect("manual_correction_detail", correction_id=correction.id)
+			try:
+				correction.save()
+			except DatabaseError:
+				form.add_error(
+					None,
+					"The correction request could not be saved. The bot remains the source of truth for duplicate correction validation.",
+				)
+			else:
+				return redirect("manual_correction_detail", correction_id=correction.id)
 	else:
 		form = ManualCorrectionRequestForm(initial=initial)
 
@@ -138,4 +146,3 @@ def _requested_by(user):
 		if value:
 			return value
 	return str(user)
-

@@ -30,7 +30,8 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - Dashboard does not apply manual corrections or mutate bot accounting tables directly.
 - `ManualCorrection` is aligned to bot-owned `bot.manual_corrections`.
 - Manual correction requests validate positive quantity and never prefill a negative correction quantity.
-- Dust / drift workflow supports grouped detections, latest run metadata, detail payloads, operator guidance, ignored/review-later actions, and manual correction request links.
+- Dust / drift workflow supports grouped detections, latest run metadata, detail payloads, operator guidance, ignored/review-later actions, linked correction status, and manual correction request links.
+- Dust correction request links are disabled in the UI when the latest detection already has a linked `PENDING` or `APPLIED` correction; bot-side duplicate validation remains authoritative.
 - Monitoring cards exist for bot status, portfolio summary, valuation consistency, latest operation/recent trade, drift alerts, and fees by asset.
 - Tests cover dashboard access, manual correction permissions, form validation, model contract alignment, drift prefill behavior, and environment validation.
 - Public `/health/` liveness endpoint exists for Render keepalive/cron pings.

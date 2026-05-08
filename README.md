@@ -17,6 +17,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Drift alerts between `bot.portfolio` and `bot.position_lots`
 - Dust / residual dashboard from `bot.dust_detections`
 - Dust signal detail page
+- Dust detections show linked manual correction status by `source_detection_id`
 - Manual review actions:
   - mark ignored
   - review later
@@ -59,6 +60,7 @@ The dashboard and bot are separate projects and share only the database.
   - `bot.portfolio`
 - The dashboard may create `PENDING` rows in `bot.manual_corrections` only through the explicit review workflow.
 - The bot-side CLI/service applies or rejects corrections.
+- The dashboard may hide/disable obvious duplicate correction clicks for detections with linked `PENDING` or `APPLIED` corrections, but bot-side duplicate validation remains authoritative.
 
 ---
 

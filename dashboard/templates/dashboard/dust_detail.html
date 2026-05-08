@@ -41,6 +41,12 @@
 		border-radius: 0.25rem;
 		padding: 0.75rem;
 	}
+
+	.correction-state {
+		background: #f7f9fc;
+		border-radius: 0.25rem;
+		padding: 0.75rem;
+	}
 </style>
 
 <div class="container-fluid py-4 dashboard-page">
@@ -129,7 +135,20 @@
 						<tr><th>Quantity delta</th><td>{{ group_summary.latest_quantity_delta|floatformat:8|default:"-" }}</td></tr>
 						<tr><th>Estimated value USDT</th><td>{{ group_summary.latest_estimated_value_usdt|floatformat:8|default:"-" }}</td></tr>
 						<tr><th>Estimated delta value USDT</th><td>{{ group_summary.latest_estimated_delta_value_usdt|floatformat:8|default:"-" }}</td></tr>
-						<tr><th>Suggested action</th><td>{{ group_summary.latest_suggested_action|default:"-" }}</td></tr>
+						<tr>
+							<th>Suggested action</th>
+							<td>
+								{% if group_summary.suggested_action_text %}
+									{{ group_summary.suggested_action_text }}
+								{% else %}
+									{{ group_summary.latest_suggested_action|default:"-" }}
+								{% endif %}
+							</td>
+						</tr>
+						<tr>
+							<th>Correction</th>
+							<td><span class="badge {{ group_summary.correction_badge|default:'badge-light' }}">{{ group_summary.correction_status_label|default:"No correction" }}</span></td>
+						</tr>
 						<tr><th>Run ID</th><td>{{ group_summary.latest_run_id|default:"-" }}</td></tr>
 						<tr>
 							<th>Payload</th>
@@ -180,9 +199,22 @@
 				<button type="submit" name="status" value="ignored" class="btn btn-outline-secondary">Mark ignored</button>
 				<button type="submit" name="status" value="review_later" class="btn btn-outline-warning">Review later</button>
 				{% if request.user.is_staff or request.user.is_superuser %}
-					<a class="btn btn-danger" href="{% url 'manual_correction_new' %}?{{ back_querystring }}">Create manual correction request</a>
+					{% if group_summary.has_blocking_correction %}
+						<button type="button" class="btn btn-danger" disabled>Create manual correction request</button>
+					{% else %}
+						<a class="btn btn-danger" href="{% url 'manual_correction_new' %}?{{ back_querystring }}">Create manual correction request</a>
+					{% endif %}
 				{% endif %}
 			</form>
+
+			<div class="correction-state mt-3 small">
+				<p class="mb-1">Correction state: <span class="badge {{ group_summary.correction_badge|default:'badge-light' }}">{{ group_summary.correction_status_label|default:"No correction" }}</span></p>
+				{% if group_summary.correction_block_message %}
+					<p class="mb-0">{{ group_summary.correction_block_message }}</p>
+				{% else %}
+					<p class="mb-0 text-muted">No pending or applied correction is linked to this latest detection.</p>
+				{% endif %}
+			</div>
 
 			<div class="review-meta mt-3 small">
 				<p class="mb-1">Reviewed by: <strong>{{ review.reviewed_by|default:"-" }}</strong></p>
@@ -214,6 +246,7 @@
 							<th class="text-right">Approx exposure, not PnL</th>
 							<th class="text-right">Estimated delta USDT</th>
 							<th>Suggested action</th>
+							<th>Correction</th>
 							<th>Source</th>
 							<th>Payload</th>
 						</tr>
@@ -231,6 +264,7 @@
 								<td class="text-right">{{ item.row.estimated_value_usdt|floatformat:8|default:"-" }}</td>
 								<td class="text-right">{{ item.row.estimated_delta_value_usdt|floatformat:8|default:"-" }}</td>
 								<td>{{ item.row.suggested_action|default:"-" }}</td>
+								<td><span class="badge {{ item.correction_badge|default:'badge-light' }}">{{ item.correction_status_label|default:"No correction" }}</span></td>
 								<td>{{ item.row.source|default:"-" }}</td>
 								<td>
 									{% if item.has_payload %}
@@ -245,7 +279,7 @@
 							</tr>
 						{% empty %}
 							<tr>
-								<td colspan="12" class="text-muted text-center py-4">No detections found for this dust signal.</td>
+								<td colspan="13" class="text-muted text-center py-4">No detections found for this dust signal.</td>
 							</tr>
 						{% endfor %}
 					</tbody>
