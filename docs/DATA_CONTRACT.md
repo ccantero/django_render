@@ -306,7 +306,7 @@ Only calculate if all required values exist.
 
 ---
 
-## 3.6 `healthcheck`
+## 3.6 `bot.bot_healthcheck`
 
 Operational health status written by the bot.
 
@@ -320,17 +320,15 @@ Dashboard usage:
 Conceptual fields:
 
 - status
-- last cycle timestamp
-- last successful cycle timestamp
-- last error
-- updated timestamp
+- heartbeat timestamp, currently `created_at`
+- details payload, which may include error context
 - run id if available
 
 Suggested dashboard status logic:
 
 ```text
-Healthy: recent healthcheck and status OK
-Stale: last healthcheck older than threshold
+Healthy: recent healthcheck, using `created_at` as the current heartbeat timestamp
+Stale: latest healthcheck heartbeat older than threshold
 Unknown: no healthcheck available
 Error: latest status indicates failure
 ```
@@ -653,8 +651,8 @@ limit 50;
 
 ```sql
 select *
-from bot.healthcheck
-order by updated_at desc
+from bot.bot_healthcheck
+order by created_at desc, id desc
 limit 1;
 ```
 
@@ -756,6 +754,38 @@ Important:
 - This is operational fee reporting, not full audited PnL.
 - Do not call Binance from the dashboard to recalculate these values.
 - Keep calculations Decimal-safe and round only for display.
+
+## 7.4.2 Performance KPIs (Wave 8 Phase 1)
+
+Dashboard usage:
+
+- Read-only operational visibility only.
+- Use `bot.lot_closures.realized_pnl` where available for realized PnL.
+- Use `bot.trade_operations.fee_amount_in_quote` for normalized USDT fees on `status = 'FILLED'` and `quote_asset = 'USDT'` operations.
+- Do not invent fee conversions for fees that cannot be normalized to USDT.
+- Exclude unnormalized fees from normalized USDT fee totals and display that limitation.
+- Group realized PnL by symbol through linked `trade_operations` when available.
+- Group realized PnL by `lot_closures.timestamp` date when available.
+- Use FILLED BUY quote value as an initial gross deployed capital approximation and label it as approximate/gross deployed capital.
+
+Current metric semantics:
+
+- Net realized PnL = realized PnL from closures minus normalized USDT fees.
+- Win rate ignores zero-PnL closures and reports breakeven separately.
+- Average loss is displayed as signed realized PnL.
+- Profit factor is `gross_profit / abs(gross_loss)`.
+- If gross loss is zero, profit factor should display N/A rather than infinity.
+
+Manual correction handling:
+
+- Manual/accounting correction operations may appear in `trade_operations` and linked `lot_closures`.
+- Dashboards may split manual/accounting adjustment PnL only when operation metadata clearly identifies the operation as a manual correction.
+- If metadata is unavailable or ambiguous, dashboards should include those rows in realized PnL totals and display the limitation.
+
+Important:
+
+- These KPIs are operational metrics, not audited accounting statements.
+- The dashboard must not call Binance or execute trading logic to fill missing data.
 
 ## 7.5 Operational Alerts
 
@@ -1234,6 +1264,11 @@ Allowed statuses:
 - `REJECTED`
 - `FAILED`
 
+Bot service-level apply handling is idempotent for already `APPLIED`
+corrections: it returns the stored correction without creating new accounting
+records. CLI apply still operates on `PENDING` corrections and requires
+explicit confirmation for persistence.
+
 Allowed correction types:
 
 - `CLOSE_LOTS_EXTERNAL_SELL`
@@ -1241,9 +1276,10 @@ Allowed correction types:
 - `CREATE_EXTERNAL_LOT`
 - `MARK_DUST_IGNORED`
 
-Phase 1 applied type:
+Implemented applied types:
 
 - `CLOSE_LOTS_EXTERNAL_SELL`
+- `CREATE_EXTERNAL_LOT`
 
 Semantics for `CLOSE_LOTS_EXTERNAL_SELL`:
 
@@ -1259,6 +1295,50 @@ Semantics for `CLOSE_LOTS_EXTERNAL_SELL`:
 - Because there is no Binance order, `trade_fills.order_id` is `null`; the manual audit token is stored in fill metadata.
 - Does not call Binance and does not execute a market order.
 - Does not run during normal bot cycles.
+
+Partial residual semantics:
+
+- The requested `quantity` may be smaller than the oldest open lot quantity.
+- The bot closes only the confirmed reviewed delta.
+- This is valid for fee-induced residual drift, such as fees paid in the base
+  asset that make Binance SPOT slightly smaller than FIFO inventory.
+- For accounting-only residual reconciliation, `price_usdt` may intentionally
+  be chosen so the correction does not invent trading PnL. Dashboards should
+  display these rows as manual accounting corrections, not Binance-executed
+  market sells.
+
+Semantics for `CREATE_EXTERNAL_LOT`:
+
+- Used when Binance SPOT balance is greater than open bot lots and the
+  operator confirms the external/manual/Earn-return balance should become
+  bot-managed tradable inventory.
+- Requires positive Decimal `quantity`.
+- Requires positive Decimal `price_usdt`; the backend does not fetch a price.
+- Creation is rejected by the bot-owned correction workflow when an equivalent
+  `PENDING` or `APPLIED` correction already exists.
+- Creates a clearly marked `bot.trade_operations` row with `side = 'BUY'`,
+  `status = 'FILLED'`, `order_id = null`, and manual correction metadata in
+  `client_order_id`, `run_id`, and `raw_payload`.
+- Creates a synthetic `bot.trade_fills` row with
+  `source = 'MANUAL_CORRECTION'` and `event_type = 'BUY_FILL'`.
+- Creates one `bot.position_lots` row with `status = 'OPEN'`,
+  `quantity_original = quantity`, `quantity_open = quantity`, and
+  `source = 'MANUAL_CORRECTION'`.
+- Refreshes `bot.portfolio` as a projection from open lots.
+- Does not create `bot.lot_closures` because the correction increases manual
+  inventory instead of closing a sell.
+- Does not call Binance and does not execute a market order.
+- Does not run during normal bot cycles.
+
+Operational drift directions:
+
+- Binance SPOT greater than open lots is reconciled through reviewed
+  `CREATE_EXTERNAL_LOT`.
+- Open lots greater than Binance SPOT is reconciled through reviewed
+  `CLOSE_LOTS_EXTERNAL_SELL`.
+- Detection, review, request creation, dry-run preview, and confirmed apply
+  remain separate steps. The dashboard may surface and request; the bot applies
+  and owns all accounting mutations.
 
 Duplicate prevention contract:
 
@@ -1321,6 +1401,10 @@ The dashboard may insert/request or review rows through this workflow only. It m
 - `bot.trade_fills`
 - `bot.lot_closures`
 - `bot.portfolio`
+
+Dashboard may request/create `PENDING` `CREATE_EXTERNAL_LOT` corrections after
+operator review, but it must not apply them or directly mutate accounting
+tables. Apply remains bot-owned through the manual correction service/CLI.
 
 Actual schema constraints confirmed for Phase 1:
 
@@ -1423,6 +1507,8 @@ Current bot-owned alert events:
 - lot balance drift warning/critical
 - dust detection events with critical severity
 - safe bot-cycle unhandled failure catch points
+- external bot watchdog stale/unknown alerts, based on the latest
+  `bot.bot_healthcheck` heartbeat
 
 Current runtime alert config:
 
@@ -1431,6 +1517,8 @@ Current runtime alert config:
 - `TELEGRAM_CHAT_ID`
 - `ALERTS_MIN_SEVERITY=warning`
 - `ALERTS_RATE_LIMIT_SECONDS=300`
+- `BOT_STALE_THRESHOLD_MINUTES=15`
+- `BOT_WATCHDOG_ALERT_COOLDOWN_MINUTES=60`
 
 Dust/drift runtime dedupe behavior:
 
@@ -1480,6 +1568,9 @@ requiring schema changes:
   interpretation.
 - Manual corrections remain accounting-only and must not be treated as Binance
   orders.
+- `CREATE_EXTERNAL_LOT` is now an implemented accounting-only apply path for
+  confirmed external inventory increases. It creates manual BUY/FILLED audit
+  records and an OPEN lot, with no Binance order and no lot closures.
 
 An ASIACOIN / `币安人生USDT` dust-closure case on 2026-05-08 validated the same
 contract without schema changes. A Binance Small Amount Exchange removed the

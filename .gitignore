@@ -24,6 +24,7 @@ htmlcov/
 .codex/sessions/
 .codex/tmp/
 .codex/cache/
+AGENTS.md
 
 # Django
 db.sqlite3

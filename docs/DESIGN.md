@@ -31,6 +31,16 @@ Dashboard operator pages are implemented in the `dashboard` Django app.
 - Latest trade
 - Drift summary
 - Fees by asset
+- Performance KPI cards:
+  - net realized PnL
+  - total fees USDT
+  - win rate
+  - average win and average loss
+  - profit factor
+  - gross deployed capital
+- Simple performance tables:
+  - PnL by symbol
+  - PnL by day
 - Link to Dust / Residuals
 
 ### Public and auth pages
@@ -145,6 +155,9 @@ Validated operator case:
 - Count and warn on missing prices instead of silently treating them as zero.
 - Do not write rounded display values back to DB.
 - Do not recalculate trading PnL in the dashboard unless the contract defines the source fields.
+- Wave 8 Phase 1 performance KPIs use `lot_closures.realized_pnl` and `trade_operations.fee_amount_in_quote`.
+- Show profit factor as N/A when gross loss is zero.
+- Label gross deployed capital as approximate because it is based on FILLED BUY quote value, not audited capital efficiency.
 
 ---
 

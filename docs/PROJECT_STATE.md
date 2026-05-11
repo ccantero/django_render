@@ -19,6 +19,8 @@ Implemented capabilities:
 - Portfolio summary
 - Valuation consistency showing portfolio projection value, open-lots accounting value, drift, and missing price counts
 - Latest trade/recent operations card
+- Wave 8 Phase 1 performance KPI cards for net realized PnL, total USDT fees, win rate, average win/loss, profit factor, and gross deployed capital
+- Read-only PnL by symbol and PnL by day tables
 - Drift visibility between portfolio and lots
 - Fees by asset card
 - Dust / residual dashboard sourced from `bot.dust_detections`
@@ -33,6 +35,7 @@ Implemented capabilities:
 - UI-only duplicate click prevention for detections with linked `PENDING` or `APPLIED` corrections
 - Operator guidance labels for dust/drift signals
 - Tests for dashboard pages, permissions, form validation, valuation consistency, and drift quantity prefill
+- Tests for performance KPI Decimal calculations, null safety, zero-loss profit factor behavior, and identifiable manual correction PnL splitting
 - DRF schema and Swagger UI through drf-spectacular
 - Project-level environment validation for required settings
 - Public Django app liveness endpoint at `/health/` for external keepalive checks
@@ -102,7 +105,9 @@ Any change to bot-owned tables that affects dashboard interpretation must update
 
 - Bot-owned table mappings still live in `core`; a later planned split can move them to `bot_shared`.
 - DB grants for public/Supabase roles need review.
-- Dashboard still lacks normalized Fees (USDT) card if not yet merged.
+- Normalized Fees (USDT) and performance KPI cards depend on `fee_amount_in_quote`; non-USDT/unavailable conversions remain excluded by design.
+- Performance KPI history currently reads available lot closures and should be revisited with pagination/date filters if closure volume becomes large.
+- Gross deployed capital is an approximation based on FILLED BUY quote value and must not be presented as audited capital efficiency.
 - Alerting is not implemented in dashboard and should likely be bot-owned.
 - More filters/pagination may be needed as dust detections grow.
 - `/health/` only confirms that the Django web process is reachable; it is not a bot/database health check.

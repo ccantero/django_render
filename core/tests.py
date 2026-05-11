@@ -14,6 +14,7 @@ from dashboard.dashboard_read_model import (
     _build_fee_summary,
     _build_quote_fee_summary,
     _build_valuation_consistency,
+    _calculate_performance_kpis,
 )
 from dashboard.dust_read_model import (
     _build_summary,
@@ -166,6 +167,35 @@ class DashboardEndpointTests(TestCase):
                     'SELL': {'total_fee_usdt': Decimal('0.15'), 'operations_count': 1},
                 },
             },
+            'performance_kpis': {
+                'gross_realized_pnl': Decimal('12.50'),
+                'total_fees_usdt': Decimal('0.25'),
+                'net_realized_pnl': Decimal('12.25'),
+                'closures_count': 2,
+                'winning_closures_count': 1,
+                'losing_closures_count': 1,
+                'breakeven_closures_count': 0,
+                'win_rate': Decimal('50'),
+                'average_win': Decimal('15.00'),
+                'average_loss': Decimal('-2.50'),
+                'profit_factor': Decimal('6'),
+                'gross_deployed_capital': Decimal('120.00'),
+                'bot_realized_pnl': Decimal('12.50'),
+                'manual_adjustment_pnl': Decimal('0'),
+                'manual_corrections_split_available': False,
+                'manual_corrections_note': 'Manual/accounting corrections are split only when identifiable from trade operation metadata; otherwise realized PnL remains included in totals.',
+                'fee_limitations_note': 'USDT fees use fee_amount_in_quote for FILLED USDT-quote operations. Fees that cannot be normalized to USDT are excluded.',
+                'pnl_by_symbol': [
+                    {'symbol': 'BTCUSDT', 'realized_pnl': Decimal('12.50'), 'closures_count': 2},
+                ],
+                'pnl_by_day': [
+                    {
+                        'date': timezone.datetime(2026, 5, 1, tzinfo=timezone.utc).date(),
+                        'realized_pnl': Decimal('12.50'),
+                        'closures_count': 2,
+                    },
+                ],
+            },
             'latest_trade': {
                 'row': SimpleNamespace(
                     side='BUY',
@@ -208,6 +238,17 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, '0.25 USDT')
         self.assertContains(response, 'Dust / Residuals')
         self.assertContains(response, 'Latest grouped values, not PnL')
+        self.assertContains(response, 'Performance KPIs')
+        self.assertContains(response, 'Net realized PnL')
+        self.assertContains(response, '12.25 USDT')
+        self.assertContains(response, 'Win rate')
+        self.assertContains(response, 'Average win')
+        self.assertContains(response, 'Average loss')
+        self.assertContains(response, 'Profit factor')
+        self.assertContains(response, 'Gross deployed capital')
+        self.assertContains(response, 'PnL by symbol')
+        self.assertContains(response, 'PnL by day')
+        self.assertContains(response, 'BTCUSDT')
 
     @patch('dashboard.views.get_dashboard_context')
     def test_dashboard_shows_dust_summary(self, mock_get_dashboard_context):
@@ -1040,6 +1081,137 @@ class DashboardEndpointTests(TestCase):
         self.assertIn(('values', ('side',)), query.calls)
         self.assertIn(('order_by', ('side',)), query.calls)
 
+    def test_performance_kpis_calculate_realized_pnl_fees_and_deployed_capital(self):
+        closure_rows = [
+            {
+                'trade_operation_id': 1,
+                'realized_pnl': Decimal('12.50'),
+                'timestamp': timezone.datetime(2026, 5, 1, tzinfo=timezone.utc),
+            },
+            {
+                'trade_operation_id': 2,
+                'realized_pnl': Decimal('-4.25'),
+                'timestamp': timezone.datetime(2026, 5, 2, tzinfo=timezone.utc),
+            },
+        ]
+        operation_rows = {
+            1: {'symbol': 'BTCUSDT', 'manual_correction': False},
+            2: {'symbol': 'ETHUSDT', 'manual_correction': False},
+        }
+        fee_rows = [
+            {'fee_amount_in_quote': Decimal('0.50')},
+            {'fee_amount_in_quote': Decimal('0.25')},
+            {'fee_amount_in_quote': None},
+        ]
+        buy_rows = [
+            {'gross_quote': Decimal('100.00')},
+            {'gross_quote': Decimal('25.25')},
+            {'gross_quote': None},
+        ]
+
+        summary = _calculate_performance_kpis(
+            closure_rows,
+            operation_rows,
+            fee_rows,
+            buy_rows,
+        )
+
+        self.assertEqual(summary['gross_realized_pnl'], Decimal('8.25'))
+        self.assertEqual(summary['total_fees_usdt'], Decimal('0.75'))
+        self.assertEqual(summary['net_realized_pnl'], Decimal('7.50'))
+        self.assertEqual(summary['gross_deployed_capital'], Decimal('125.25'))
+
+    def test_performance_kpis_calculate_win_rate_averages_and_profit_factor(self):
+        closure_rows = [
+            {'trade_operation_id': 1, 'realized_pnl': Decimal('10'), 'timestamp': None},
+            {'trade_operation_id': 1, 'realized_pnl': Decimal('5'), 'timestamp': None},
+            {'trade_operation_id': 2, 'realized_pnl': Decimal('-3'), 'timestamp': None},
+            {'trade_operation_id': 3, 'realized_pnl': Decimal('0'), 'timestamp': None},
+        ]
+
+        summary = _calculate_performance_kpis(closure_rows, {}, [], [])
+
+        self.assertEqual(summary['winning_closures_count'], 2)
+        self.assertEqual(summary['losing_closures_count'], 1)
+        self.assertEqual(summary['breakeven_closures_count'], 1)
+        self.assertEqual(summary['win_rate'], Decimal('66.66666666666666666666666667'))
+        self.assertEqual(summary['average_win'], Decimal('7.5'))
+        self.assertEqual(summary['average_loss'], Decimal('-3'))
+        self.assertEqual(summary['profit_factor'], Decimal('5'))
+
+    def test_performance_kpis_zero_loss_profit_factor_is_none(self):
+        closure_rows = [
+            {'trade_operation_id': 1, 'realized_pnl': Decimal('10'), 'timestamp': None},
+            {'trade_operation_id': 1, 'realized_pnl': Decimal('2'), 'timestamp': None},
+        ]
+
+        summary = _calculate_performance_kpis(closure_rows, {}, [], [])
+
+        self.assertIsNone(summary['profit_factor'])
+
+    def test_performance_kpis_ignore_nulls_without_crashing(self):
+        closure_rows = [
+            {'trade_operation_id': None, 'realized_pnl': None, 'timestamp': None},
+            {'trade_operation_id': 1, 'realized_pnl': Decimal('2'), 'timestamp': None},
+        ]
+        fee_rows = [{'fee_amount_in_quote': None}]
+        buy_rows = [{'gross_quote': None}]
+
+        summary = _calculate_performance_kpis(closure_rows, {}, fee_rows, buy_rows)
+
+        self.assertEqual(summary['closures_count'], 1)
+        self.assertEqual(summary['gross_realized_pnl'], Decimal('2'))
+        self.assertEqual(summary['total_fees_usdt'], Decimal('0'))
+        self.assertEqual(summary['gross_deployed_capital'], Decimal('0'))
+
+    def test_performance_kpis_split_identifiable_manual_corrections(self):
+        closure_rows = [
+            {'trade_operation_id': 1, 'realized_pnl': Decimal('8'), 'timestamp': None},
+            {'trade_operation_id': 2, 'realized_pnl': Decimal('-2'), 'timestamp': None},
+        ]
+        operation_rows = {
+            1: {'symbol': 'BTCUSDT', 'manual_correction': False},
+            2: {'symbol': 'ETHUSDT', 'manual_correction': True},
+        }
+
+        summary = _calculate_performance_kpis(closure_rows, operation_rows, [], [])
+
+        self.assertEqual(summary['bot_realized_pnl'], Decimal('8'))
+        self.assertEqual(summary['manual_adjustment_pnl'], Decimal('-2'))
+        self.assertTrue(summary['manual_corrections_split_available'])
+
+    def test_performance_kpis_group_pnl_by_symbol_and_day(self):
+        closure_rows = [
+            {
+                'trade_operation_id': 1,
+                'realized_pnl': Decimal('3'),
+                'timestamp': timezone.datetime(2026, 5, 1, 9, tzinfo=timezone.utc),
+            },
+            {
+                'trade_operation_id': 1,
+                'realized_pnl': Decimal('4'),
+                'timestamp': timezone.datetime(2026, 5, 1, 10, tzinfo=timezone.utc),
+            },
+            {
+                'trade_operation_id': 2,
+                'realized_pnl': Decimal('-1'),
+                'timestamp': timezone.datetime(2026, 5, 2, 9, tzinfo=timezone.utc),
+            },
+        ]
+        operation_rows = {
+            1: {'symbol': 'BTCUSDT', 'manual_correction': False},
+            2: {'symbol': 'ETHUSDT', 'manual_correction': False},
+        }
+
+        summary = _calculate_performance_kpis(closure_rows, operation_rows, [], [])
+
+        self.assertEqual(summary['pnl_by_symbol'][0]['symbol'], 'BTCUSDT')
+        self.assertEqual(summary['pnl_by_symbol'][0]['realized_pnl'], Decimal('7'))
+        self.assertEqual(summary['pnl_by_symbol'][0]['closures_count'], 2)
+        self.assertEqual(summary['pnl_by_day'][0]['date'].isoformat(), '2026-05-01')
+        self.assertEqual(summary['pnl_by_day'][0]['realized_pnl'], Decimal('7'))
+        self.assertEqual(summary['pnl_by_day'][1]['date'].isoformat(), '2026-05-02')
+
     def test_valuation_consistency_matching_portfolio_and_lots_values(self):
         portfolio_rows = [
             SimpleNamespace(
@@ -1174,6 +1346,27 @@ class DashboardEndpointTests(TestCase):
                     'BUY': {'total_fee_usdt': Decimal('0'), 'operations_count': 0},
                     'SELL': {'total_fee_usdt': Decimal('0'), 'operations_count': 0},
                 },
+            },
+            'performance_kpis': {
+                'gross_realized_pnl': Decimal('0'),
+                'total_fees_usdt': Decimal('0'),
+                'net_realized_pnl': Decimal('0'),
+                'closures_count': 0,
+                'winning_closures_count': 0,
+                'losing_closures_count': 0,
+                'breakeven_closures_count': 0,
+                'win_rate': None,
+                'average_win': None,
+                'average_loss': None,
+                'profit_factor': None,
+                'gross_deployed_capital': Decimal('0'),
+                'bot_realized_pnl': Decimal('0'),
+                'manual_adjustment_pnl': Decimal('0'),
+                'manual_corrections_split_available': False,
+                'manual_corrections_note': 'Manual/accounting corrections are split only when identifiable from trade operation metadata; otherwise realized PnL remains included in totals.',
+                'fee_limitations_note': 'USDT fees use fee_amount_in_quote for FILLED USDT-quote operations. Fees that cannot be normalized to USDT are excluded.',
+                'pnl_by_symbol': [],
+                'pnl_by_day': [],
             },
             'latest_trade': {'row': None, 'gross_quote': None, 'net_quote': None},
             'reconciliation': {

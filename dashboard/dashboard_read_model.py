@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from dashboard.dust_read_model import get_dust_overview_context
 from core.models import BotControl
-from core.trading_models import BotHealthcheck, Portfolio, PositionLot, TradeOperation
+from core.trading_models import BotHealthcheck, LotClosure, Portfolio, PositionLot, TradeOperation
 
 
 DRIFT_TOLERANCE = Decimal("0.00000001")
@@ -33,6 +33,7 @@ def get_dashboard_context():
 		"valuation_consistency": _empty_valuation_consistency(),
 		"fee_summary": _empty_fee_summary(),
 		"quote_fee_summary": _empty_quote_fee_summary(),
+		"performance_kpis": _empty_performance_kpis(),
 		"latest_trade": None,
 		"reconciliation": _empty_reconciliation(),
 		"dust_summary": _empty_dust_summary(),
@@ -61,6 +62,11 @@ def get_dashboard_context():
 		context["quote_fee_summary"] = _build_quote_fee_summary()
 	except DatabaseError as exc:
 		_add_data_error(context, "USDT fees", exc)
+
+	try:
+		context["performance_kpis"] = _build_performance_kpis()
+	except DatabaseError as exc:
+		_add_data_error(context, "performance KPIs", exc)
 
 	try:
 		context["latest_trade"] = _build_latest_trade()
@@ -131,6 +137,29 @@ def get_demo_dashboard_context():
 				"BUY": {"total_fee_usdt": Decimal("2.10"), "operations_count": 3},
 				"SELL": {"total_fee_usdt": Decimal("1.32"), "operations_count": 2},
 			},
+		},
+		"performance_kpis": {
+			**_empty_performance_kpis(),
+			"gross_realized_pnl": Decimal("128.55"),
+			"total_fees_usdt": Decimal("3.42"),
+			"net_realized_pnl": Decimal("125.13"),
+			"closures_count": 6,
+			"winning_closures_count": 4,
+			"losing_closures_count": 2,
+			"breakeven_closures_count": 0,
+			"win_rate": Decimal("66.66666666666666666666666667"),
+			"average_win": Decimal("42.25"),
+			"average_loss": Decimal("-20.225"),
+			"profit_factor": Decimal("4.177997527812113720642768850"),
+			"gross_deployed_capital": Decimal("2500.00"),
+			"bot_realized_pnl": Decimal("128.55"),
+			"pnl_by_symbol": [
+				{"symbol": "ETHUSDT", "realized_pnl": Decimal("92.50"), "closures_count": 3},
+				{"symbol": "BTCUSDT", "realized_pnl": Decimal("36.05"), "closures_count": 3},
+			],
+			"pnl_by_day": [
+				{"date": now.date(), "realized_pnl": Decimal("128.55"), "closures_count": 6},
+			],
 		},
 		"latest_trade": {
 			"row": SimpleNamespace(
@@ -404,6 +433,189 @@ def _empty_quote_fee_summary():
 	}
 
 
+def _build_performance_kpis():
+	closure_rows = list(
+		LotClosure.objects
+		.values("trade_operation_id", "realized_pnl", "timestamp")
+		.order_by("timestamp", "id")
+	)
+	operation_ids = {
+		row["trade_operation_id"]
+		for row in closure_rows
+		if row.get("trade_operation_id") is not None
+	}
+	operations = {}
+	if operation_ids:
+		for row in (
+			TradeOperation.objects
+			.filter(id__in=operation_ids)
+			.values("id", "symbol", "client_order_id", "raw_payload")
+		):
+			operations[row["id"]] = {
+				"symbol": row.get("symbol") or "unknown",
+				"manual_correction": _is_manual_correction_operation(row),
+			}
+
+	fee_rows = (
+		TradeOperation.objects
+		.filter(status="FILLED", quote_asset="USDT")
+		.values("fee_amount_in_quote")
+	)
+	buy_rows = (
+		TradeOperation.objects
+		.filter(status="FILLED", side="BUY")
+		.values("gross_quote")
+	)
+	return _calculate_performance_kpis(closure_rows, operations, fee_rows, buy_rows)
+
+
+def _calculate_performance_kpis(closure_rows, operation_rows, fee_rows, buy_rows):
+	total_fees_usdt = sum(
+		(row.get("fee_amount_in_quote") or Decimal("0"))
+		for row in fee_rows
+	)
+	gross_deployed_capital = sum(
+		(row.get("gross_quote") or Decimal("0"))
+		for row in buy_rows
+	)
+
+	gross_realized_pnl = Decimal("0")
+	gross_profit = Decimal("0")
+	gross_loss = Decimal("0")
+	win_count = 0
+	loss_count = 0
+	breakeven_count = 0
+	closures_count = 0
+	bot_realized_pnl = Decimal("0")
+	manual_adjustment_pnl = Decimal("0")
+	manual_corrections_split_available = False
+	pnl_by_symbol = {}
+	pnl_by_day = {}
+
+	for row in closure_rows:
+		realized_pnl = row.get("realized_pnl")
+		if realized_pnl is None:
+			continue
+
+		closures_count += 1
+		gross_realized_pnl += realized_pnl
+		if realized_pnl > 0:
+			win_count += 1
+			gross_profit += realized_pnl
+		elif realized_pnl < 0:
+			loss_count += 1
+			gross_loss += realized_pnl
+		else:
+			breakeven_count += 1
+
+		operation = operation_rows.get(row.get("trade_operation_id"), {})
+		if operation.get("manual_correction"):
+			manual_adjustment_pnl += realized_pnl
+			manual_corrections_split_available = True
+		else:
+			bot_realized_pnl += realized_pnl
+
+		symbol = operation.get("symbol") or "unknown"
+		symbol_row = pnl_by_symbol.setdefault(
+			symbol,
+			{"symbol": symbol, "realized_pnl": Decimal("0"), "closures_count": 0},
+		)
+		symbol_row["realized_pnl"] += realized_pnl
+		symbol_row["closures_count"] += 1
+
+		timestamp = row.get("timestamp")
+		if timestamp is not None:
+			day = timezone.localtime(timestamp).date() if timezone.is_aware(timestamp) else timestamp.date()
+			day_row = pnl_by_day.setdefault(
+				day,
+				{"date": day, "realized_pnl": Decimal("0"), "closures_count": 0},
+			)
+			day_row["realized_pnl"] += realized_pnl
+			day_row["closures_count"] += 1
+
+	decided_count = win_count + loss_count
+	win_rate = None
+	if decided_count:
+		win_rate = Decimal(win_count) / Decimal(decided_count) * Decimal("100")
+
+	average_win = gross_profit / Decimal(win_count) if win_count else None
+	average_loss = gross_loss / Decimal(loss_count) if loss_count else None
+	profit_factor = None
+	if gross_loss != 0:
+		profit_factor = gross_profit / abs(gross_loss)
+
+	return {
+		"gross_realized_pnl": gross_realized_pnl,
+		"total_fees_usdt": total_fees_usdt,
+		"net_realized_pnl": gross_realized_pnl - total_fees_usdt,
+		"closures_count": closures_count,
+		"winning_closures_count": win_count,
+		"losing_closures_count": loss_count,
+		"breakeven_closures_count": breakeven_count,
+		"win_rate": win_rate,
+		"average_win": average_win,
+		"average_loss": average_loss,
+		"profit_factor": profit_factor,
+		"gross_deployed_capital": gross_deployed_capital,
+		"bot_realized_pnl": bot_realized_pnl,
+		"manual_adjustment_pnl": manual_adjustment_pnl,
+		"manual_corrections_split_available": manual_corrections_split_available,
+		"manual_corrections_note": (
+			"Manual/accounting corrections are split only when identifiable from trade operation metadata; otherwise realized PnL remains included in totals."
+		),
+		"fee_limitations_note": (
+			"USDT fees use fee_amount_in_quote for FILLED USDT-quote operations. Fees that cannot be normalized to USDT are excluded."
+		),
+		"pnl_by_symbol": sorted(
+			pnl_by_symbol.values(),
+			key=lambda item: item["realized_pnl"],
+			reverse=True,
+		),
+		"pnl_by_day": sorted(
+			pnl_by_day.values(),
+			key=lambda item: item["date"],
+		),
+	}
+
+
+def _is_manual_correction_operation(row):
+	raw_payload = row.get("raw_payload")
+	if isinstance(raw_payload, dict):
+		source = str(raw_payload.get("source") or "").upper()
+		if raw_payload.get("correction_id") or source == "MANUAL_CORRECTION":
+			return True
+	client_order_id = str(row.get("client_order_id") or "").lower()
+	return "manual" in client_order_id or "correction" in client_order_id
+
+
+def _empty_performance_kpis():
+	return {
+		"gross_realized_pnl": Decimal("0"),
+		"total_fees_usdt": Decimal("0"),
+		"net_realized_pnl": Decimal("0"),
+		"closures_count": 0,
+		"winning_closures_count": 0,
+		"losing_closures_count": 0,
+		"breakeven_closures_count": 0,
+		"win_rate": None,
+		"average_win": None,
+		"average_loss": None,
+		"profit_factor": None,
+		"gross_deployed_capital": Decimal("0"),
+		"bot_realized_pnl": Decimal("0"),
+		"manual_adjustment_pnl": Decimal("0"),
+		"manual_corrections_split_available": False,
+		"manual_corrections_note": (
+			"Manual/accounting corrections are split only when identifiable from trade operation metadata; otherwise realized PnL remains included in totals."
+		),
+		"fee_limitations_note": (
+			"USDT fees use fee_amount_in_quote for FILLED USDT-quote operations. Fees that cannot be normalized to USDT are excluded."
+		),
+		"pnl_by_symbol": [],
+		"pnl_by_day": [],
+	}
+
+
 def _build_latest_trade():
 	row = TradeOperation.objects.order_by("-executed_at", "-created_at", "-id").first()
 	if row is None:
@@ -502,6 +714,8 @@ def _important_queries():
 		"bot.portfolio + bot.position_lots: Decimal valuation consistency using portfolio current_price",
 		"bot.trade_operations: SUM(fee_amount) GROUP BY fee_asset",
 		"bot.trade_operations: SUM(fee_amount_in_quote), COUNT(*) WHERE status = FILLED AND quote_asset = USDT GROUP BY side",
+		"bot.lot_closures + bot.trade_operations: realized PnL KPIs grouped by symbol/day with identifiable manual correction split",
+		"bot.trade_operations: SUM(gross_quote) WHERE status = FILLED AND side = BUY for approximate gross deployed capital",
 		"bot.trade_operations: latest row ordered by executed_at/created_at/id desc",
 		"bot.position_lots: SUM(quantity_open) WHERE quantity_open > 0 GROUP BY symbol",
 		"bot.dust_detections: operational dust summary and top detections, read-only",
@@ -515,4 +729,6 @@ def _assumptions():
 		"position_lots remains the accounting source of truth for open inventory.",
 		"Drift is surfaced as a dashboard warning; no trading action is executed.",
 		"Missing current_price values are counted and excluded from value totals.",
+		"Performance KPIs are operational read-only metrics, not audited accounting statements.",
+		"Non-USDT or unnormalized fees are excluded from normalized USDT fee totals.",
 	]

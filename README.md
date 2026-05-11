@@ -14,6 +14,12 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Valuation consistency between `bot.portfolio` projection value and open `bot.position_lots` accounting value
 - Recent operations/latest trade
 - Fees by asset
+- Wave 8 Phase 1 read-only performance KPI dashboard:
+  - net realized PnL after normalized USDT fees
+  - total fees USDT
+  - win rate, average win/loss, and profit factor
+  - gross deployed capital approximation
+  - PnL by symbol and day
 - Drift alerts between `bot.portfolio` and `bot.position_lots`
 - Dust / residual dashboard from `bot.dust_detections`
 - Dust signal detail page
@@ -51,6 +57,8 @@ The dashboard and bot are separate projects and share only the database.
 
 - `position_lots` is the accounting source of truth.
 - `portfolio` is a projection/read layer.
+- Performance KPIs are operational visibility, not audited accounting statements.
+- Normalized fee totals use `bot.trade_operations.fee_amount_in_quote` for FILLED USDT-quote operations; fees that cannot be normalized to USDT are excluded.
 - SELL coverage must never be inferred from `portfolio`.
 - The dashboard must not directly update:
   - `bot.position_lots`

@@ -175,6 +175,150 @@
 		<div class="card-body">
 			<div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
 				<div>
+					<h2 class="h5 mb-1">Performance KPIs</h2>
+					<p class="text-muted small mb-0">Operational read-only metrics from lot closures and filled trade operations, not audited accounting statements.</p>
+				</div>
+			</div>
+
+			<div class="row">
+				<div class="col-lg-3 col-md-6 mb-3">
+					<p class="mb-1">Net realized PnL</p>
+					<p class="h4 mb-0">{{ performance_kpis.net_realized_pnl|floatformat:2 }} USDT</p>
+					<p class="text-muted small mb-0">Realized PnL less normalized USDT fees</p>
+				</div>
+				<div class="col-lg-3 col-md-6 mb-3">
+					<p class="mb-1">Total fees USDT</p>
+					<p class="h4 mb-0">{{ performance_kpis.total_fees_usdt|floatformat:2 }} USDT</p>
+					<p class="text-muted small mb-0">FILLED USDT-quote operations</p>
+				</div>
+				<div class="col-lg-3 col-md-6 mb-3">
+					<p class="mb-1">Win rate</p>
+					<p class="h4 mb-0">
+						{% if performance_kpis.win_rate is not None %}
+							{{ performance_kpis.win_rate|floatformat:2 }}%
+						{% else %}
+							N/A
+						{% endif %}
+					</p>
+					<p class="text-muted small mb-0">Wins/losses only; breakeven: {{ performance_kpis.breakeven_closures_count }}</p>
+				</div>
+				<div class="col-lg-3 col-md-6 mb-3">
+					<p class="mb-1">Average win</p>
+					<p class="h4 mb-0">
+						{% if performance_kpis.average_win is not None %}
+							{{ performance_kpis.average_win|floatformat:2 }} USDT
+						{% else %}
+							N/A
+						{% endif %}
+					</p>
+					<p class="text-muted small mb-0">Winning closures: {{ performance_kpis.winning_closures_count }}</p>
+				</div>
+				<div class="col-lg-3 col-md-6 mb-3">
+					<p class="mb-1">Average loss</p>
+					<p class="h4 mb-0">
+						{% if performance_kpis.average_loss is not None %}
+							{{ performance_kpis.average_loss|floatformat:2 }} USDT
+						{% else %}
+							N/A
+						{% endif %}
+					</p>
+					<p class="text-muted small mb-0">Displayed as signed realized PnL</p>
+				</div>
+				<div class="col-lg-3 col-md-6 mb-3">
+					<p class="mb-1">Profit factor</p>
+					<p class="h4 mb-0">
+						{% if performance_kpis.profit_factor is not None %}
+							{{ performance_kpis.profit_factor|floatformat:2 }}
+						{% else %}
+							N/A
+						{% endif %}
+					</p>
+					<p class="text-muted small mb-0">Gross profit / absolute gross loss</p>
+				</div>
+				<div class="col-lg-3 col-md-6 mb-3">
+					<p class="mb-1">Gross deployed capital</p>
+					<p class="h4 mb-0">{{ performance_kpis.gross_deployed_capital|floatformat:2 }} USDT</p>
+					<p class="text-muted small mb-0">Approx sum of FILLED BUY quote value</p>
+				</div>
+				<div class="col-lg-3 col-md-6 mb-3">
+					<p class="mb-1">Manual/accounting adjustment PnL</p>
+					<p class="h4 mb-0">{{ performance_kpis.manual_adjustment_pnl|floatformat:2 }} USDT</p>
+					<p class="text-muted small mb-0">
+						{% if performance_kpis.manual_corrections_split_available %}
+							Split from identifiable correction metadata
+						{% else %}
+							Included in totals when not identifiable
+						{% endif %}
+					</p>
+				</div>
+			</div>
+
+			<p class="text-muted small">{{ performance_kpis.fee_limitations_note }}</p>
+			<p class="text-muted small">{{ performance_kpis.manual_corrections_note }}</p>
+
+			<div class="row">
+				<div class="col-lg-6 mb-3">
+					<h3 class="h6">PnL by symbol</h3>
+					{% if performance_kpis.pnl_by_symbol %}
+						<div class="table-responsive">
+							<table class="table table-sm mb-0">
+								<thead>
+									<tr>
+										<th>Symbol</th>
+										<th class="text-right">Realized PnL</th>
+										<th class="text-right">Closures</th>
+									</tr>
+								</thead>
+								<tbody>
+									{% for row in performance_kpis.pnl_by_symbol %}
+										<tr>
+											<td>{{ row.symbol|default:"-" }}</td>
+											<td class="text-right">{{ row.realized_pnl|floatformat:2 }} USDT</td>
+											<td class="text-right">{{ row.closures_count }}</td>
+										</tr>
+									{% endfor %}
+								</tbody>
+							</table>
+						</div>
+					{% else %}
+						<p class="text-muted mb-0">No realized PnL data yet.</p>
+					{% endif %}
+				</div>
+				<div class="col-lg-6 mb-3">
+					<h3 class="h6">PnL by day</h3>
+					{% if performance_kpis.pnl_by_day %}
+						<div class="table-responsive">
+							<table class="table table-sm mb-0">
+								<thead>
+									<tr>
+										<th>Date</th>
+										<th class="text-right">Realized PnL</th>
+										<th class="text-right">Closures</th>
+									</tr>
+								</thead>
+								<tbody>
+									{% for row in performance_kpis.pnl_by_day %}
+										<tr>
+											<td>{{ row.date|date:"Y-m-d"|default:"-" }}</td>
+											<td class="text-right">{{ row.realized_pnl|floatformat:2 }} USDT</td>
+											<td class="text-right">{{ row.closures_count }}</td>
+										</tr>
+									{% endfor %}
+								</tbody>
+							</table>
+						</div>
+					{% else %}
+						<p class="text-muted mb-0">No dated PnL data yet.</p>
+					{% endif %}
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="card mb-3">
+		<div class="card-body">
+			<div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
+				<div>
 					<h2 class="h5 mb-1">Dust / Residuals</h2>
 					<p class="text-muted small mb-0">Grouped signals (not raw detections). Approx exposure uses latest grouped values, not PnL.</p>
 				</div>

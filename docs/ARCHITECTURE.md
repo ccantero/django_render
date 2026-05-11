@@ -14,6 +14,7 @@ It provides visibility, review, and request workflows over bot-owned database ta
 
 - Read bot health and trading state.
 - Display portfolio, lots, trades, fees, drift, and dust detections.
+- Display read-only operational performance KPIs from realized lot closures and filled trade operations.
 - Display grouped dust/residual signals with operator guidance.
 - Record manual review state.
 - Create explicit `PENDING` manual correction requests.
@@ -149,6 +150,8 @@ Dust list/detail views also batch-read `bot.manual_corrections` by `source_detec
 The dashboard must display uncertainty and avoid treating approximate exposure as audited PnL.
 
 The main dashboard also compares `bot.portfolio` projection value against open `bot.position_lots` valued with `portfolio.current_price`. Missing prices are counted and shown as warnings; they are not silently converted to zero-value audited PnL.
+
+The Wave 8 Phase 1 KPI section is read-only. It uses `bot.lot_closures.realized_pnl` for realized PnL, `bot.trade_operations.fee_amount_in_quote` for normalized USDT fee totals, and FILLED BUY quote value as approximate gross deployed capital. Non-USDT or unavailable fee conversions are excluded from normalized totals. Manual/accounting correction PnL is split only when available trade operation metadata identifies it; otherwise it remains included in realized PnL totals with an explicit limitation note.
 
 ---
 
