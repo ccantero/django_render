@@ -59,6 +59,7 @@ The dashboard and bot are separate projects and share only the database.
 - `portfolio` is a projection/read layer.
 - Performance KPIs are operational visibility, not audited accounting statements.
 - Normalized fee totals use `bot.trade_operations.fee_amount_in_quote` for FILLED USDT-quote operations; fees that cannot be normalized to USDT are excluded.
+- PnL by day uses linked trade operation timestamps (`executed_at` then `created_at`), not a timestamp on `lot_closures`.
 - SELL coverage must never be inferred from `portfolio`.
 - The dashboard must not directly update:
   - `bot.position_lots`

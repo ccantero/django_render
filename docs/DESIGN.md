@@ -156,6 +156,7 @@ Validated operator case:
 - Do not write rounded display values back to DB.
 - Do not recalculate trading PnL in the dashboard unless the contract defines the source fields.
 - Wave 8 Phase 1 performance KPIs use `lot_closures.realized_pnl` and `trade_operations.fee_amount_in_quote`.
+- PnL by day uses the linked trade operation `executed_at` timestamp, falling back to `created_at`; closures without a linked operation timestamp are excluded only from the day table.
 - Show profit factor as N/A when gross loss is zero.
 - Label gross deployed capital as approximate because it is based on FILLED BUY quote value, not audited capital efficiency.
 

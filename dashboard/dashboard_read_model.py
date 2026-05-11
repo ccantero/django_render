@@ -436,8 +436,8 @@ def _empty_quote_fee_summary():
 def _build_performance_kpis():
 	closure_rows = list(
 		LotClosure.objects
-		.values("trade_operation_id", "realized_pnl", "timestamp")
-		.order_by("timestamp", "id")
+		.values("trade_operation_id", "realized_pnl")
+		.order_by("trade_operation_id", "id")
 	)
 	operation_ids = {
 		row["trade_operation_id"]
@@ -449,11 +449,12 @@ def _build_performance_kpis():
 		for row in (
 			TradeOperation.objects
 			.filter(id__in=operation_ids)
-			.values("id", "symbol", "client_order_id", "raw_payload")
+			.values("id", "symbol", "client_order_id", "raw_payload", "executed_at", "created_at")
 		):
 			operations[row["id"]] = {
 				"symbol": row.get("symbol") or "unknown",
 				"manual_correction": _is_manual_correction_operation(row),
+				"timestamp": row.get("executed_at") or row.get("created_at"),
 			}
 
 	fee_rows = (
@@ -523,7 +524,7 @@ def _calculate_performance_kpis(closure_rows, operation_rows, fee_rows, buy_rows
 		symbol_row["realized_pnl"] += realized_pnl
 		symbol_row["closures_count"] += 1
 
-		timestamp = row.get("timestamp")
+		timestamp = operation.get("timestamp")
 		if timestamp is not None:
 			day = timezone.localtime(timestamp).date() if timezone.is_aware(timestamp) else timestamp.date()
 			day_row = pnl_by_day.setdefault(

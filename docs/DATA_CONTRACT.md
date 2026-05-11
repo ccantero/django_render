@@ -765,7 +765,8 @@ Dashboard usage:
 - Do not invent fee conversions for fees that cannot be normalized to USDT.
 - Exclude unnormalized fees from normalized USDT fee totals and display that limitation.
 - Group realized PnL by symbol through linked `trade_operations` when available.
-- Group realized PnL by `lot_closures.timestamp` date when available.
+- Group realized PnL by linked `trade_operations.executed_at` date when available, falling back to linked `trade_operations.created_at`.
+- If no linked operation timestamp exists, include the closure in realized PnL totals and symbol grouping but skip it from PnL by day.
 - Use FILLED BUY quote value as an initial gross deployed capital approximation and label it as approximate/gross deployed capital.
 
 Current metric semantics:

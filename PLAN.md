@@ -97,6 +97,6 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - No Django management commands are currently present.
 - The dashboard relies on external bot-owned tables for production data.
 - Some bot-owned models use `managed = False`; migrations must not be generated for those tables unless ownership intentionally changes.
-- Performance KPIs are operational metrics only; fee normalization excludes non-USDT/unavailable conversions, and manual corrections are split only when identifiable from operation metadata.
+- Performance KPIs are operational metrics only; fee normalization excludes non-USDT/unavailable conversions, PnL by day depends on linked trade operation timestamps, and manual corrections are split only when identifiable from operation metadata.
 - The dashboard is ready as a safe operator UI for controlled production usage only if the bot-side backend/CLI and `bot.manual_corrections` table are deployed.
 - Historical `dust_detections` rows remain visible after correction, so operator views should continue distinguishing active/latest signals from audit history.

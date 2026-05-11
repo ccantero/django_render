@@ -12,6 +12,7 @@ from unittest.mock import patch
 from dashboard.dashboard_read_model import (
     _build_bot_status,
     _build_fee_summary,
+    _build_performance_kpis,
     _build_quote_fee_summary,
     _build_valuation_consistency,
     _calculate_performance_kpis,
@@ -1081,17 +1082,70 @@ class DashboardEndpointTests(TestCase):
         self.assertIn(('values', ('side',)), query.calls)
         self.assertIn(('order_by', ('side',)), query.calls)
 
+    def test_performance_kpi_read_model_does_not_query_lot_closure_timestamp(self):
+        class FakeLotClosureQuery:
+            def __init__(self):
+                self.values_fields = None
+                self.order_fields = None
+
+            def values(self, *fields):
+                self.values_fields = fields
+                return self
+
+            def order_by(self, *fields):
+                self.order_fields = fields
+                return [
+                    {'trade_operation_id': 1, 'realized_pnl': Decimal('3')},
+                ]
+
+        class FakeTradeOperationQuery:
+            def __init__(self):
+                self.values_calls = []
+
+            def filter(self, **kwargs):
+                return self
+
+            def values(self, *fields):
+                self.values_calls.append(fields)
+                if 'id' in fields:
+                    return [
+                        {
+                            'id': 1,
+                            'symbol': 'BTCUSDT',
+                            'client_order_id': '',
+                            'raw_payload': {},
+                            'executed_at': timezone.datetime(2026, 5, 1, 9, tzinfo=timezone.utc),
+                            'created_at': timezone.datetime(2026, 5, 1, 8, tzinfo=timezone.utc),
+                        },
+                    ]
+                if 'fee_amount_in_quote' in fields:
+                    return []
+                return []
+
+        lot_query = FakeLotClosureQuery()
+        trade_query = FakeTradeOperationQuery()
+
+        with patch('dashboard.dashboard_read_model.LotClosure.objects', lot_query):
+            with patch('dashboard.dashboard_read_model.TradeOperation.objects', trade_query):
+                summary = _build_performance_kpis()
+
+        self.assertEqual(lot_query.values_fields, ('trade_operation_id', 'realized_pnl'))
+        self.assertNotIn('timestamp', lot_query.order_fields)
+        self.assertIn(
+            ('id', 'symbol', 'client_order_id', 'raw_payload', 'executed_at', 'created_at'),
+            trade_query.values_calls,
+        )
+        self.assertEqual(summary['pnl_by_day'][0]['date'].isoformat(), '2026-05-01')
+
     def test_performance_kpis_calculate_realized_pnl_fees_and_deployed_capital(self):
         closure_rows = [
             {
                 'trade_operation_id': 1,
                 'realized_pnl': Decimal('12.50'),
-                'timestamp': timezone.datetime(2026, 5, 1, tzinfo=timezone.utc),
             },
             {
                 'trade_operation_id': 2,
                 'realized_pnl': Decimal('-4.25'),
-                'timestamp': timezone.datetime(2026, 5, 2, tzinfo=timezone.utc),
             },
         ]
         operation_rows = {
@@ -1123,10 +1177,10 @@ class DashboardEndpointTests(TestCase):
 
     def test_performance_kpis_calculate_win_rate_averages_and_profit_factor(self):
         closure_rows = [
-            {'trade_operation_id': 1, 'realized_pnl': Decimal('10'), 'timestamp': None},
-            {'trade_operation_id': 1, 'realized_pnl': Decimal('5'), 'timestamp': None},
-            {'trade_operation_id': 2, 'realized_pnl': Decimal('-3'), 'timestamp': None},
-            {'trade_operation_id': 3, 'realized_pnl': Decimal('0'), 'timestamp': None},
+            {'trade_operation_id': 1, 'realized_pnl': Decimal('10')},
+            {'trade_operation_id': 1, 'realized_pnl': Decimal('5')},
+            {'trade_operation_id': 2, 'realized_pnl': Decimal('-3')},
+            {'trade_operation_id': 3, 'realized_pnl': Decimal('0')},
         ]
 
         summary = _calculate_performance_kpis(closure_rows, {}, [], [])
@@ -1141,8 +1195,8 @@ class DashboardEndpointTests(TestCase):
 
     def test_performance_kpis_zero_loss_profit_factor_is_none(self):
         closure_rows = [
-            {'trade_operation_id': 1, 'realized_pnl': Decimal('10'), 'timestamp': None},
-            {'trade_operation_id': 1, 'realized_pnl': Decimal('2'), 'timestamp': None},
+            {'trade_operation_id': 1, 'realized_pnl': Decimal('10')},
+            {'trade_operation_id': 1, 'realized_pnl': Decimal('2')},
         ]
 
         summary = _calculate_performance_kpis(closure_rows, {}, [], [])
@@ -1151,8 +1205,8 @@ class DashboardEndpointTests(TestCase):
 
     def test_performance_kpis_ignore_nulls_without_crashing(self):
         closure_rows = [
-            {'trade_operation_id': None, 'realized_pnl': None, 'timestamp': None},
-            {'trade_operation_id': 1, 'realized_pnl': Decimal('2'), 'timestamp': None},
+            {'trade_operation_id': None, 'realized_pnl': None},
+            {'trade_operation_id': 1, 'realized_pnl': Decimal('2')},
         ]
         fee_rows = [{'fee_amount_in_quote': None}]
         buy_rows = [{'gross_quote': None}]
@@ -1166,8 +1220,8 @@ class DashboardEndpointTests(TestCase):
 
     def test_performance_kpis_split_identifiable_manual_corrections(self):
         closure_rows = [
-            {'trade_operation_id': 1, 'realized_pnl': Decimal('8'), 'timestamp': None},
-            {'trade_operation_id': 2, 'realized_pnl': Decimal('-2'), 'timestamp': None},
+            {'trade_operation_id': 1, 'realized_pnl': Decimal('8')},
+            {'trade_operation_id': 2, 'realized_pnl': Decimal('-2')},
         ]
         operation_rows = {
             1: {'symbol': 'BTCUSDT', 'manual_correction': False},
@@ -1180,27 +1234,37 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(summary['manual_adjustment_pnl'], Decimal('-2'))
         self.assertTrue(summary['manual_corrections_split_available'])
 
-    def test_performance_kpis_group_pnl_by_symbol_and_day(self):
+    def test_performance_kpis_group_pnl_by_symbol_and_day_from_operation_timestamp(self):
         closure_rows = [
             {
                 'trade_operation_id': 1,
                 'realized_pnl': Decimal('3'),
-                'timestamp': timezone.datetime(2026, 5, 1, 9, tzinfo=timezone.utc),
             },
             {
                 'trade_operation_id': 1,
                 'realized_pnl': Decimal('4'),
-                'timestamp': timezone.datetime(2026, 5, 1, 10, tzinfo=timezone.utc),
             },
             {
                 'trade_operation_id': 2,
                 'realized_pnl': Decimal('-1'),
-                'timestamp': timezone.datetime(2026, 5, 2, 9, tzinfo=timezone.utc),
+            },
+            {
+                'trade_operation_id': 3,
+                'realized_pnl': Decimal('2'),
             },
         ]
         operation_rows = {
-            1: {'symbol': 'BTCUSDT', 'manual_correction': False},
-            2: {'symbol': 'ETHUSDT', 'manual_correction': False},
+            1: {
+                'symbol': 'BTCUSDT',
+                'manual_correction': False,
+                'timestamp': timezone.datetime(2026, 5, 1, 9, tzinfo=timezone.utc),
+            },
+            2: {
+                'symbol': 'ETHUSDT',
+                'manual_correction': False,
+                'timestamp': timezone.datetime(2026, 5, 2, 9, tzinfo=timezone.utc),
+            },
+            3: {'symbol': 'SOLUSDT', 'manual_correction': False, 'timestamp': None},
         }
 
         summary = _calculate_performance_kpis(closure_rows, operation_rows, [], [])
@@ -1211,6 +1275,8 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(summary['pnl_by_day'][0]['date'].isoformat(), '2026-05-01')
         self.assertEqual(summary['pnl_by_day'][0]['realized_pnl'], Decimal('7'))
         self.assertEqual(summary['pnl_by_day'][1]['date'].isoformat(), '2026-05-02')
+        self.assertEqual(summary['gross_realized_pnl'], Decimal('8'))
+        self.assertEqual(len(summary['pnl_by_day']), 2)
 
     def test_valuation_consistency_matching_portfolio_and_lots_values(self):
         portfolio_rows = [

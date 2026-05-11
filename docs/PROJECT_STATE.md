@@ -20,7 +20,7 @@ Implemented capabilities:
 - Valuation consistency showing portfolio projection value, open-lots accounting value, drift, and missing price counts
 - Latest trade/recent operations card
 - Wave 8 Phase 1 performance KPI cards for net realized PnL, total USDT fees, win rate, average win/loss, profit factor, and gross deployed capital
-- Read-only PnL by symbol and PnL by day tables
+- Read-only PnL by symbol and PnL by day tables; day grouping uses linked trade operation timestamps
 - Drift visibility between portfolio and lots
 - Fees by asset card
 - Dust / residual dashboard sourced from `bot.dust_detections`
