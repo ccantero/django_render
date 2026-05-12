@@ -324,6 +324,29 @@ Conceptual fields:
 - details payload, which may include error context
 - run id if available
 
+Current bot healthcheck details may include additive material-position
+classification fields:
+
+- `positions_count`: raw positive-quantity portfolio rows
+- `material_positions_count`: rows with estimated value greater than or equal
+  to `DUST_MIN_NOTIONAL_USDT`
+- `dust_positions_count`: rows with estimated value greater than zero and below
+  `DUST_MIN_NOTIONAL_USDT`
+- `unknown_value_positions_count`: positive-quantity rows with missing, null,
+  or non-positive current price
+- `material_symbols`
+- `dust_symbols`
+- `unknown_value_symbols`
+
+These fields are healthcheck JSON details only. They do not add or modify
+database columns, and they do not change the accounting source-of-truth model.
+BUY exposure gating uses material positions plus unknown-value positions,
+conservatively treating unknown-value rows as exposure until price is known.
+Dust positions remain excluded from BUY gating because they are non-material
+exposure, even though they may remain latent inventory and possible future
+reusable liquidity. `portfolio` remains a projection and `position_lots`
+remains the FIFO accounting truth.
+
 Suggested dashboard status logic:
 
 ```text
@@ -768,6 +791,7 @@ Dashboard usage:
 - Group realized PnL by linked `trade_operations.executed_at` date when available, falling back to linked `trade_operations.created_at`.
 - If no linked operation timestamp exists, include the closure in realized PnL totals and symbol grouping but skip it from PnL by day.
 - Use FILLED BUY quote value as an initial gross deployed capital approximation and label it as approximate/gross deployed capital.
+- Do not reference `lot_closures.timestamp`; that column does not exist in the shared schema.
 
 Current metric semantics:
 

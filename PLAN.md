@@ -31,9 +31,11 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - `ManualCorrection` is aligned to bot-owned `bot.manual_corrections`.
 - Manual correction requests validate positive quantity and never prefill a negative correction quantity.
 - Dust / drift workflow supports grouped detections, latest run metadata, detail payloads, operator guidance, ignored/review-later actions, linked correction status, and manual correction request links.
+- Main dashboard dust UX now shows a compact Active Operational Issues summary while the dedicated Dust / Residuals page carries the full grouped table with filters and 25-row pagination.
 - Dust correction request links are disabled in the UI when the latest detection already has a linked `PENDING` or `APPLIED` correction; bot-side duplicate validation remains authoritative.
-- Monitoring cards exist for bot status, portfolio summary, valuation consistency, latest operation/recent trade, drift alerts, and fees by asset.
-- Wave 8 Phase 1 performance KPI visibility exists on the main dashboard as read-only operational metrics sourced from `bot.lot_closures` and `bot.trade_operations`.
+- Main dashboard is now an operational overview for health, exposure, active issues, latest activity, and compact KPI summary.
+- Analytics dashboard exists at `/dashboard/analytics/` for read-only KPI detail, fees, PnL by symbol, and PnL by day sourced from `bot.lot_closures` and `bot.trade_operations`.
+- Monitoring cards exist for bot status, portfolio summary, valuation consistency, latest operation/recent trade, and drift alerts.
 - Tests cover dashboard access, manual correction permissions, form validation, model contract alignment, drift prefill behavior, and environment validation.
 - Public `/health/` liveness endpoint exists for Render keepalive/cron pings.
 - The dashboard-created `CLOSE_LOTS_EXTERNAL_SELL` request flow was validated on 2026-05-08 with an ASIACOIN / `币安人生USDT` dust-closure case: dashboard request creation, bot CLI dry-run/confirmed apply, and post-apply dashboard state review all preserved the dashboard/bot boundary.

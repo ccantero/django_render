@@ -17,6 +17,7 @@ from django.db.models import (
 	When,
 )
 from django.db.models.functions import Coalesce
+from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.utils import timezone
 
 from core.models import DustSignalReview, ManualCorrection
@@ -33,6 +34,8 @@ GROUP_FIELDS = (
 DEFAULT_GROUP_LIMIT = 50
 GROUP_CANDIDATE_LIMIT = 200
 TOP_RISK_LIMIT = 3
+ACTIVE_OPERATIONAL_ISSUES_LIMIT = 5
+DUST_PAGE_SIZE = 25
 DETAIL_ROWS_LIMIT = 100
 NULL_GROUP_VALUE = "__null__"
 GROUP_KEY_FIELDS = (
@@ -63,6 +66,8 @@ def get_dust_dashboard_context(filters=None):
 		"dust_error": None,
 		"grouped_detections": [],
 		"top_risk_signals": [],
+		"page_obj": None,
+		"pagination_querystring": "",
 		"active_filters": [],
 		"filters": clean_filters,
 		"filter_options": {
@@ -78,15 +83,20 @@ def get_dust_dashboard_context(filters=None):
 	try:
 		queryset = _dashboard_queryset(context["filters"])
 		context["filter_options"] = _build_filter_options(queryset)
-		context["grouped_detections"] = _grouped_detections(queryset)
-		context["grouped_detections"] = _with_review_state(context["grouped_detections"])
-		context["grouped_detections"] = _with_correction_state(context["grouped_detections"])
-		context["grouped_detections"] = _filter_by_review_status(
-			context["grouped_detections"],
+		grouped_detections = _grouped_detections(queryset, limit=GROUP_CANDIDATE_LIMIT)
+		grouped_detections = _with_review_state(grouped_detections)
+		grouped_detections = _with_correction_state(grouped_detections)
+		grouped_detections = _filter_by_review_status(
+			grouped_detections,
 			context["filters"]["review_status"],
 		)
-		context["summary"] = _build_summary(queryset, context["grouped_detections"])
-		context["top_risk_signals"] = _top_risk_signals(context["grouped_detections"])
+		context["summary"] = _build_summary(queryset, grouped_detections)
+		context["top_risk_signals"] = _top_risk_signals(grouped_detections)
+		context["grouped_detections"], context["page_obj"] = _paginate_grouped_detections(
+			grouped_detections,
+			clean_filters.get("page"),
+		)
+		context["pagination_querystring"] = _pagination_querystring(context["filters"])
 		context["active_filters"] = _active_filters(context["filters"])
 	except DatabaseError as exc:
 		context["dust_error"] = "Query too slow"
@@ -146,6 +156,7 @@ def get_dust_overview_context():
 		"latest_run_id": None,
 		"latest_detected_at": None,
 		"top_grouped_detections": [],
+		"active_operational_issues": [],
 		"total_detections": 0,
 		"total_estimated_value_usdt": Decimal("0"),
 		"data_error": None,
@@ -156,6 +167,9 @@ def get_dust_overview_context():
 		context["top_grouped_detections"] = _grouped_detections(queryset)
 		context["top_grouped_detections"] = _with_review_state(context["top_grouped_detections"])
 		context["top_grouped_detections"] = _with_correction_state(context["top_grouped_detections"])
+		context["active_operational_issues"] = _active_operational_issues(
+			context["top_grouped_detections"]
+		)
 		context.update(_build_summary(queryset, context["top_grouped_detections"]))
 	except DatabaseError as exc:
 		context["data_error"] = f"Query too slow: {exc}"
@@ -403,6 +417,9 @@ def _merge_group_with_latest(row, latest_rows):
 	row["latest_payload_text"] = _format_payload(latest.payload) if latest else "No payload"
 	row["latest_has_payload"] = latest.payload is not None if latest else False
 	row.update(_operator_guidance(row))
+	row["display_reason"] = row.get("operator_label") or _short_label(
+		row.get("reason") or row.get("event_type")
+	)
 	return row
 
 
@@ -481,6 +498,52 @@ def _top_risk_signals(grouped_rows, limit=TOP_RISK_LIMIT):
 		),
 		reverse=True,
 	)[:limit]
+
+
+def _active_operational_issues(grouped_rows, limit=ACTIVE_OPERATIONAL_ISSUES_LIMIT):
+	rows = sorted(
+		grouped_rows,
+		key=lambda row: (
+			_severity_sort_value(row.get("severity")),
+			-(row.get("latest_detected_at").timestamp() if row.get("latest_detected_at") else 0),
+			row.get("symbol") or "",
+		),
+	)
+	return rows[:limit]
+
+
+def _severity_sort_value(severity):
+	return {
+		"critical": 0,
+		"warning": 1,
+		"info": 2,
+	}.get(severity, 3)
+
+
+def _short_label(value):
+	if not value:
+		return "Unclassified signal"
+	return str(value).replace("_", " ").strip().capitalize()
+
+
+def _paginate_grouped_detections(grouped_rows, page_number):
+	paginator = Paginator(grouped_rows, DUST_PAGE_SIZE)
+	try:
+		page_obj = paginator.page(page_number)
+	except PageNotAnInteger:
+		page_obj = paginator.page(1)
+	except EmptyPage:
+		page_obj = paginator.page(paginator.num_pages)
+	return list(page_obj.object_list), page_obj
+
+
+def _pagination_querystring(filters):
+	values = {
+		key: value
+		for key, value in filters.items()
+		if value and key != "page"
+	}
+	return urlencode(values)
 
 
 def _active_filters(filters):

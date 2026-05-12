@@ -35,6 +35,7 @@ def get_dashboard_context():
 		"quote_fee_summary": _empty_quote_fee_summary(),
 		"performance_kpis": _empty_performance_kpis(),
 		"latest_trade": None,
+		"recent_operations": [],
 		"reconciliation": _empty_reconciliation(),
 		"dust_summary": _empty_dust_summary(),
 		"data_error": None,
@@ -69,6 +70,7 @@ def get_dashboard_context():
 		_add_data_error(context, "performance KPIs", exc)
 
 	try:
+		context["recent_operations"] = _build_recent_operations()
 		context["latest_trade"] = _build_latest_trade()
 	except DatabaseError as exc:
 		_add_data_error(context, "latest trade", exc)
@@ -172,6 +174,28 @@ def get_demo_dashboard_context():
 			"gross_quote": Decimal("812.40"),
 			"net_quote": Decimal("812.40"),
 		},
+		"recent_operations": [
+			SimpleNamespace(
+				side="BUY",
+				symbol="ETHUSDT",
+				status="FILLED",
+				executed_base_qty=Decimal("0.25000000"),
+				gross_quote=Decimal("812.40"),
+				net_quote=Decimal("812.40"),
+				executed_at=now - timedelta(minutes=8),
+				created_at=now - timedelta(minutes=8),
+			),
+			SimpleNamespace(
+				side="SELL",
+				symbol="BTCUSDT",
+				status="FILLED",
+				executed_base_qty=Decimal("0.00500000"),
+				gross_quote=Decimal("360.10"),
+				net_quote=Decimal("358.95"),
+				executed_at=now - timedelta(hours=2),
+				created_at=now - timedelta(hours=2),
+			),
+		],
 		"reconciliation": {
 			"status": "ok",
 			"warning_count": 0,
@@ -199,6 +223,22 @@ def get_demo_dashboard_context():
 					"latest_estimated_value_usdt": Decimal("1.42"),
 					"latest_estimated_delta_value_usdt": Decimal("0"),
 					"latest_suggested_action": "monitor",
+					"display_reason": "Below min notional",
+					"operator_label": "Below min notional",
+					"operator_badge": "badge-info",
+					"detail_querystring": "symbol=BNBUSDT&asset=BNB&reason=below_min_notional&event_type=dust_candidate_detected&severity=warning",
+				},
+			],
+			"active_operational_issues": [
+				{
+					"symbol": "BNBUSDT",
+					"severity": "warning",
+					"latest_detected_at": now - timedelta(minutes=3),
+					"latest_estimated_value_usdt": Decimal("1.42"),
+					"latest_estimated_delta_value_usdt": Decimal("0"),
+					"display_reason": "Below min notional",
+					"operator_badge": "badge-info",
+					"detail_querystring": "symbol=BNBUSDT&asset=BNB&reason=below_min_notional&event_type=dust_candidate_detected&severity=warning",
 				},
 			],
 			"total_estimated_value_usdt": Decimal("1.42"),
@@ -628,6 +668,13 @@ def _build_latest_trade():
 	}
 
 
+def _build_recent_operations(limit=5):
+	return list(
+		TradeOperation.objects
+		.order_by("-executed_at", "-created_at", "-id")[:limit]
+	)
+
+
 def _open_lots_by_symbol():
 	rows = (
 		PositionLot.objects
@@ -690,6 +737,7 @@ def _empty_dust_summary():
 		"latest_run_id": None,
 		"latest_detected_at": None,
 		"top_grouped_detections": [],
+		"active_operational_issues": [],
 		"total_estimated_value_usdt": Decimal("0"),
 		"data_error": None,
 	}
@@ -718,6 +766,7 @@ def _important_queries():
 		"bot.lot_closures + bot.trade_operations: realized PnL KPIs grouped by symbol/day with identifiable manual correction split",
 		"bot.trade_operations: SUM(gross_quote) WHERE status = FILLED AND side = BUY for approximate gross deployed capital",
 		"bot.trade_operations: latest row ordered by executed_at/created_at/id desc",
+		"bot.trade_operations: latest five rows ordered by executed_at/created_at/id desc for compact operational overview",
 		"bot.position_lots: SUM(quantity_open) WHERE quantity_open > 0 GROUP BY symbol",
 		"bot.dust_detections: operational dust summary and top detections, read-only",
 	]

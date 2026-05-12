@@ -20,6 +20,12 @@ def dashboard(request):
 	return render(request, "dashboard/dashboard.html", read_model.context)
 
 
+@login_required
+def dashboard_analytics(request):
+	read_model = get_dashboard_context()
+	return render(request, "dashboard/analytics.html", read_model.context)
+
+
 def dashboard_demo(request):
 	read_model = get_demo_dashboard_context()
 	return render(request, "dashboard/dashboard.html", read_model.context)

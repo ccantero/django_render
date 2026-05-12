@@ -105,6 +105,19 @@
 	.top-risk-card.info {
 		border-left-color: #17a2b8;
 	}
+
+	.dust-table-sticky thead th {
+		position: sticky;
+		top: 0;
+		z-index: 2;
+		background: #fff;
+		box-shadow: inset 0 -1px 0 #dee2e6;
+	}
+
+	.dust-technical-label {
+		color: #5f6f82;
+		font-size: 0.875rem;
+	}
 </style>
 
 <div class="container-fluid py-4 dashboard-page">
@@ -187,12 +200,7 @@
 			<form method="get" class="form-row align-items-end mb-2">
 				<div class="form-group col-lg-2 col-md-3">
 					<label for="symbol">Symbol</label>
-					<select id="symbol" name="symbol" class="form-control form-control-sm">
-						<option value="">All</option>
-						{% for symbol in filter_options.symbols %}
-							<option value="{{ symbol }}" {% if filters.symbol == symbol %}selected{% endif %}>{{ symbol }}</option>
-						{% endfor %}
-					</select>
+					<input id="symbol" name="symbol" class="form-control form-control-sm" value="{{ filters.symbol }}" placeholder="Search symbol">
 				</div>
 				<div class="form-group col-lg-2 col-md-3">
 					<label for="severity">Severity</label>
@@ -280,19 +288,19 @@
 			<div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
 				<div>
 					<h2 class="h5 mb-1">Top grouped detections</h2>
-					<p class="text-muted small mb-0">Grouped by symbol, asset, reason, event type, and severity. Limited to 50 rows.</p>
+					<p class="text-muted small mb-0">Grouped by symbol, asset, reason, event type, and severity. Paginated at 25 rows per page.</p>
 				</div>
 				<p class="text-muted small mb-0">Total detections: {{ summary.total_detections }}</p>
 			</div>
 			<div class="table-responsive">
-				<table id="dustSignalsTable" class="table table-sm table-striped mb-0">
+				<table id="dustSignalsTable" class="table table-sm table-striped mb-0 dust-table-sticky">
 					<thead>
 						<tr>
 							<th><button class="sort-button" type="button" data-sort-index="0" data-sort-type="text">Symbol</button></th>
 							<th><button class="sort-button" type="button" data-sort-index="1" data-sort-type="text">Asset</button></th>
 							<th><button class="sort-button" type="button" data-sort-index="2" data-sort-type="text">Event type</button></th>
 							<th><button class="sort-button" type="button" data-sort-index="3" data-sort-type="severity">Severity</button></th>
-							<th><button class="sort-button" type="button" data-sort-index="4" data-sort-type="text">Reason</button></th>
+							<th><button class="sort-button" type="button" data-sort-index="4" data-sort-type="text">Reason / label</button></th>
 							<th class="text-right"><button class="sort-button" type="button" data-sort-index="5" data-sort-type="number" title="Number of times this signal was detected">Detections</button></th>
 							<th><button class="sort-button" type="button" data-sort-index="6" data-sort-type="number">Latest detected</button></th>
 							<th><button class="sort-button" type="button" data-sort-index="7" data-sort-type="text">Latest run</button></th>
@@ -301,7 +309,8 @@
 							<th><button class="sort-button" type="button" data-sort-index="10" data-sort-type="text">Suggested action</button></th>
 							<th><button class="sort-button" type="button" data-sort-index="11" data-sort-type="text">Operator decision</button></th>
 							<th><button class="sort-button" type="button" data-sort-index="12" data-sort-type="text">Correction</button></th>
-							<th><button class="sort-button" type="button" data-sort-index="13" data-sort-type="text">Review</button></th>
+							<th><button class="sort-button" type="button" data-sort-index="13" data-sort-type="text">Source detection</button></th>
+							<th><button class="sort-button" type="button" data-sort-index="14" data-sort-type="text">Review</button></th>
 							<th>Details</th>
 						</tr>
 					</thead>
@@ -322,7 +331,10 @@
 										{{ row.severity|default:"-" }}
 									{% endif %}
 								</td>
-								<td>{{ row.reason|default:"-" }}</td>
+								<td>
+									<strong>{{ row.display_reason|default:"Unclassified signal" }}</strong>
+									<div class="dust-technical-label">{{ row.reason|default:"-" }}</div>
+								</td>
 								<td class="text-right" data-sort-value="{{ row.detections_count }}" title="Number of times this signal was detected">{{ row.detections_count }}</td>
 								<td data-sort-value="{{ row.latest_detected_at|date:'U' }}">{{ row.latest_detected_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
 								<td>{{ row.latest_run_id|default:"-" }}</td>
@@ -342,6 +354,7 @@
 								<td>
 									<span class="badge {{ row.correction_badge|default:'badge-light' }}">{{ row.correction_status_label|default:"No correction" }}</span>
 								</td>
+								<td>{{ row.latest_detection_id|default:"-" }}</td>
 								<td>
 									<span class="badge {% if row.review_status == 'ignored' %}badge-secondary{% elif row.review_status == 'needs_manual_correction' %}badge-danger{% elif row.review_status == 'review_later' %}badge-warning{% elif row.review_status == 'reviewed' or row.review_status == 'external_or_earn' %}badge-success{% else %}badge-light{% endif %}">
 										{{ row.review_status|default:"pending" }}
@@ -351,12 +364,39 @@
 							</tr>
 						{% empty %}
 							<tr>
-								<td colspan="15" class="text-muted text-center py-4">No dust signals found for current filters.</td>
+								<td colspan="16" class="text-muted text-center py-4">No dust signals found for current filters.</td>
 							</tr>
 						{% endfor %}
 					</tbody>
 				</table>
 			</div>
+			{% if page_obj %}
+				<div class="d-flex flex-wrap justify-content-between align-items-center mt-3">
+					<p class="text-muted small mb-2 mb-md-0">
+						Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+						<span class="ml-1">{{ page_obj.paginator.count }} grouped signals</span>
+					</p>
+					<nav aria-label="Dust pagination">
+						<ul class="pagination pagination-sm mb-0">
+							<li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+								{% if page_obj.has_previous %}
+									<a class="page-link" href="?{% if pagination_querystring %}{{ pagination_querystring }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+								{% else %}
+									<span class="page-link">Previous</span>
+								{% endif %}
+							</li>
+							<li class="page-item active"><span class="page-link">{{ page_obj.number }}</span></li>
+							<li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+								{% if page_obj.has_next %}
+									<a class="page-link" href="?{% if pagination_querystring %}{{ pagination_querystring }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+								{% else %}
+									<span class="page-link">Next</span>
+								{% endif %}
+							</li>
+						</ul>
+					</nav>
+				</div>
+			{% endif %}
 		</div>
 	</div>
 </div>

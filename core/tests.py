@@ -110,7 +110,7 @@ class DashboardEndpointTests(TestCase):
         response = self.client.get(self.dashboard_url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Trading Dashboard')
+        self.assertContains(response, 'Operational Overview')
         mock_get_dashboard_context.assert_called_once()
 
     @patch('dashboard.views.get_dashboard_context')
@@ -208,6 +208,18 @@ class DashboardEndpointTests(TestCase):
                 'gross_quote': Decimal('20.00'),
                 'net_quote': Decimal('20.00'),
             },
+            'recent_operations': [
+                SimpleNamespace(
+                    side='BUY',
+                    symbol='BTCUSDT',
+                    status='FILLED',
+                    executed_base_qty=Decimal('0.001'),
+                    gross_quote=Decimal('20.00'),
+                    net_quote=Decimal('20.00'),
+                    executed_at=timezone.now(),
+                    created_at=timezone.now(),
+                ),
+            ],
             'reconciliation': {
                 'status': 'warning',
                 'warning_count': 1,
@@ -229,27 +241,150 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'BTCUSDT')
         self.assertContains(response, '1 warning')
-        self.assertContains(response, 'Total Fees')
-        self.assertContains(response, 'Fees (USDT)')
+        self.assertContains(response, 'KPI Summary')
+        self.assertContains(response, 'View Analytics')
         self.assertContains(response, 'Portfolio projection')
         self.assertContains(response, 'Lots accounting value')
         self.assertContains(response, 'Portfolio vs lots drift')
         self.assertContains(response, '0.75 USDT')
-        self.assertContains(response, '0.25000000')
+        self.assertContains(response, '0.00100000')
         self.assertContains(response, '0.25 USDT')
         self.assertContains(response, 'Dust / Residuals')
-        self.assertContains(response, 'Latest grouped values, not PnL')
-        self.assertContains(response, 'Performance KPIs')
+        self.assertContains(response, 'Grouped signals')
         self.assertContains(response, 'Net realized PnL')
         self.assertContains(response, '12.25 USDT')
         self.assertContains(response, 'Win rate')
         self.assertContains(response, 'Average win')
         self.assertContains(response, 'Average loss')
-        self.assertContains(response, 'Profit factor')
+        self.assertNotContains(response, 'Profit factor')
         self.assertContains(response, 'Gross deployed capital')
+        self.assertNotContains(response, 'PnL by symbol')
+        self.assertNotContains(response, 'PnL by day')
+        self.assertContains(response, 'BTCUSDT')
+
+    @patch('dashboard.views.get_dashboard_context')
+    def test_dashboard_home_is_operational_overview_without_pnl_tables(self, mock_get_dashboard_context):
+        context = self.empty_dashboard_context()
+        context['performance_kpis'].update({
+            'net_realized_pnl': Decimal('12.25'),
+            'total_fees_usdt': Decimal('0.25'),
+            'win_rate': Decimal('50'),
+            'average_win': Decimal('15.00'),
+            'average_loss': Decimal('-2.50'),
+            'gross_deployed_capital': Decimal('120.00'),
+            'pnl_by_symbol': [
+                {'symbol': 'BTCUSDT', 'realized_pnl': Decimal('12.50'), 'closures_count': 2},
+            ],
+            'pnl_by_day': [
+                {
+                    'date': timezone.datetime(2026, 5, 1, tzinfo=timezone.utc).date(),
+                    'realized_pnl': Decimal('12.50'),
+                    'closures_count': 2,
+                },
+            ],
+        })
+        mock_get_dashboard_context.return_value.context = context
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.dashboard_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Operational Overview')
+        self.assertContains(response, 'KPI Summary')
+        self.assertContains(response, 'Net realized PnL')
+        self.assertContains(response, 'View Analytics')
+        self.assertContains(response, 'View Dust Dashboard')
+        self.assertNotContains(response, 'PnL by symbol')
+        self.assertNotContains(response, 'PnL by day')
+        self.assertNotContains(response, 'Profit factor')
+        self.assertNotContains(response, 'Manual/accounting adjustment PnL')
+
+    @patch('dashboard.views.get_dashboard_context')
+    def test_dashboard_home_shows_max_five_recent_operations(self, mock_get_dashboard_context):
+        context = self.empty_dashboard_context()
+        context['recent_operations'] = [
+            SimpleNamespace(
+                side='BUY',
+                symbol=f'OP{index}USDT',
+                status='FILLED',
+                executed_base_qty=Decimal('1.00000000'),
+                gross_quote=Decimal('10.00'),
+                net_quote=Decimal('10.00'),
+                executed_at=timezone.now() - timezone.timedelta(minutes=index),
+                created_at=timezone.now() - timezone.timedelta(minutes=index),
+            )
+            for index in range(6)
+        ]
+        mock_get_dashboard_context.return_value.context = context
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.dashboard_url)
+        content = response.content.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Recent Trades / Latest Operations')
+        self.assertEqual(content.count('dashboard-recent-operation-row'), 5)
+        self.assertContains(response, 'OP0USDT')
+        self.assertContains(response, 'OP4USDT')
+        self.assertNotContains(response, 'OP5USDT')
+
+    def test_analytics_dashboard_requires_authentication(self):
+        response = self.client.get('/dashboard/analytics/')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response['Location'])
+
+    @patch('dashboard.views.get_dashboard_context')
+    def test_analytics_dashboard_renders_performance_tables(self, mock_get_dashboard_context):
+        context = self.empty_dashboard_context()
+        context['fee_summary'] = {
+            'asset_count': 1,
+            'fill_count': 2,
+            'rows': [{'asset': 'USDT', 'total': Decimal('0.25'), 'fill_count': 2}],
+        }
+        context['quote_fee_summary'] = {
+            'total_fees_usdt': Decimal('0.25'),
+            'total_operations': 2,
+            'by_side': {
+                'BUY': {'total_fee_usdt': Decimal('0.10'), 'operations_count': 1},
+                'SELL': {'total_fee_usdt': Decimal('0.15'), 'operations_count': 1},
+            },
+        }
+        context['performance_kpis'].update({
+            'gross_realized_pnl': Decimal('12.50'),
+            'total_fees_usdt': Decimal('0.25'),
+            'net_realized_pnl': Decimal('12.25'),
+            'win_rate': Decimal('50'),
+            'average_win': Decimal('15.00'),
+            'average_loss': Decimal('-2.50'),
+            'profit_factor': Decimal('6'),
+            'gross_deployed_capital': Decimal('120.00'),
+            'manual_adjustment_pnl': Decimal('0'),
+            'pnl_by_symbol': [
+                {'symbol': 'BTCUSDT', 'realized_pnl': Decimal('12.50'), 'closures_count': 2},
+            ],
+            'pnl_by_day': [
+                {
+                    'date': timezone.datetime(2026, 5, 1, tzinfo=timezone.utc).date(),
+                    'realized_pnl': Decimal('12.50'),
+                    'closures_count': 2,
+                },
+            ],
+        })
+        mock_get_dashboard_context.return_value.context = context
+        self.client.force_login(self.user)
+
+        response = self.client.get('/dashboard/analytics/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Analytics Dashboard')
+        self.assertContains(response, 'Performance KPIs')
         self.assertContains(response, 'PnL by symbol')
         self.assertContains(response, 'PnL by day')
-        self.assertContains(response, 'BTCUSDT')
+        self.assertContains(response, 'Fees (USDT)')
+        self.assertContains(response, 'Total Fees')
+        self.assertContains(response, 'Profit factor')
+        self.assertContains(response, 'Manual/accounting adjustment PnL')
 
     @patch('dashboard.views.get_dashboard_context')
     def test_dashboard_shows_dust_summary(self, mock_get_dashboard_context):
@@ -276,6 +411,18 @@ class DashboardEndpointTests(TestCase):
                     'latest_suggested_action': 'monitor',
                 },
             ],
+            'active_operational_issues': [
+                {
+                    'symbol': 'SOLUSDT',
+                    'severity': 'critical',
+                    'latest_detected_at': timezone.now(),
+                    'latest_estimated_value_usdt': Decimal('4.20'),
+                    'latest_estimated_delta_value_usdt': Decimal('0'),
+                    'display_reason': 'Below min notional',
+                    'operator_badge': 'badge-danger',
+                    'detail_querystring': 'symbol=SOLUSDT&asset=SOL&reason=below_min_notional&event_type=dust_candidate_detected&severity=critical',
+                },
+            ],
             'total_estimated_value_usdt': Decimal('4.20'),
             'data_error': None,
         }
@@ -289,19 +436,70 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'Critical detections')
         self.assertContains(response, 'Warning detections')
         self.assertContains(response, 'Info detections')
-        self.assertContains(response, 'run-dust-001')
         self.assertContains(response, 'SOLUSDT')
-        self.assertContains(response, 'below_min_notional')
-        self.assertContains(response, 'monitor')
+        self.assertContains(response, 'Below min notional')
         self.assertContains(response, reverse('dust_dashboard'))
+
+    @patch('dashboard.views.get_dashboard_context')
+    def test_dashboard_shows_active_operational_issues_without_full_dust_table(self, mock_get_dashboard_context):
+        context = self.empty_dashboard_context()
+        issue_rows = []
+        for index in range(6):
+            issue_rows.append({
+                'symbol': f'ISSUE{index}USDT',
+                'asset': f'ISSUE{index}',
+                'severity': 'critical' if index == 0 else 'warning',
+                'event_type': 'lot_balance_drift_detected',
+                'reason': 'lot_balance_drift',
+                'detections_count': 1,
+                'latest_detected_at': timezone.now() - timezone.timedelta(minutes=index),
+                'latest_run_id': 'run-home-001',
+                'latest_estimated_value_usdt': Decimal(str(index + 1)),
+                'latest_estimated_delta_value_usdt': Decimal('0.25'),
+                'latest_suggested_action': 'review_recent_sell',
+                'operator_label': 'Lots > Binance',
+                'operator_badge': 'badge-danger' if index == 0 else 'badge-warning',
+                'detail_querystring': f'symbol=ISSUE{index}USDT&asset=ISSUE{index}&reason=lot_balance_drift&event_type=lot_balance_drift_detected&severity=warning',
+            })
+        context['dust_summary'] = {
+            'total_detections': 6,
+            'critical_count': 1,
+            'warning_count': 5,
+            'info_count': 0,
+            'latest_run_id': 'run-home-001',
+            'latest_detected_at': timezone.now(),
+            'active_operational_issues': issue_rows,
+            'top_grouped_detections': issue_rows,
+            'total_estimated_value_usdt': Decimal('21'),
+            'data_error': None,
+        }
+        mock_get_dashboard_context.return_value.context = context
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.dashboard_url)
+        content = response.content.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Active Operational Issues')
+        self.assertContains(response, 'View Dust Dashboard')
+        self.assertContains(response, 'Reason / short label')
+        self.assertContains(response, 'Approx value or delta in USDT')
+        self.assertEqual(content.count('dashboard-operational-issue-row'), 5)
+        self.assertContains(response, 'ISSUE0USDT')
+        self.assertContains(response, 'ISSUE4USDT')
+        self.assertNotContains(response, 'ISSUE5USDT')
+        self.assertNotContains(response, '<th>Asset</th>', html=True)
+        self.assertNotContains(response, '<th>Event type</th>', html=True)
+        self.assertNotContains(response, '<th>Latest run</th>', html=True)
 
     def test_demo_dashboard_is_public_and_read_only(self):
         response = self.client.get(reverse('dashboard_demo'))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Public demo')
-        self.assertContains(response, 'Total Fees')
-        self.assertContains(response, 'Fees (USDT)')
+        self.assertContains(response, 'KPI Summary')
+        self.assertNotContains(response, 'Total Fees')
+        self.assertNotContains(response, 'Fees (USDT)')
         self.assertNotContains(response, 'Control seguro')
         self.assertNotContains(response, 'Stop')
         self.assertNotContains(response, 'Resume')
@@ -433,6 +631,88 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'Pending correction')
         self.assertContains(response, 'A correction request is already pending for this detection.')
         mock_get_dust_context.assert_called_once()
+
+    @patch('dashboard.views.get_dust_dashboard_context')
+    def test_dust_dashboard_renders_pagination_controls(self, mock_get_dust_context):
+        rows = []
+        for index in range(25):
+            rows.append({
+                'symbol': f'PAGE{index}USDT',
+                'asset': f'PAGE{index}',
+                'severity': 'info',
+                'event_type': 'dust_candidate_detected',
+                'reason': 'below_min_notional',
+                'detections_count': 1,
+                'latest_detected_at': timezone.now(),
+                'latest_run_id': 'run-page-001',
+                'latest_estimated_value_usdt': Decimal('0.25'),
+                'latest_estimated_delta_value_usdt': Decimal('0'),
+                'latest_suggested_action': 'monitor',
+                'operator_label': 'Below min notional',
+                'operator_badge': 'badge-info',
+                'operator_priority': 'informational',
+                'operator_action': 'Monitor / optionally ignore',
+                'review_status': 'pending',
+                'correction_status_label': 'No correction',
+                'correction_badge': 'badge-light',
+                'correction_statuses': [],
+                'has_blocking_correction': False,
+                'is_actionable': True,
+                'detail_querystring': f'symbol=PAGE{index}USDT&asset=PAGE{index}&reason=below_min_notional&event_type=dust_candidate_detected&severity=info',
+            })
+        mock_get_dust_context.return_value.context = {
+            'data_error': None,
+            'grouped_detections': rows,
+            'top_risk_signals': [],
+            'active_filters': [],
+            'filters': {'symbol': '', 'severity': '', 'event_type': '', 'reason': '', 'review_status': '', 'page': '2'},
+            'filter_options': {
+                'symbols': [],
+                'severities': [],
+                'event_types': [],
+                'reasons': [],
+                'review_statuses': DustSignalReview.STATUS_CHOICES,
+            },
+            'summary': {
+                'total_detections': 51,
+                'critical_count': 0,
+                'warning_count': 0,
+                'info_count': 51,
+                'total_estimated_value_usdt': Decimal('12.75'),
+                'latest_run_id': 'run-page-001',
+                'latest_detected_at': timezone.now(),
+            },
+            'page_obj': SimpleNamespace(
+                number=2,
+                paginator=SimpleNamespace(num_pages=3, count=51),
+                has_previous=lambda: True,
+                has_next=lambda: True,
+                previous_page_number=lambda: 1,
+                next_page_number=lambda: 3,
+            ),
+            'pagination_querystring': 'severity=info',
+        }
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('dust_dashboard'), {'page': '2', 'severity': 'info'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Page 2 of 3')
+        self.assertContains(response, '51 grouped signals')
+        self.assertContains(response, 'page=1')
+        self.assertContains(response, 'page=3')
+
+    def test_dust_dashboard_unknown_filters_do_not_crash(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('dust_dashboard'), {
+            'symbol': 'UNKNOWNUSDT',
+            'severity': 'unknown',
+            'reason': 'unknown_reason',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Dust / Residuals')
 
     @patch('dashboard.views.get_dust_detail_context')
     def test_dust_detail_renders_latest_rows_and_null_payload(self, mock_get_detail_context):

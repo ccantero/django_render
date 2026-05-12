@@ -25,12 +25,27 @@ Dashboard operator pages are implemented in the `dashboard` Django app.
 
 ### Main dashboard
 
+Home dashboard responsibility: Operational overview: health, exposure, active issues, latest activity.
+
 - Bot status
 - Portfolio summary
 - Valuation consistency between portfolio projection and lots accounting value
-- Latest trade
 - Drift summary
-- Fees by asset
+- Compact latest operations table, capped at five rows
+- Compact KPI summary:
+  - net realized PnL
+  - total fees USDT
+  - win rate
+  - gross deployed capital
+  - average win and average loss
+- Compact Active Operational Issues dust summary with at most five latest/high-priority signals
+- Link to the full Dust / Residuals dashboard
+- Link to Analytics
+
+### Analytics dashboard
+
+Analytics dashboard responsibility: Performance analysis: KPIs, fees, PnL breakdowns, historical tables.
+
 - Performance KPI cards:
   - net realized PnL
   - total fees USDT
@@ -38,10 +53,11 @@ Dashboard operator pages are implemented in the `dashboard` Django app.
   - average win and average loss
   - profit factor
   - gross deployed capital
-- Simple performance tables:
-  - PnL by symbol
-  - PnL by day
-- Link to Dust / Residuals
+  - manual/accounting adjustment PnL
+- Fees USDT summary
+- Fees by asset
+- PnL by symbol
+- PnL by day
 
 ### Public and auth pages
 
@@ -59,6 +75,8 @@ Source: `bot.dust_detections`
 Shows:
 
 - grouped detections
+- 25-row pagination
+- symbol, severity, reason, event type, and review filters
 - severity
 - reason
 - event type
