@@ -15,17 +15,17 @@ Detected Django apps:
 Implemented capabilities:
 
 - Authenticated dashboard pages
-- Main dashboard as an operational overview: health, exposure, active issues, latest activity, and compact KPI summary
+- Main dashboard as a concise operator console: normalized Bot Health badge, Inventory Integrity, Performance Snapshot, active issues, informational residual counts, and latest activity
 - Analytics dashboard at `/dashboard/analytics/` for performance analysis: KPIs, fees, PnL breakdowns, and historical tables
 - Bot status card
 - Portfolio summary
 - Valuation consistency showing portfolio projection value, open-lots accounting value, drift, and missing price counts
-- Compact latest operations table capped at five rows on the main dashboard
+- Compact latest operations table capped at four rows on the main dashboard
 - Wave 8 Phase 1 performance KPI cards for net realized PnL, total USDT fees, win rate, average win/loss, profit factor, and gross deployed capital on the Analytics dashboard
 - Read-only PnL by symbol and PnL by day tables on the Analytics dashboard; day grouping uses linked trade operation timestamps
 - Drift visibility between portfolio and lots
 - Fees by asset card
-- Compact Active Operational Issues dust summary on the main dashboard, limited to the five highest-priority latest signals
+- Compact Active Operational Issues dust summary on the main dashboard, limited to unresolved critical/warning signals only; info-only residuals are summarized and are not promoted to active issues
 - Dedicated Dust / Residuals dashboard sourced from `bot.dust_detections` with filters and 25-row pagination
 - Dust signal detail page
 - Linked correction badges for dust detections using `bot.manual_corrections.source_detection_id`

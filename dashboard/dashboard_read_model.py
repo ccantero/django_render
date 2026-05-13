@@ -16,6 +16,8 @@ from core.trading_models import BotHealthcheck, LotClosure, Portfolio, PositionL
 DRIFT_TOLERANCE = Decimal("0.00000001")
 DUST_MIN_VALUE = Decimal("5")
 HEALTHCHECK_STALE_AFTER = timedelta(minutes=15)
+HEALTHY_BOT_STATUSES = {"ok", "healthy", "success"}
+ERROR_BOT_STATUSES = {"error", "failed", "critical"}
 
 
 @dataclass
@@ -105,6 +107,8 @@ def get_demo_dashboard_context():
 			"read_only": True,
 			"is_stale": False,
 			"stale_after_minutes": 15,
+			"badge_label": "healthy",
+			"badge_class": "badge-success",
 		},
 		"portfolio_summary": {
 			"rows_count": 3,
@@ -241,6 +245,11 @@ def get_demo_dashboard_context():
 					"detail_querystring": "symbol=BNBUSDT&asset=BNB&reason=below_min_notional&event_type=dust_candidate_detected&severity=warning",
 				},
 			],
+			"informational_residuals": {
+				"count": 0,
+				"total_estimated_value_usdt": Decimal("0"),
+				"latest_detected_at": None,
+			},
 			"total_estimated_value_usdt": Decimal("1.42"),
 			"data_error": None,
 		},
@@ -289,6 +298,7 @@ def _build_bot_status():
 		"read_only": _details_read_only(latest.details),
 		"is_stale": is_stale,
 		"stale_after_minutes": 15,
+		**_bot_health_badge(latest.status, latest, is_stale),
 	}
 
 
@@ -301,7 +311,23 @@ def _empty_bot_status():
 		"read_only": None,
 		"is_stale": False,
 		"stale_after_minutes": 15,
+		"badge_label": "unknown",
+		"badge_class": "badge-secondary",
 	}
+
+
+def _bot_health_badge(status, row, is_stale):
+	if row is None:
+		return {"badge_label": "unknown", "badge_class": "badge-secondary"}
+	if is_stale:
+		return {"badge_label": "stale", "badge_class": "badge-warning"}
+
+	normalized_status = str(status or "").strip().lower()
+	if normalized_status in HEALTHY_BOT_STATUSES:
+		return {"badge_label": "healthy", "badge_class": "badge-success"}
+	if normalized_status in ERROR_BOT_STATUSES:
+		return {"badge_label": "error", "badge_class": "badge-danger"}
+	return {"badge_label": "warning", "badge_class": "badge-warning"}
 
 
 def _details_read_only(details):
@@ -668,7 +694,7 @@ def _build_latest_trade():
 	}
 
 
-def _build_recent_operations(limit=5):
+def _build_recent_operations(limit=4):
 	return list(
 		TradeOperation.objects
 		.order_by("-executed_at", "-created_at", "-id")[:limit]
@@ -738,6 +764,11 @@ def _empty_dust_summary():
 		"latest_detected_at": None,
 		"top_grouped_detections": [],
 		"active_operational_issues": [],
+		"informational_residuals": {
+			"count": 0,
+			"total_estimated_value_usdt": Decimal("0"),
+			"latest_detected_at": None,
+		},
 		"total_estimated_value_usdt": Decimal("0"),
 		"data_error": None,
 	}
@@ -766,7 +797,7 @@ def _important_queries():
 		"bot.lot_closures + bot.trade_operations: realized PnL KPIs grouped by symbol/day with identifiable manual correction split",
 		"bot.trade_operations: SUM(gross_quote) WHERE status = FILLED AND side = BUY for approximate gross deployed capital",
 		"bot.trade_operations: latest row ordered by executed_at/created_at/id desc",
-		"bot.trade_operations: latest five rows ordered by executed_at/created_at/id desc for compact operational overview",
+		"bot.trade_operations: latest four rows ordered by executed_at/created_at/id desc for compact operational overview",
 		"bot.position_lots: SUM(quantity_open) WHERE quantity_open > 0 GROUP BY symbol",
 		"bot.dust_detections: operational dust summary and top detections, read-only",
 	]

@@ -18,6 +18,7 @@ from dashboard.dashboard_read_model import (
     _calculate_performance_kpis,
 )
 from dashboard.dust_read_model import (
+    _active_operational_issues,
     _build_summary,
     _clean_filters,
     _dashboard_queryset,
@@ -25,6 +26,7 @@ from dashboard.dust_read_model import (
     _format_payload,
     _operator_guidance,
     _filter_by_review_status,
+    _informational_residual_summary,
     _with_correction_state,
     _reviews_for_rows,
     get_dust_dashboard_context,
@@ -110,7 +112,7 @@ class DashboardEndpointTests(TestCase):
         response = self.client.get(self.dashboard_url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Operational Overview')
+        self.assertContains(response, 'Operations Console')
         mock_get_dashboard_context.assert_called_once()
 
     @patch('dashboard.views.get_dashboard_context')
@@ -121,8 +123,8 @@ class DashboardEndpointTests(TestCase):
         response = self.client.get(self.dashboard_url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'No data yet.')
-        self.assertContains(response, 'Portfolio Summary')
+        self.assertContains(response, 'No latest message.')
+        self.assertContains(response, 'Inventory Integrity')
 
     @patch('dashboard.views.get_dashboard_context')
     def test_dashboard_loads_with_sample_read_model_data(self, mock_get_dashboard_context):
@@ -240,24 +242,23 @@ class DashboardEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'BTCUSDT')
-        self.assertContains(response, '1 warning')
-        self.assertContains(response, 'KPI Summary')
-        self.assertContains(response, 'View Analytics')
-        self.assertContains(response, 'Portfolio projection')
-        self.assertContains(response, 'Lots accounting value')
+        self.assertContains(response, 'Reconciliation: <strong>warning</strong>', html=True)
+        self.assertContains(response, 'Performance Snapshot')
+        self.assertContains(response, 'Analytics')
         self.assertContains(response, 'Portfolio vs lots drift')
         self.assertContains(response, '0.75 USDT')
         self.assertContains(response, '0.00100000')
-        self.assertContains(response, '0.25 USDT')
+        self.assertContains(response, '0.25')
         self.assertContains(response, 'Dust / Residuals')
-        self.assertContains(response, 'Grouped signals')
+        self.assertContains(response, 'Active issues first')
         self.assertContains(response, 'Net realized PnL')
-        self.assertContains(response, '12.25 USDT')
+        self.assertContains(response, '12.25')
         self.assertContains(response, 'Win rate')
-        self.assertContains(response, 'Average win')
-        self.assertContains(response, 'Average loss')
-        self.assertNotContains(response, 'Profit factor')
-        self.assertContains(response, 'Gross deployed capital')
+        self.assertNotContains(response, 'Average win')
+        self.assertNotContains(response, 'Average loss')
+        self.assertContains(response, 'Profit factor')
+        self.assertContains(response, '6.00')
+        self.assertNotContains(response, 'Gross deployed capital')
         self.assertNotContains(response, 'PnL by symbol')
         self.assertNotContains(response, 'PnL by day')
         self.assertContains(response, 'BTCUSDT')
@@ -289,18 +290,22 @@ class DashboardEndpointTests(TestCase):
         response = self.client.get(self.dashboard_url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Operational Overview')
-        self.assertContains(response, 'KPI Summary')
+        self.assertContains(response, 'Operations Console')
+        self.assertContains(response, 'Performance Snapshot')
         self.assertContains(response, 'Net realized PnL')
-        self.assertContains(response, 'View Analytics')
-        self.assertContains(response, 'View Dust Dashboard')
+        self.assertContains(response, 'Analytics')
+        self.assertContains(response, 'Dust Dashboard')
         self.assertNotContains(response, 'PnL by symbol')
         self.assertNotContains(response, 'PnL by day')
-        self.assertNotContains(response, 'Profit factor')
+        self.assertContains(response, 'Profit factor')
+        self.assertContains(response, 'N/A')
+        self.assertNotContains(response, 'Average win')
+        self.assertNotContains(response, 'Average loss')
+        self.assertNotContains(response, 'Gross deployed capital')
         self.assertNotContains(response, 'Manual/accounting adjustment PnL')
 
     @patch('dashboard.views.get_dashboard_context')
-    def test_dashboard_home_shows_max_five_recent_operations(self, mock_get_dashboard_context):
+    def test_dashboard_home_shows_max_four_recent_operations(self, mock_get_dashboard_context):
         context = self.empty_dashboard_context()
         context['recent_operations'] = [
             SimpleNamespace(
@@ -322,11 +327,11 @@ class DashboardEndpointTests(TestCase):
         content = response.content.decode()
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Recent Trades / Latest Operations')
-        self.assertEqual(content.count('dashboard-recent-operation-row'), 5)
+        self.assertContains(response, 'Recent Trades')
+        self.assertEqual(content.count('dashboard-recent-operation-row'), 4)
         self.assertContains(response, 'OP0USDT')
-        self.assertContains(response, 'OP4USDT')
-        self.assertNotContains(response, 'OP5USDT')
+        self.assertContains(response, 'OP3USDT')
+        self.assertNotContains(response, 'OP4USDT')
 
     def test_analytics_dashboard_requires_authentication(self):
         response = self.client.get('/dashboard/analytics/')
@@ -433,9 +438,9 @@ class DashboardEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Dust / Residuals')
-        self.assertContains(response, 'Critical detections')
-        self.assertContains(response, 'Warning detections')
-        self.assertContains(response, 'Info detections')
+        self.assertContains(response, 'Critical')
+        self.assertContains(response, 'Warning')
+        self.assertContains(response, 'Info residuals')
         self.assertContains(response, 'SOLUSDT')
         self.assertContains(response, 'Below min notional')
         self.assertContains(response, reverse('dust_dashboard'))
@@ -481,9 +486,9 @@ class DashboardEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Active Operational Issues')
-        self.assertContains(response, 'View Dust Dashboard')
+        self.assertContains(response, 'Dust Dashboard')
         self.assertContains(response, 'Reason / short label')
-        self.assertContains(response, 'Approx value or delta in USDT')
+        self.assertContains(response, 'Approx USDT')
         self.assertEqual(content.count('dashboard-operational-issue-row'), 5)
         self.assertContains(response, 'ISSUE0USDT')
         self.assertContains(response, 'ISSUE4USDT')
@@ -497,7 +502,7 @@ class DashboardEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Public demo')
-        self.assertContains(response, 'KPI Summary')
+        self.assertContains(response, 'Performance Snapshot')
         self.assertNotContains(response, 'Total Fees')
         self.assertNotContains(response, 'Fees (USDT)')
         self.assertNotContains(response, 'Control seguro')
@@ -1202,6 +1207,123 @@ class DashboardEndpointTests(TestCase):
 
         self.assertEqual(filtered, [{'symbol': 'BTCUSDT', 'review_status': DustSignalReview.STATUS_PENDING}])
 
+    def test_active_operational_issues_exclude_info_below_min_when_warnings_exist(self):
+        now = timezone.now()
+        rows = [
+            {
+                'symbol': 'INFOUSDT',
+                'severity': 'info',
+                'reason': 'below_min_notional',
+                'display_reason': 'Below min notional',
+                'latest_detected_at': now,
+                'latest_estimated_value_usdt': Decimal('0.25'),
+                'review_status': DustSignalReview.STATUS_PENDING,
+                'has_blocking_correction': False,
+            },
+            {
+                'symbol': 'WARNUSDT',
+                'severity': 'warning',
+                'reason': 'lot_balance_drift',
+                'display_reason': 'Lots > Binance',
+                'latest_detected_at': now - timezone.timedelta(minutes=5),
+                'latest_estimated_value_usdt': Decimal('3.00'),
+                'review_status': DustSignalReview.STATUS_PENDING,
+                'has_blocking_correction': False,
+            },
+        ]
+
+        issues = _active_operational_issues(rows)
+
+        self.assertEqual([row['symbol'] for row in issues], ['WARNUSDT'])
+
+    def test_active_operational_issues_do_not_fallback_to_info_only_residuals(self):
+        rows = [
+            {
+                'symbol': 'INFOUSDT',
+                'severity': 'info',
+                'reason': 'below_min_notional',
+                'display_reason': 'Below min notional',
+                'latest_detected_at': timezone.now(),
+                'latest_estimated_value_usdt': Decimal('0.25'),
+                'review_status': DustSignalReview.STATUS_PENDING,
+                'has_blocking_correction': False,
+            },
+        ]
+
+        issues = _active_operational_issues(rows)
+
+        self.assertEqual(issues, [])
+
+    def test_informational_residual_summary_counts_info_only_residuals(self):
+        now = timezone.now()
+        rows = [
+            {
+                'symbol': 'INFOUSDT',
+                'severity': 'info',
+                'reason': 'below_min_notional',
+                'latest_detected_at': now,
+                'latest_estimated_value_usdt': Decimal('0.25'),
+                'review_status': DustSignalReview.STATUS_PENDING,
+                'has_blocking_correction': False,
+            },
+            {
+                'symbol': 'IGNOREDUSDT',
+                'severity': 'info',
+                'reason': 'below_min_notional',
+                'latest_detected_at': now - timezone.timedelta(minutes=5),
+                'latest_estimated_value_usdt': Decimal('0.75'),
+                'review_status': DustSignalReview.STATUS_IGNORED,
+                'has_blocking_correction': False,
+            },
+        ]
+
+        summary = _informational_residual_summary(rows)
+
+        self.assertEqual(summary['count'], 1)
+        self.assertEqual(summary['total_estimated_value_usdt'], Decimal('0.25'))
+        self.assertEqual(summary['latest_detected_at'], now)
+
+    def test_active_operational_issues_exclude_reviewed_ignored_and_blocked_signals(self):
+        now = timezone.now()
+        rows = [
+            {
+                'symbol': 'ACTIVEUSDT',
+                'severity': 'critical',
+                'reason': 'lot_balance_drift',
+                'latest_detected_at': now,
+                'review_status': DustSignalReview.STATUS_PENDING,
+                'has_blocking_correction': False,
+            },
+            {
+                'symbol': 'IGNOREDUSDT',
+                'severity': 'critical',
+                'reason': 'lot_balance_drift',
+                'latest_detected_at': now,
+                'review_status': DustSignalReview.STATUS_IGNORED,
+                'has_blocking_correction': False,
+            },
+            {
+                'symbol': 'REVIEWEDUSDT',
+                'severity': 'warning',
+                'reason': 'possible_incomplete_sell',
+                'latest_detected_at': now,
+                'review_status': DustSignalReview.STATUS_REVIEWED,
+                'has_blocking_correction': False,
+            },
+            {
+                'symbol': 'BLOCKEDUSDT',
+                'severity': 'warning',
+                'reason': 'lot_balance_drift',
+                'latest_detected_at': now,
+                'review_status': DustSignalReview.STATUS_PENDING,
+                'has_blocking_correction': True,
+            },
+        ]
+
+        issues = _active_operational_issues(rows)
+
+        self.assertEqual([row['symbol'] for row in issues], ['ACTIVEUSDT'])
+
     def test_dust_dashboard_timeout_returns_safe_defaults(self):
         with patch('dashboard.dust_read_model._dashboard_queryset', return_value=object()):
             with patch('dashboard.dust_read_model._build_filter_options', return_value={
@@ -1282,6 +1404,62 @@ class DashboardEndpointTests(TestCase):
 
         self.assertTrue(status['is_stale'])
         self.assertEqual(status['read_only'], True)
+        self.assertEqual(status['badge_label'], 'stale')
+        self.assertEqual(status['badge_class'], 'badge-warning')
+
+    def test_bot_health_badge_normalizes_uppercase_ok_to_healthy(self):
+        row = SimpleNamespace(
+            status='OK',
+            probe_message='heartbeat',
+            created_at=timezone.now(),
+            details={'read_only': True},
+        )
+        with patch('dashboard.dashboard_read_model.BotHealthcheck.objects') as manager:
+            manager.order_by.return_value.first.return_value = row
+
+            status = _build_bot_status()
+
+        self.assertEqual(status['badge_label'], 'healthy')
+        self.assertEqual(status['badge_class'], 'badge-success')
+
+    def test_bot_health_badge_normalizes_lowercase_ok_to_healthy(self):
+        row = SimpleNamespace(
+            status='ok',
+            probe_message='heartbeat',
+            created_at=timezone.now(),
+            details={'read_only': True},
+        )
+        with patch('dashboard.dashboard_read_model.BotHealthcheck.objects') as manager:
+            manager.order_by.return_value.first.return_value = row
+
+            status = _build_bot_status()
+
+        self.assertEqual(status['badge_label'], 'healthy')
+        self.assertEqual(status['badge_class'], 'badge-success')
+
+    def test_bot_health_badge_maps_missing_row_to_unknown(self):
+        with patch('dashboard.dashboard_read_model.BotHealthcheck.objects') as manager:
+            manager.order_by.return_value.first.return_value = None
+
+            status = _build_bot_status()
+
+        self.assertEqual(status['badge_label'], 'unknown')
+        self.assertEqual(status['badge_class'], 'badge-secondary')
+
+    def test_bot_health_badge_maps_error_to_error(self):
+        row = SimpleNamespace(
+            status='error',
+            probe_message='failed',
+            created_at=timezone.now(),
+            details={'read_only': True},
+        )
+        with patch('dashboard.dashboard_read_model.BotHealthcheck.objects') as manager:
+            manager.order_by.return_value.first.return_value = row
+
+            status = _build_bot_status()
+
+        self.assertEqual(status['badge_label'], 'error')
+        self.assertEqual(status['badge_class'], 'badge-danger')
 
     def test_fee_summary_uses_trade_operations_fee_fields(self):
         class FakeTradeOperationQuery:
@@ -1731,6 +1909,11 @@ class DashboardEndpointTests(TestCase):
                 'latest_detected_at': None,
                 'top_grouped_detections': [],
                 'total_estimated_value_usdt': Decimal('0'),
+                'informational_residuals': {
+                    'count': 0,
+                    'total_estimated_value_usdt': Decimal('0'),
+                    'latest_detected_at': None,
+                },
                 'data_error': None,
             },
             'data_error': None,

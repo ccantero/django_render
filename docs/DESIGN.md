@@ -25,20 +25,14 @@ Dashboard operator pages are implemented in the `dashboard` Django app.
 
 ### Main dashboard
 
-Home dashboard responsibility: Operational overview: health, exposure, active issues, latest activity.
+Home dashboard responsibility: concise operator console for health, urgent action, reconciliation, performance, and latest activity.
 
-- Bot status
-- Portfolio summary
-- Valuation consistency between portfolio projection and lots accounting value
-- Drift summary
-- Compact latest operations table, capped at five rows
-- Compact KPI summary:
-  - net realized PnL
-  - total fees USDT
-  - win rate
-  - gross deployed capital
-  - average win and average loss
-- Compact Active Operational Issues dust summary with at most five latest/high-priority signals
+- Compact Bot Health card with normalized health badge, status, heartbeat age, read-only state, and latest message
+- Compact Inventory Integrity card with material positions, portfolio-vs-lots drift, reconciliation status, and muted tolerance/missing-price details
+- Compact Performance Snapshot card with net realized PnL, fees USDT, profit factor, and win rate
+- Compact latest operations table, capped at four rows
+- Compact Active Operational Issues dust summary with at most five unresolved critical/warning signals
+- Informational Residuals summary with count, approximate exposure, and latest detection timestamp; info-only residuals are not promoted to active issues
 - Link to the full Dust / Residuals dashboard
 - Link to Analytics
 

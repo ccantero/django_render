@@ -2,36 +2,81 @@
 
 {% block content %}
 <style>
-	.dashboard-page .card,
-	.dashboard-page .card-body {
-		background-color: #fff !important;
-		color: #212529 !important;
+	.dashboard-page {
+		background: #f7f9fb;
 	}
 
-	.dashboard-page .card .text-muted {
-		color: #5f6f82 !important;
+	.dashboard-page .op-card {
+		background-color: #fff;
+		border: 1px solid #eef2f6;
+		border-radius: 6px;
+		color: #212529;
+		box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+	}
+
+	.dashboard-page .op-card-body {
+		padding: 14px 16px;
+	}
+
+	.dashboard-page .metric-label,
+	.dashboard-page .text-muted {
+		color: #617184 !important;
+	}
+
+	.dashboard-page .metric-label {
+		font-size: 12px;
+		margin-bottom: 3px;
+	}
+
+	.dashboard-page .metric-value {
+		font-size: 20px;
+		font-weight: 600;
+		line-height: 1.2;
+		margin-bottom: 0;
+	}
+
+	.dashboard-page .section-title {
+		font-size: 16px;
+		font-weight: 600;
+		color: #162231;
+		margin-bottom: 2px;
+	}
+
+	.dashboard-page .compact-table th,
+	.dashboard-page .compact-table td {
+		vertical-align: middle;
+		white-space: nowrap;
+		padding: 4px 6px;
+		font-size: 12px;
+	}
+
+	.dashboard-page .compact-table th {
+		color: #526173;
+		font-weight: 600;
+	}
+
+	.dashboard-page .compact-table td:nth-child(3) {
+		white-space: normal;
+		min-width: 150px;
 	}
 
 	.dashboard-page .dust-row-critical {
 		background-color: #fff1f2 !important;
-		border-left: 4px solid #dc3545;
 	}
 
 	.dashboard-page .dust-row-warning {
 		background-color: #fff8e6 !important;
-		border-left: 4px solid #f0ad4e;
 	}
 
 	.dashboard-page .dust-row-info {
 		background-color: #f6fbff !important;
-		border-left: 4px solid #8cc7df;
 	}
 </style>
 
-<div class="container-fluid py-4 dashboard-page">
-	<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+<div class="container-fluid py-3 dashboard-page">
+	<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
 		<div>
-			<h1 class="h3 mb-1">Operational Overview</h1>
+			<h1 class="h4 mb-1">Operations Console</h1>
 			<p class="text-muted mb-0">
 				{% if is_demo %}
 					{{ dashboard_user_label }}
@@ -42,21 +87,21 @@
 		</div>
 		<div class="mt-2 mt-md-0">
 			{% if not is_demo %}
-				<a class="btn btn-primary btn-sm" href="{% url 'dashboard_analytics' %}">View Analytics</a>
-				<a class="btn btn-outline-primary btn-sm" href="{% url 'dust_dashboard' %}">View Dust Dashboard</a>
+				<a class="btn btn-outline-primary btn-sm" href="{% url 'dashboard_analytics' %}">Analytics</a>
+				<a class="btn btn-outline-secondary btn-sm" href="{% url 'dust_dashboard' %}">Dust Dashboard</a>
 			{% endif %}
 		</div>
 	</div>
 
 	{% if is_demo %}
-		<div class="alert alert-info">
+		<div class="alert alert-info py-2">
 			<strong>Demo publica.</strong>
-			<div class="small mt-1">Estos datos son de ejemplo y los controles de escritura estan ocultos.</div>
+			<span class="small">Estos datos son de ejemplo y los controles de escritura estan ocultos.</span>
 		</div>
 	{% endif %}
 
 	{% if data_error %}
-		<div class="alert alert-warning">
+		<div class="alert alert-warning py-2">
 			<strong>No se pudo leer la base compartida.</strong>
 			<div class="small mt-1">{{ data_error }}</div>
 		</div>
@@ -64,261 +109,258 @@
 
 	<div class="row">
 		<div class="col-lg-4 col-md-6 mb-3">
-			<div class="card h-100">
-				<div class="card-body">
-					<h2 class="h5">Bot Status</h2>
-					{% if bot_status.row %}
-						<p class="mb-1">Status: <strong>{{ bot_status.status|default:"-" }}</strong></p>
-						<p class="mb-1">Message: {{ bot_status.probe_message|default:"-" }}</p>
-						<p class="mb-1">Created: {{ bot_status.created_at|date:"Y-m-d H:i:s"|default:"-" }}</p>
-						<p class="mb-1">Read only: {{ bot_status.read_only|yesno:"yes,no,unknown" }}</p>
-						{% if bot_status.is_stale %}
-							<span class="badge badge-warning">stale &gt; {{ bot_status.stale_after_minutes }} min</span>
+			<div class="op-card h-100">
+				<div class="op-card-body">
+					<div class="d-flex justify-content-between align-items-start mb-2">
+						<h2 class="section-title">Bot Health</h2>
+						<span class="badge {{ bot_status.badge_class|default:'badge-secondary' }}">{{ bot_status.badge_label|default:"unknown" }}</span>
+					</div>
+					<p class="mb-1">Status: <strong>{{ bot_status.status|default:"unknown" }}</strong></p>
+					<p class="mb-1">
+						Last heartbeat:
+						{% if bot_status.created_at %}
+							<strong>{{ bot_status.created_at|timesince }} ago</strong>
 						{% else %}
-							<span class="badge badge-success">fresh</span>
+							<strong>N/A</strong>
 						{% endif %}
-					{% else %}
-						<p class="text-muted mb-0">No data yet.</p>
-					{% endif %}
+					</p>
+					<p class="mb-1">Read only: <strong>{{ bot_status.read_only|yesno:"yes,no,unknown" }}</strong></p>
+					<p class="text-muted small mb-0">{{ bot_status.probe_message|default:"No latest message." }}</p>
 				</div>
 			</div>
 		</div>
 
 		<div class="col-lg-4 col-md-6 mb-3">
-			<div class="card h-100">
-				<div class="card-body">
-					<h2 class="h5">Portfolio Summary</h2>
-					<p class="mb-1">Rows: <strong>{{ portfolio_summary.rows_count }}</strong></p>
-					<p class="mb-1">Portfolio projection: <strong>{{ valuation_consistency.portfolio_value|floatformat:2 }} USDT</strong></p>
-					<p class="mb-1">Lots accounting value: <strong>{{ valuation_consistency.lots_value|floatformat:2 }} USDT</strong></p>
+			<div class="op-card h-100">
+				<div class="op-card-body">
+					<div class="d-flex justify-content-between align-items-start mb-2">
+						<h2 class="section-title">Inventory Integrity</h2>
+						{% if reconciliation.status == "ok" and not valuation_consistency.has_missing_prices %}
+							<span class="badge badge-success">reconciled</span>
+						{% else %}
+							<span class="badge badge-warning">check</span>
+						{% endif %}
+					</div>
+					<p class="mb-1">Material positions: <strong>{{ portfolio_summary.material_positions_count }}</strong></p>
 					<p class="mb-1">Portfolio vs lots drift: <strong>{{ valuation_consistency.drift_value|floatformat:2 }} USDT</strong></p>
-					{% if valuation_consistency.has_missing_prices %}
-						<p class="mb-1"><span class="badge badge-warning">Missing prices: {{ valuation_consistency.missing_price_count }}</span></p>
-						<p class="text-muted small mb-1">Portfolio rows: {{ valuation_consistency.portfolio_missing_price_count }} / lot symbols: {{ valuation_consistency.lots_missing_price_count }}</p>
-					{% endif %}
-					<p class="mb-1">Material: {{ portfolio_summary.material_positions_count }}</p>
-					<p class="mb-0">Dust: {{ valuation_consistency.dust_positions_count }}</p>
+					<p class="mb-1">Reconciliation: <strong>{{ reconciliation.status }}</strong></p>
+					<p class="text-muted small mb-0">
+						Checked {{ reconciliation.checked_count }} material row(s);
+						tolerance {{ reconciliation.tolerance }}.
+						{% if valuation_consistency.has_missing_prices %}
+							Missing prices: {{ valuation_consistency.missing_price_count }}.
+						{% endif %}
+					</p>
 				</div>
 			</div>
 		</div>
 
 		<div class="col-lg-4 col-md-12 mb-3">
-			<div class="card h-100">
-				<div class="card-body">
-					<h2 class="h5">Reconciliation / Drift</h2>
-					{% if reconciliation.status == "ok" %}
-						<p class="mb-2"><span class="badge badge-success">OK</span></p>
+			<div class="op-card h-100">
+				<div class="op-card-body">
+					<div class="d-flex justify-content-between align-items-start mb-2">
+						<h2 class="section-title">Performance Snapshot</h2>
+						{% if not is_demo %}
+							<a class="small" href="{% url 'dashboard_analytics' %}">Analytics</a>
+						{% endif %}
+					</div>
+					<div class="row">
+						<div class="col-6 mb-2">
+							<p class="metric-label">Net realized PnL</p>
+							<p class="metric-value">{{ performance_kpis.net_realized_pnl|floatformat:2 }}</p>
+						</div>
+						<div class="col-6 mb-2">
+							<p class="metric-label">Fees USDT</p>
+							<p class="metric-value">{{ performance_kpis.total_fees_usdt|floatformat:2 }}</p>
+						</div>
+						<div class="col-6">
+							<p class="metric-label">Profit factor</p>
+							<p class="metric-value">{% if performance_kpis.profit_factor is not None %}{{ performance_kpis.profit_factor|floatformat:2 }}{% else %}N/A{% endif %}</p>
+						</div>
+						<div class="col-6">
+							<p class="metric-label">Win rate</p>
+							<p class="metric-value">{% if performance_kpis.win_rate is not None %}{{ performance_kpis.win_rate|floatformat:2 }}%{% else %}N/A{% endif %}</p>
+						</div>
+					</div>
+					<p class="text-muted small mb-0 mt-2">Operational KPI snapshot; detailed KPI tables remain in Analytics.</p>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="row">
+		<div class="col-xl-7 mb-3">
+			<div class="op-card h-100">
+				<div class="op-card-body">
+					<div class="d-flex flex-wrap justify-content-between align-items-start mb-2">
+						<div>
+							<h2 class="section-title">Recent Trades</h2>
+							<p class="text-muted small mb-0">Latest four operations from the shared bot table.</p>
+						</div>
+						{% if not is_demo %}
+							<a class="small" href="{% url 'dashboard_analytics' %}">Full analytics</a>
+						{% endif %}
+					</div>
+					{% if recent_operations %}
+						<div class="table-responsive">
+							<table class="table table-sm compact-table mb-0">
+								<thead>
+									<tr>
+										<th>Time</th>
+										<th>Symbol</th>
+										<th>Side</th>
+										<th>Status</th>
+										<th class="text-right">Base qty</th>
+										<th class="text-right">Gross / net USDT</th>
+									</tr>
+								</thead>
+								<tbody>
+									{% for operation in recent_operations|slice:":4" %}
+										<tr class="dashboard-recent-operation-row">
+											<td>{{ operation.executed_at|default:operation.created_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
+											<td>{{ operation.symbol|default:"-" }}</td>
+											<td><span class="badge badge-light">{{ operation.side|default:"-" }}</span></td>
+											<td>{{ operation.status|default:"-" }}</td>
+											<td class="text-right">{{ operation.executed_base_qty|floatformat:8|default:"-" }}</td>
+											<td class="text-right">{{ operation.gross_quote|floatformat:2|default:"-" }} / {{ operation.net_quote|floatformat:2|default:"-" }}</td>
+										</tr>
+									{% endfor %}
+								</tbody>
+							</table>
+						</div>
+					{% elif latest_trade.row %}
+						<p class="mb-0"><strong>{{ latest_trade.row.side }}</strong> {{ latest_trade.row.symbol }} {{ latest_trade.row.status|default:"-" }}</p>
 					{% else %}
-						<p class="mb-2"><span class="badge badge-warning">{{ reconciliation.warning_count }} warning(s)</span></p>
+						<p class="text-muted mb-0">No operations yet.</p>
 					{% endif %}
-					<p class="mb-1">Checked material rows: {{ reconciliation.checked_count }}</p>
-					<p class="mb-2">Tolerance: {{ reconciliation.tolerance }}</p>
-					{% if reconciliation.warnings %}
-						<ul class="list-unstyled mb-0">
-							{% for warning in reconciliation.warnings %}
-								<li><strong>{{ warning.symbol }}</strong>: diff {{ warning.diff|floatformat:8 }}</li>
-							{% endfor %}
-						</ul>
+				</div>
+			</div>
+		</div>
+
+		<div class="col-xl-5 mb-3">
+			<div class="op-card h-100">
+				<div class="op-card-body">
+					<div class="d-flex flex-wrap justify-content-between align-items-start mb-2">
+						<div>
+							<h2 class="section-title">Dust / Residuals</h2>
+							<p class="text-muted small mb-0">Active issues first; full history stays on Dust Dashboard.</p>
+						</div>
+						{% if not is_demo %}
+							<a class="small" href="{% url 'dust_dashboard' %}">Dust Dashboard</a>
+						{% endif %}
+					</div>
+
+					<div class="row mb-2">
+						<div class="col-4">
+							<p class="metric-label">Critical</p>
+							<p class="metric-value">{{ dust_summary.critical_count }}</p>
+						</div>
+						<div class="col-4">
+							<p class="metric-label">Warning</p>
+							<p class="metric-value">{{ dust_summary.warning_count }}</p>
+						</div>
+						<div class="col-4">
+							<p class="metric-label">Info residuals</p>
+							<p class="metric-value">{{ dust_summary.informational_residuals.count|default:"0" }}</p>
+						</div>
+					</div>
+
+					<h3 class="h6 mb-2">Active Operational Issues</h3>
+					{% if dust_summary.active_operational_issues %}
+						<div class="table-responsive">
+							<table class="table table-sm compact-table mb-2">
+								<thead>
+									<tr>
+										<th>Symbol</th>
+										<th>Severity</th>
+										<th>Reason / short label</th>
+										<th class="text-right">Approx USDT</th>
+										<th>Last seen</th>
+										<th></th>
+									</tr>
+								</thead>
+								<tbody>
+									{% for row in dust_summary.active_operational_issues|slice:":5" %}
+										<tr class="dashboard-operational-issue-row {% if row.severity == 'critical' %}dust-row-critical{% elif row.severity == 'warning' %}dust-row-warning{% elif row.severity == 'info' %}dust-row-info{% endif %}">
+											<td>{{ row.symbol|default:"-" }}</td>
+											<td>
+												{% if row.severity == "critical" %}
+													<span class="badge badge-danger">critical</span>
+												{% elif row.severity == "warning" %}
+													<span class="badge badge-warning">warning</span>
+												{% elif row.severity == "info" %}
+													<span class="badge badge-secondary">info</span>
+												{% else %}
+													{{ row.severity|default:"-" }}
+												{% endif %}
+											</td>
+											<td>{{ row.display_reason|default:"Unclassified signal" }}</td>
+											<td class="text-right">
+												{% if row.latest_estimated_delta_value_usdt %}
+													{{ row.latest_estimated_delta_value_usdt|floatformat:4 }}
+												{% else %}
+													{{ row.latest_estimated_value_usdt|floatformat:4|default:"-" }}
+												{% endif %}
+											</td>
+											<td>{{ row.latest_detected_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
+											<td>
+												{% if not is_demo %}
+													<a class="btn btn-outline-primary btn-xs" href="{% url 'dust_detail' %}?{{ row.detail_querystring }}">Review</a>
+												{% else %}
+													<span class="text-muted small">Demo</span>
+												{% endif %}
+											</td>
+										</tr>
+									{% endfor %}
+								</tbody>
+							</table>
+						</div>
 					{% else %}
-						<p class="text-muted mb-0">Portfolio quantities match open lots for material rows.</p>
+						<p class="text-muted mb-2">No active operational dust issues found.</p>
 					{% endif %}
+
+					<div class="border-top pt-2">
+						<p class="mb-1"><strong>Informational Residuals</strong></p>
+						<p class="text-muted small mb-0">
+							{{ dust_summary.informational_residuals.count|default:"0" }} unresolved info residual(s),
+							{{ dust_summary.informational_residuals.total_estimated_value_usdt|floatformat:2 }} USDT approx exposure,
+							latest {{ dust_summary.informational_residuals.latest_detected_at|date:"Y-m-d H:i:s"|default:"-" }}.
+						</p>
+					</div>
 				</div>
 			</div>
-		</div>
-	</div>
-
-	<div class="card mb-3">
-		<div class="card-body">
-			<div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
-				<div>
-					<h2 class="h5 mb-1">KPI Summary</h2>
-					<p class="text-muted mb-0">Compact performance snapshot. Full tables live in Analytics.</p>
-				</div>
-				{% if not is_demo %}
-					<a class="btn btn-outline-primary btn-sm" href="{% url 'dashboard_analytics' %}">View Analytics</a>
-				{% endif %}
-			</div>
-			<div class="row">
-				<div class="col-lg-2 col-md-4 col-sm-6 mb-3">
-					<p class="mb-1">Net realized PnL</p>
-					<p class="h5 mb-0">{{ performance_kpis.net_realized_pnl|floatformat:2 }} USDT</p>
-				</div>
-				<div class="col-lg-2 col-md-4 col-sm-6 mb-3">
-					<p class="mb-1">Total fees USDT</p>
-					<p class="h5 mb-0">{{ performance_kpis.total_fees_usdt|floatformat:2 }} USDT</p>
-				</div>
-				<div class="col-lg-2 col-md-4 col-sm-6 mb-3">
-					<p class="mb-1">Win rate</p>
-					<p class="h5 mb-0">{% if performance_kpis.win_rate is not None %}{{ performance_kpis.win_rate|floatformat:2 }}%{% else %}N/A{% endif %}</p>
-				</div>
-				<div class="col-lg-2 col-md-4 col-sm-6 mb-3">
-					<p class="mb-1">Gross deployed capital</p>
-					<p class="h5 mb-0">{{ performance_kpis.gross_deployed_capital|floatformat:2 }} USDT</p>
-				</div>
-				<div class="col-lg-2 col-md-4 col-sm-6 mb-3">
-					<p class="mb-1">Average win</p>
-					<p class="h5 mb-0">{% if performance_kpis.average_win is not None %}{{ performance_kpis.average_win|floatformat:2 }} USDT{% else %}N/A{% endif %}</p>
-				</div>
-				<div class="col-lg-2 col-md-4 col-sm-6 mb-3">
-					<p class="mb-1">Average loss</p>
-					<p class="h5 mb-0">{% if performance_kpis.average_loss is not None %}{{ performance_kpis.average_loss|floatformat:2 }} USDT{% else %}N/A{% endif %}</p>
-				</div>
-			</div>
-		</div>
-	</div>
-
-	<div class="card mb-3">
-		<div class="card-body">
-			<h2 class="h5 mb-3">Recent Trades / Latest Operations</h2>
-			{% if recent_operations %}
-				<div class="table-responsive">
-					<table class="table table-sm mb-0">
-						<thead>
-							<tr>
-								<th>Time</th>
-								<th>Symbol</th>
-								<th>Side</th>
-								<th>Status</th>
-								<th class="text-right">Base qty</th>
-								<th class="text-right">Gross / net USDT</th>
-							</tr>
-						</thead>
-						<tbody>
-							{% for operation in recent_operations|slice:":5" %}
-								<tr class="dashboard-recent-operation-row">
-									<td>{{ operation.executed_at|default:operation.created_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
-									<td>{{ operation.symbol|default:"-" }}</td>
-									<td>{{ operation.side|default:"-" }}</td>
-									<td>{{ operation.status|default:"-" }}</td>
-									<td class="text-right">{{ operation.executed_base_qty|floatformat:8|default:"-" }}</td>
-									<td class="text-right">{{ operation.gross_quote|floatformat:2|default:"-" }} / {{ operation.net_quote|floatformat:2|default:"-" }}</td>
-								</tr>
-							{% endfor %}
-						</tbody>
-					</table>
-				</div>
-			{% elif latest_trade.row %}
-				<p class="mb-0"><strong>{{ latest_trade.row.side }}</strong> {{ latest_trade.row.symbol }} {{ latest_trade.row.status|default:"-" }}</p>
-			{% else %}
-				<p class="text-muted mb-0">No operations yet.</p>
-			{% endif %}
-		</div>
-	</div>
-
-	<div class="card mb-3">
-		<div class="card-body">
-			<div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
-				<div>
-					<h2 class="h5 mb-1">Dust / Residuals</h2>
-					<p class="text-muted mb-0">Grouped signals. Approx exposure uses latest grouped values, not PnL.</p>
-				</div>
-				{% if not is_demo %}
-					<a class="btn btn-outline-primary btn-sm" href="{% url 'dust_dashboard' %}">View Dust Dashboard</a>
-				{% endif %}
-			</div>
-
-			<div class="row">
-				<div class="col-md-2 col-sm-6 mb-3">
-					<p class="mb-1">Critical detections</p>
-					<p class="h4 mb-0">{{ dust_summary.critical_count }}</p>
-				</div>
-				<div class="col-md-2 col-sm-6 mb-3">
-					<p class="mb-1">Warning detections</p>
-					<p class="h4 mb-0">{{ dust_summary.warning_count }}</p>
-				</div>
-				<div class="col-md-2 col-sm-6 mb-3">
-					<p class="mb-1">Info detections</p>
-					<p class="h4 mb-0">{{ dust_summary.info_count }}</p>
-				</div>
-				<div class="col-md-3 col-sm-6 mb-3">
-					<p class="mb-1">Approx exposure</p>
-					<p class="h4 mb-0">{{ dust_summary.total_estimated_value_usdt|floatformat:2 }} USDT</p>
-				</div>
-				<div class="col-md-3 col-sm-12 mb-3">
-					<p class="mb-1">Latest detection</p>
-					<p class="mb-0">{{ dust_summary.latest_detected_at|date:"Y-m-d H:i:s"|default:"-" }}</p>
-				</div>
-			</div>
-
-			<h3 class="h6 mb-2">Active Operational Issues</h3>
-			{% if dust_summary.active_operational_issues %}
-				<div class="table-responsive">
-					<table class="table table-sm mb-0">
-						<thead>
-							<tr>
-								<th>Symbol</th>
-								<th>Severity</th>
-								<th>Reason / short label</th>
-								<th class="text-right">Approx value or delta in USDT</th>
-								<th>Last seen</th>
-								<th>Action link</th>
-							</tr>
-						</thead>
-						<tbody>
-							{% for row in dust_summary.active_operational_issues|slice:":5" %}
-								<tr class="dashboard-operational-issue-row {% if row.severity == 'critical' %}dust-row-critical{% elif row.severity == 'warning' %}dust-row-warning{% elif row.severity == 'info' %}dust-row-info{% endif %}">
-									<td>{{ row.symbol|default:"-" }}</td>
-									<td>
-										{% if row.severity == "critical" %}
-											<span class="badge badge-danger">critical</span>
-										{% elif row.severity == "warning" %}
-											<span class="badge badge-warning">warning</span>
-										{% elif row.severity == "info" %}
-											<span class="badge badge-secondary">info</span>
-										{% else %}
-											{{ row.severity|default:"-" }}
-										{% endif %}
-									</td>
-									<td>{{ row.display_reason|default:"Unclassified signal" }}</td>
-									<td class="text-right">
-										{% if row.latest_estimated_delta_value_usdt %}
-											{{ row.latest_estimated_delta_value_usdt|floatformat:4 }} delta
-										{% else %}
-											{{ row.latest_estimated_value_usdt|floatformat:4|default:"-" }} value
-										{% endif %}
-									</td>
-									<td>{{ row.latest_detected_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
-									<td>
-										{% if not is_demo %}
-											<a class="btn btn-outline-primary btn-sm" href="{% url 'dust_detail' %}?{{ row.detail_querystring }}">Review</a>
-										{% else %}
-											<span class="text-muted">Demo</span>
-										{% endif %}
-									</td>
-								</tr>
-							{% endfor %}
-						</tbody>
-					</table>
-				</div>
-			{% else %}
-				<p class="text-muted mb-0">No active operational dust issues found.</p>
-			{% endif %}
 		</div>
 	</div>
 
 	{% if not is_demo %}
-	<div class="card">
-		<div class="card-body">
-			<h2 class="h5">Control seguro</h2>
-			<p class="text-muted">
-				Estos botones solo escriben en la tabla local de control. No ejecutan ordenes ni llaman a Binance.
-			</p>
-			<p class="mb-3">
-				Control:
-				{% if bot_control %}
-					<strong>{% if bot_control.is_paused %}paused{% else %}running{% endif %}</strong>
-				{% else %}
-					<strong>unknown</strong>
-				{% endif %}
-			</p>
-			<form method="post" action="{% url 'bot_stop' %}" class="d-inline">
-				{% csrf_token %}
-				<button type="submit" class="btn btn-danger">Stop</button>
-			</form>
-			<form method="post" action="{% url 'bot_resume' %}" class="d-inline">
-				{% csrf_token %}
-				<button type="submit" class="btn btn-success">Resume</button>
-			</form>
+	<div class="op-card">
+		<div class="op-card-body">
+			<div class="d-flex flex-wrap justify-content-between align-items-center">
+				<div>
+					<h2 class="section-title">Control seguro</h2>
+					<p class="text-muted small mb-0">
+						Estos botones solo escriben en la tabla local de control. No ejecutan ordenes ni llaman a Binance.
+					</p>
+				</div>
+				<div class="mt-2 mt-md-0">
+					<span class="mr-2">
+						Control:
+						{% if bot_control %}
+							<strong>{% if bot_control.is_paused %}paused{% else %}running{% endif %}</strong>
+						{% else %}
+							<strong>unknown</strong>
+						{% endif %}
+					</span>
+					<form method="post" action="{% url 'bot_stop' %}" class="d-inline">
+						{% csrf_token %}
+						<button type="submit" class="btn btn-outline-danger btn-sm">Stop</button>
+					</form>
+					<form method="post" action="{% url 'bot_resume' %}" class="d-inline">
+						{% csrf_token %}
+						<button type="submit" class="btn btn-outline-success btn-sm">Resume</button>
+					</form>
+				</div>
+			</div>
 		</div>
 	</div>
 	{% endif %}

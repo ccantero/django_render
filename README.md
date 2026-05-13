@@ -9,10 +9,9 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 ## Current Scope
 
 - Authenticated dashboard overview
-- Bot health/status cards
-- Portfolio summary
+- Compact operator console homepage with Bot Health, Inventory Integrity, and Performance Snapshot cards
 - Valuation consistency between `bot.portfolio` projection value and open `bot.position_lots` accounting value
-- Recent operations/latest trade
+- Recent operations/latest trade, capped to the latest four operations on the homepage
 - Fees by asset
 - Wave 8 Phase 1 read-only performance KPI dashboard:
   - net realized PnL after normalized USDT fees
@@ -21,6 +20,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
   - gross deployed capital approximation
   - PnL by symbol and day
 - Drift alerts between `bot.portfolio` and `bot.position_lots`
+- Compact homepage Active Operational Issues from unresolved critical/warning dust/drift signals only, plus informational residual counts
 - Dust / residual dashboard from `bot.dust_detections`
 - Dust signal detail page
 - Dust detections show linked manual correction status by `source_detection_id`

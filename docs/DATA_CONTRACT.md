@@ -701,6 +701,11 @@ Status interpretation should be defensive:
 - Error status = Error
 - Recent OK = Healthy
 
+Homepage badge normalization treats `OK`, `ok`, `healthy`, and `success` as
+healthy; stale heartbeats override the status label; `error`, `failed`, and
+`critical` are displayed as errors; missing rows are unknown; and other statuses
+are warnings.
+
 ## 7.2 Financial Summary
 
 Use `portfolio` for display values.
@@ -715,6 +720,12 @@ Suggested cards:
 - Total fees
 - Drift warnings count
 - Dust positions count
+
+Homepage active dust/drift issue summaries should be read-model filters over
+existing grouped `bot.dust_detections` data. They should show unresolved
+critical/warning signals only, exclude handled review/correction states when
+those dashboard workflow tables are available, and keep info-only residuals as
+a compact count/exposure summary rather than a homepage active-issue row.
 
 ## 7.3 Open Positions
 

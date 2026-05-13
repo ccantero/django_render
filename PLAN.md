@@ -31,9 +31,9 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - `ManualCorrection` is aligned to bot-owned `bot.manual_corrections`.
 - Manual correction requests validate positive quantity and never prefill a negative correction quantity.
 - Dust / drift workflow supports grouped detections, latest run metadata, detail payloads, operator guidance, ignored/review-later actions, linked correction status, and manual correction request links.
-- Main dashboard dust UX now shows a compact Active Operational Issues summary while the dedicated Dust / Residuals page carries the full grouped table with filters and 25-row pagination.
+- Main dashboard dust UX now shows compact Active Operational Issues from unresolved critical/warning signals only, with info-only residuals summarized as counts/exposure while the dedicated Dust / Residuals page carries the full grouped table with filters and 25-row pagination.
 - Dust correction request links are disabled in the UI when the latest detection already has a linked `PENDING` or `APPLIED` correction; bot-side duplicate validation remains authoritative.
-- Main dashboard is now an operational overview for health, exposure, active issues, latest activity, and compact KPI summary.
+- Main dashboard is now a concise operator console with normalized Bot Health status badges, Inventory Integrity, Performance Snapshot, latest four operations, active dust/drift issues, and informational residual counts.
 - Analytics dashboard exists at `/dashboard/analytics/` for read-only KPI detail, fees, PnL by symbol, and PnL by day sourced from `bot.lot_closures` and `bot.trade_operations`.
 - Monitoring cards exist for bot status, portfolio summary, valuation consistency, latest operation/recent trade, and drift alerts.
 - Tests cover dashboard access, manual correction permissions, form validation, model contract alignment, drift prefill behavior, and environment validation.

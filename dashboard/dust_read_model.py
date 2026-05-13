@@ -38,6 +38,11 @@ ACTIVE_OPERATIONAL_ISSUES_LIMIT = 5
 DUST_PAGE_SIZE = 25
 DETAIL_ROWS_LIMIT = 100
 NULL_GROUP_VALUE = "__null__"
+HANDLED_REVIEW_STATUSES = {
+	DustSignalReview.STATUS_REVIEWED,
+	DustSignalReview.STATUS_IGNORED,
+	DustSignalReview.STATUS_EXTERNAL_OR_EARN,
+}
 GROUP_KEY_FIELDS = (
 	"symbol_key",
 	"asset_key",
@@ -157,6 +162,7 @@ def get_dust_overview_context():
 		"latest_detected_at": None,
 		"top_grouped_detections": [],
 		"active_operational_issues": [],
+		"informational_residuals": _empty_informational_residuals(),
 		"total_detections": 0,
 		"total_estimated_value_usdt": Decimal("0"),
 		"data_error": None,
@@ -168,6 +174,9 @@ def get_dust_overview_context():
 		context["top_grouped_detections"] = _with_review_state(context["top_grouped_detections"])
 		context["top_grouped_detections"] = _with_correction_state(context["top_grouped_detections"])
 		context["active_operational_issues"] = _active_operational_issues(
+			context["top_grouped_detections"]
+		)
+		context["informational_residuals"] = _informational_residual_summary(
 			context["top_grouped_detections"]
 		)
 		context.update(_build_summary(queryset, context["top_grouped_detections"]))
@@ -501,15 +510,68 @@ def _top_risk_signals(grouped_rows, limit=TOP_RISK_LIMIT):
 
 
 def _active_operational_issues(grouped_rows, limit=ACTIVE_OPERATIONAL_ISSUES_LIMIT):
-	rows = sorted(
-		grouped_rows,
-		key=lambda row: (
-			_severity_sort_value(row.get("severity")),
-			-(row.get("latest_detected_at").timestamp() if row.get("latest_detected_at") else 0),
-			row.get("symbol") or "",
-		),
+	rows = _defensive_unresolved_operational_issue_rows(grouped_rows)
+	return sorted(rows, key=_active_issue_sort_key)[:limit]
+
+
+def _defensive_unresolved_operational_issue_rows(grouped_rows):
+	return [
+		row for row in grouped_rows
+		if _is_unresolved_signal(row) and _is_operational_issue(row)
+	]
+
+
+def _defensive_unresolved_informational_residual_rows(grouped_rows):
+	return [
+		row for row in grouped_rows
+		if _is_unresolved_signal(row) and _is_informational_residual(row)
+	]
+
+
+def _is_unresolved_signal(row):
+	if row.get("has_blocking_correction"):
+		return False
+	return row.get("review_status", DustSignalReview.STATUS_PENDING) not in HANDLED_REVIEW_STATUSES
+
+
+def _is_operational_issue(row):
+	return row.get("severity") in {"critical", "warning"}
+
+
+def _is_informational_residual(row):
+	return row.get("severity") == "info" or row.get("reason") == "below_min_notional"
+
+
+def _active_issue_sort_key(row):
+	return (
+		_severity_sort_value(row.get("severity")),
+		-(row.get("latest_detected_at").timestamp() if row.get("latest_detected_at") else 0),
+		row.get("symbol") or "",
 	)
-	return rows[:limit]
+
+
+def _informational_residual_summary(grouped_rows):
+	rows = _defensive_unresolved_informational_residual_rows(grouped_rows)
+	total_estimated_value_usdt = Decimal("0")
+	latest_detected_at = None
+	for row in rows:
+		total_estimated_value_usdt += row.get("latest_estimated_value_usdt") or Decimal("0")
+		detected_at = row.get("latest_detected_at")
+		if detected_at and (latest_detected_at is None or detected_at > latest_detected_at):
+			latest_detected_at = detected_at
+	return {
+		"count": len(rows),
+		"total_estimated_value_usdt": total_estimated_value_usdt,
+		"latest_detected_at": latest_detected_at,
+	}
+
+
+def _empty_informational_residuals():
+	return {
+		"count": 0,
+		"total_estimated_value_usdt": Decimal("0"),
+		"latest_detected_at": None,
+	}
 
 
 def _severity_sort_value(severity):
