@@ -14,9 +14,11 @@ from dashboard.dashboard_read_model import (
     _build_bot_status,
     _build_fee_summary,
     _build_performance_kpis,
+    _build_position_exit_status,
     _build_quote_fee_summary,
     _build_valuation_consistency,
     _calculate_performance_kpis,
+    _position_exit_suggested_action,
 )
 from dashboard.dust_read_model import (
     _active_operational_issues,
@@ -929,6 +931,50 @@ class DashboardEndpointTests(TestCase):
         self.assertNotContains(response, '<th>Asset</th>', html=True)
         self.assertNotContains(response, '<th>Event type</th>', html=True)
         self.assertNotContains(response, '<th>Latest run</th>', html=True)
+
+    @patch('dashboard.views.get_dashboard_context')
+    def test_dashboard_shows_position_exit_status_card(self, mock_get_dashboard_context):
+        context = self.empty_dashboard_context()
+        context['position_exit_status'] = {
+            'rows': [
+                {
+                    'symbol': 'ZECUSDT',
+                    'status_label': 'Holding',
+                    'status_badge': 'badge-info',
+                    'main_reason': 'stop_loss not reached, take_profit not reached',
+                    'estimated_value_usdt': Decimal('42.25'),
+                    'open_lot_quantity': Decimal('0.50000000'),
+                    'current_price': Decimal('84.50'),
+                    'suggested_action': 'Hold: strategy thresholds not reached',
+                },
+                {
+                    'symbol': 'ORDIUSDT',
+                    'status_label': 'Review needed',
+                    'status_badge': 'badge-warning',
+                    'main_reason': 'insufficient Binance balance',
+                    'estimated_value_usdt': Decimal('18.00'),
+                    'open_lot_quantity': Decimal('3.00000000'),
+                    'current_price': Decimal('6.00'),
+                    'suggested_action': 'Review drift: Binance balance lower than lots',
+                },
+            ],
+            'material_count': 2,
+            'dust_count': 0,
+            'data_error': None,
+        }
+        mock_get_dashboard_context.return_value.context = context
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.dashboard_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Why positions are not selling')
+        self.assertContains(response, 'ZECUSDT')
+        self.assertContains(response, 'Holding')
+        self.assertContains(response, 'stop_loss not reached, take_profit not reached')
+        self.assertContains(response, 'Hold: strategy thresholds not reached')
+        self.assertContains(response, 'ORDIUSDT')
+        self.assertContains(response, 'Review drift: Binance balance lower than lots')
 
     def test_demo_dashboard_is_public_and_read_only(self):
         response = self.client.get(reverse('dashboard_demo'))
@@ -2261,6 +2307,75 @@ class DashboardEndpointTests(TestCase):
             Decimal('6.566666666666666660100000000000000000'),
         )
 
+    def test_position_exit_status_classifies_hold_dust_and_drift(self):
+        open_lots = {
+            'ZECUSDT': {'symbol': 'ZECUSDT', 'open_quantity': Decimal('0.5'), 'open_lot_count': 1},
+            'ETHUSDT': {'symbol': 'ETHUSDT', 'open_quantity': Decimal('0.001'), 'open_lot_count': 1},
+            'ORDIUSDT': {'symbol': 'ORDIUSDT', 'open_quantity': Decimal('3'), 'open_lot_count': 2},
+        }
+        portfolio_rows = [
+            SimpleNamespace(symbol='ZECUSDT', asset='ZEC', quantity=Decimal('0.5'), current_price=Decimal('84.50')),
+            SimpleNamespace(symbol='ETHUSDT', asset='ETH', quantity=Decimal('0.001'), current_price=Decimal('2300')),
+            SimpleNamespace(symbol='ORDIUSDT', asset='ORDI', quantity=Decimal('2'), current_price=Decimal('6')),
+        ]
+        sell_events = {
+            'ZECUSDT': SimpleNamespace(
+                symbol='ZECUSDT',
+                reason='strategy_thresholds_not_reached',
+                current_price=Decimal('84.50'),
+                stop_loss_threshold=Decimal('-3'),
+                take_profit_threshold=Decimal('5'),
+                created_at=timezone.now(),
+                payload={'reasons': ['stop_loss_not_reached', 'take_profit_not_reached'], 'run_id': 'run-1'},
+            ),
+            'ETHUSDT': SimpleNamespace(
+                symbol='ETHUSDT',
+                reason='quantity_below_min_notional',
+                current_price=Decimal('2300'),
+                stop_loss_threshold=None,
+                take_profit_threshold=None,
+                created_at=timezone.now(),
+                payload={'reasons': ['quantity_below_min_notional', 'dust_residual_protection']},
+            ),
+            'ORDIUSDT': SimpleNamespace(
+                symbol='ORDIUSDT',
+                reason='insufficient_binance_balance',
+                current_price=Decimal('6'),
+                stop_loss_threshold=None,
+                take_profit_threshold=None,
+                created_at=timezone.now(),
+                payload={'reason': 'insufficient_binance_balance'},
+            ),
+        }
+
+        summary = _build_position_exit_status(open_lots, portfolio_rows, sell_events)
+        rows_by_symbol = {row['symbol']: row for row in summary['rows']}
+
+        self.assertEqual(rows_by_symbol['ZECUSDT']['status_label'], 'Holding')
+        self.assertEqual(rows_by_symbol['ZECUSDT']['main_reason'], 'stop_loss not reached, take_profit not reached')
+        self.assertEqual(rows_by_symbol['ZECUSDT']['suggested_action'], 'Hold: strategy thresholds not reached')
+        self.assertEqual(rows_by_symbol['ETHUSDT']['status_label'], 'Dust residual')
+        self.assertEqual(rows_by_symbol['ETHUSDT']['estimated_value_usdt'], Decimal('2.300'))
+        self.assertEqual(rows_by_symbol['ETHUSDT']['suggested_action'], 'Dust: review/ignore or wait until reusable')
+        self.assertEqual(rows_by_symbol['ORDIUSDT']['status_label'], 'Review needed')
+        self.assertEqual(rows_by_symbol['ORDIUSDT']['suggested_action'], 'Review drift: Binance balance lower than lots')
+        self.assertEqual(summary['material_count'], 2)
+        self.assertEqual(summary['dust_count'], 1)
+
+    def test_position_exit_suggested_action_mapping(self):
+        self.assertEqual(
+            _position_exit_suggested_action(['quantity_below_min_qty']),
+            'Dust: review/ignore or wait until reusable',
+        )
+        self.assertEqual(
+            _position_exit_suggested_action(['stop_loss_not_reached', 'take_profit_not_reached']),
+            'Hold: strategy thresholds not reached',
+        )
+        self.assertEqual(
+            _position_exit_suggested_action(['exchange_filter_missing']),
+            'Review exchange metadata',
+        )
+
     def empty_dashboard_context(self):
         return {
             'bot_control': None,
@@ -2347,6 +2462,12 @@ class DashboardEndpointTests(TestCase):
                     'total_estimated_value_usdt': Decimal('0'),
                     'latest_detected_at': None,
                 },
+                'data_error': None,
+            },
+            'position_exit_status': {
+                'rows': [],
+                'material_count': 0,
+                'dust_count': 0,
                 'data_error': None,
             },
             'data_error': None,

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
 from typing import List
 
@@ -10,7 +10,14 @@ from django.utils import timezone
 
 from dashboard.dust_read_model import get_dust_overview_context
 from core.models import BotControl
-from core.trading_models import BotHealthcheck, LotClosure, Portfolio, PositionLot, TradeOperation
+from core.trading_models import (
+	BotHealthcheck,
+	LotClosure,
+	Portfolio,
+	PositionLot,
+	SellDecisionEvent,
+	TradeOperation,
+)
 
 
 DRIFT_TOLERANCE = Decimal("0.00000001")
@@ -18,6 +25,31 @@ DUST_MIN_VALUE = Decimal("5")
 HEALTHCHECK_STALE_AFTER = timedelta(minutes=15)
 HEALTHY_BOT_STATUSES = {"ok", "healthy", "success"}
 ERROR_BOT_STATUSES = {"error", "failed", "critical"}
+CANONICAL_SELL_REASONS = {
+	"take_profit_not_reached",
+	"stop_loss_not_reached",
+	"take_profit_reached",
+	"stop_loss_reached",
+	"no_open_lots",
+	"insufficient_binance_balance",
+	"quantity_below_step_size",
+	"quantity_below_min_qty",
+	"quantity_below_min_notional",
+	"rounded_quantity_zero",
+	"realized_profit_below_threshold",
+	"dust_residual_protection",
+	"strategy_hold",
+	"exchange_filter_missing",
+	"read_only",
+	"unknown",
+}
+DUST_EXIT_REASONS = {
+	"quantity_below_step_size",
+	"quantity_below_min_qty",
+	"quantity_below_min_notional",
+	"rounded_quantity_zero",
+	"dust_residual_protection",
+}
 
 
 @dataclass
@@ -40,6 +72,7 @@ def get_dashboard_context():
 		"recent_operations": [],
 		"reconciliation": _empty_reconciliation(),
 		"dust_summary": _empty_dust_summary(),
+		"position_exit_status": _empty_position_exit_status(),
 		"data_error": None,
 		"is_demo": False,
 	}
@@ -83,6 +116,16 @@ def get_dashboard_context():
 		context["valuation_consistency"] = _build_valuation_consistency(portfolio_rows, open_lots)
 	except DatabaseError as exc:
 		_add_data_error(context, "reconciliation", exc)
+		open_lots = {}
+
+	try:
+		context["position_exit_status"] = _build_position_exit_status(
+			open_lots,
+			portfolio_rows,
+			_latest_sell_events_by_symbol(open_lots),
+		)
+	except DatabaseError as exc:
+		_add_data_error(context, "position exit status", exc)
 
 	context["dust_summary"] = get_dust_overview_context()
 	if context["dust_summary"].get("data_error"):
@@ -251,6 +294,45 @@ def get_demo_dashboard_context():
 				"latest_detected_at": None,
 			},
 			"total_estimated_value_usdt": Decimal("1.42"),
+			"data_error": None,
+		},
+		"position_exit_status": {
+			"rows": [
+				{
+					"symbol": "ETHUSDT",
+					"asset": "ETH",
+					"status_label": "Dust residual",
+					"status_badge": "badge-secondary",
+					"main_reason": "quantity below min notional, dust residual protection",
+					"estimated_value_usdt": Decimal("2.31"),
+					"open_lot_quantity": Decimal("0.001"),
+					"portfolio_quantity": Decimal("0.001"),
+					"current_price": Decimal("2310.00"),
+					"take_profit_threshold": Decimal("5"),
+					"stop_loss_threshold": Decimal("-3"),
+					"suggested_action": "Dust: review/ignore or wait until reusable",
+					"strategy_name": "demo",
+					"evaluated_at": now - timedelta(minutes=5),
+				},
+				{
+					"symbol": "BTCUSDT",
+					"asset": "BTC",
+					"status_label": "Holding",
+					"status_badge": "badge-info",
+					"main_reason": "strategy hold",
+					"estimated_value_usdt": Decimal("1030.00"),
+					"open_lot_quantity": Decimal("0.01"),
+					"portfolio_quantity": Decimal("0.01"),
+					"current_price": Decimal("103000.00"),
+					"take_profit_threshold": Decimal("5"),
+					"stop_loss_threshold": Decimal("-3"),
+					"suggested_action": "Hold: strategy thresholds not reached",
+					"strategy_name": "demo",
+					"evaluated_at": now - timedelta(minutes=5),
+				},
+			],
+			"material_count": 1,
+			"dust_count": 1,
 			"data_error": None,
 		},
 		"data_error": None,
@@ -712,6 +794,226 @@ def _open_lots_by_symbol():
 	return {row["symbol"]: row for row in rows}
 
 
+def _latest_sell_events_by_symbol(open_lots):
+	symbols = list(open_lots.keys())
+	if not symbols:
+		return {}
+
+	events = {}
+	for event in (
+		SellDecisionEvent.objects
+		.filter(symbol__in=symbols)
+		.order_by("symbol", "-created_at", "-id")
+	):
+		events.setdefault(event.symbol, event)
+	return events
+
+
+def _build_position_exit_status(open_lots, portfolio_rows, sell_events_by_symbol):
+	portfolio_by_symbol = {row.symbol: row for row in portfolio_rows}
+	rows = []
+	material_count = 0
+	dust_count = 0
+
+	for symbol in sorted(open_lots):
+		open_lot = open_lots[symbol]
+		portfolio = portfolio_by_symbol.get(symbol)
+		event = sell_events_by_symbol.get(symbol)
+		open_quantity = open_lot.get("open_quantity") or Decimal("0")
+		current_price = _event_decimal(event, "current_price") or getattr(portfolio, "current_price", None)
+		estimated_value = _payload_decimal(event, "estimated_value_usdt")
+		if estimated_value is None:
+			estimated_value = _position_value(open_quantity, current_price)
+		reasons = _sell_event_reasons(event)
+		status_label, status_badge = _position_exit_status_label(reasons, estimated_value)
+
+		if estimated_value is not None and estimated_value > Decimal("0") and estimated_value < DUST_MIN_VALUE:
+			dust_count += 1
+		elif estimated_value is None or estimated_value >= DUST_MIN_VALUE:
+			material_count += 1
+
+		rows.append({
+			"run_id": _payload_value(event, "run_id"),
+			"symbol": symbol,
+			"asset": _payload_value(event, "asset") or getattr(portfolio, "asset", None) or _asset_from_symbol(symbol),
+			"status_label": status_label,
+			"status_badge": status_badge,
+			"main_reason": _format_sell_reasons(reasons),
+			"reasons": reasons,
+			"open_lot_quantity": open_quantity,
+			"portfolio_quantity": _payload_decimal(event, "portfolio_quantity") or getattr(portfolio, "quantity", None),
+			"current_price": current_price,
+			"estimated_value_usdt": estimated_value,
+			"take_profit_threshold": _event_decimal(event, "take_profit_threshold") or _payload_decimal(event, "take_profit_threshold"),
+			"stop_loss_threshold": _event_decimal(event, "stop_loss_threshold") or _payload_decimal(event, "stop_loss_threshold"),
+			"suggested_action": _position_exit_suggested_action(reasons),
+			"strategy_name": _payload_value(event, "strategy_name"),
+			"evaluated_at": _payload_value(event, "evaluated_at") or getattr(event, "created_at", None),
+		})
+
+	return {
+		"rows": rows,
+		"material_count": material_count,
+		"dust_count": dust_count,
+		"data_error": None,
+	}
+
+
+def _sell_event_reasons(event):
+	values = []
+	payload = getattr(event, "payload", None) if event else None
+	has_structured_reasons = False
+	if isinstance(payload, dict):
+		payload_reasons = payload.get("reasons")
+		if isinstance(payload_reasons, (list, tuple)):
+			values.extend(payload_reasons)
+			has_structured_reasons = bool(payload_reasons)
+		elif payload_reasons:
+			values.append(payload_reasons)
+			has_structured_reasons = True
+		for key in ("reason", "main_reason"):
+			if payload.get(key):
+				values.append(payload.get(key))
+				has_structured_reasons = True
+	if not has_structured_reasons and event and getattr(event, "reason", None):
+		values.append(getattr(event, "reason"))
+
+	reasons = []
+	for value in values:
+		normalized = _normalize_sell_reason(value)
+		if normalized not in reasons:
+			reasons.append(normalized)
+	return reasons or ["unknown"]
+
+
+def _normalize_sell_reason(value):
+	text = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+	if text in CANONICAL_SELL_REASONS:
+		return text
+	if "min_notional" in text or "minnotional" in text:
+		return "quantity_below_min_notional"
+	if "min_qty" in text or "minimum_quantity" in text:
+		return "quantity_below_min_qty"
+	if "step_size" in text or "stepsize" in text:
+		return "quantity_below_step_size"
+	if "rounded" in text and "zero" in text:
+		return "rounded_quantity_zero"
+	if "insufficient" in text and "balance" in text:
+		return "insufficient_binance_balance"
+	if "read_only" in text or "readonly" in text:
+		return "read_only"
+	if "strategy" in text and "hold" in text:
+		return "strategy_hold"
+	if "take_profit" in text and "not" in text:
+		return "take_profit_not_reached"
+	if "stop_loss" in text and "not" in text:
+		return "stop_loss_not_reached"
+	if "filter" in text and "missing" in text:
+		return "exchange_filter_missing"
+	return "unknown"
+
+
+def _position_exit_status_label(reasons, estimated_value):
+	reason_set = set(reasons)
+	if "insufficient_binance_balance" in reason_set:
+		return "Review needed", "badge-warning"
+	if "no_open_lots" in reason_set or "exchange_filter_missing" in reason_set:
+		return "Review needed", "badge-warning"
+	if "read_only" in reason_set:
+		return "Holding", "badge-secondary"
+	if "dust_residual_protection" in reason_set:
+		return "Dust residual", "badge-secondary"
+	if reason_set & DUST_EXIT_REASONS:
+		if estimated_value is not None and Decimal("0") < estimated_value < DUST_MIN_VALUE:
+			return "Dust residual", "badge-secondary"
+		return "Cannot sell", "badge-warning"
+	if "strategy_hold" in reason_set or {"stop_loss_not_reached", "take_profit_not_reached"}.issubset(reason_set):
+		return "Holding", "badge-info"
+	if "unknown" in reason_set:
+		return "Review needed", "badge-light"
+	return "Holding", "badge-info"
+
+
+def _position_exit_suggested_action(reasons):
+	reason_set = set(reasons)
+	if reason_set & {"quantity_below_min_notional", "quantity_below_min_qty", "rounded_quantity_zero"}:
+		return "Dust: review/ignore or wait until reusable"
+	if {"stop_loss_not_reached", "take_profit_not_reached"}.issubset(reason_set):
+		return "Hold: strategy thresholds not reached"
+	if "strategy_hold" in reason_set:
+		return "Hold: strategy thresholds not reached"
+	if "insufficient_binance_balance" in reason_set:
+		return "Review drift: Binance balance lower than lots"
+	if "no_open_lots" in reason_set:
+		return "No accounting inventory"
+	if "exchange_filter_missing" in reason_set:
+		return "Review exchange metadata"
+	if "read_only" in reason_set:
+		return "Bot is in READ_ONLY"
+	if "dust_residual_protection" in reason_set:
+		return "Dust: review/ignore or wait until reusable"
+	return "Review latest SELL diagnostics"
+
+
+def _format_sell_reasons(reasons):
+	return ", ".join(_format_sell_reason(reason) for reason in reasons)
+
+
+def _format_sell_reason(reason):
+	labels = {
+		"take_profit_not_reached": "take_profit not reached",
+		"stop_loss_not_reached": "stop_loss not reached",
+		"take_profit_reached": "take_profit reached",
+		"stop_loss_reached": "stop_loss reached",
+		"no_open_lots": "no open lots",
+		"insufficient_binance_balance": "insufficient Binance balance",
+		"quantity_below_step_size": "quantity below step size",
+		"quantity_below_min_qty": "quantity below min qty",
+		"quantity_below_min_notional": "quantity below min notional",
+		"rounded_quantity_zero": "rounded quantity zero",
+		"realized_profit_below_threshold": "realized profit below threshold",
+		"dust_residual_protection": "dust residual protection",
+		"strategy_hold": "strategy hold",
+		"exchange_filter_missing": "exchange filter missing",
+		"read_only": "read only",
+		"unknown": "unknown",
+	}
+	return labels.get(reason, str(reason).replace("_", " "))
+
+
+def _payload_value(event, key):
+	payload = getattr(event, "payload", None) if event else None
+	if not isinstance(payload, dict):
+		return None
+	return payload.get(key)
+
+
+def _payload_decimal(event, key):
+	return _to_decimal(_payload_value(event, key))
+
+
+def _event_decimal(event, key):
+	return _to_decimal(getattr(event, key, None) if event else None)
+
+
+def _to_decimal(value):
+	if value is None or value == "":
+		return None
+	if isinstance(value, Decimal):
+		return value
+	try:
+		return Decimal(str(value))
+	except (InvalidOperation, ValueError, TypeError):
+		return None
+
+
+def _asset_from_symbol(symbol):
+	for suffix in ("USDT", "BUSD", "USDC", "BTC", "ETH"):
+		if symbol.endswith(suffix) and len(symbol) > len(suffix):
+			return symbol[:-len(suffix)]
+	return symbol
+
+
 def _build_reconciliation(portfolio_rows, open_lots):
 	warnings = []
 	checked_count = 0
@@ -774,6 +1076,15 @@ def _empty_dust_summary():
 	}
 
 
+def _empty_position_exit_status():
+	return {
+		"rows": [],
+		"material_count": 0,
+		"dust_count": 0,
+		"data_error": None,
+	}
+
+
 def _is_material(portfolio):
 	if portfolio is None:
 		return False
@@ -799,6 +1110,7 @@ def _important_queries():
 		"bot.trade_operations: latest row ordered by executed_at/created_at/id desc",
 		"bot.trade_operations: latest four rows ordered by executed_at/created_at/id desc for compact operational overview",
 		"bot.position_lots: SUM(quantity_open) WHERE quantity_open > 0 GROUP BY symbol",
+		"bot.sell_decision_events: latest persisted SELL diagnostic per open-lot symbol, read-only",
 		"bot.dust_detections: operational dust summary and top detections, read-only",
 	]
 

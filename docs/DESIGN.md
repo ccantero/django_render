@@ -33,6 +33,7 @@ Home dashboard responsibility: concise operator console for health, urgent actio
 - Compact latest operations table, capped at four rows
 - Compact Active Operational Issues dust summary with at most five unresolved critical/warning signals
 - Informational Residuals summary with count, approximate exposure, and latest detection timestamp; info-only residuals are not promoted to active issues
+- Compact “Why positions are not selling” table with one row per open-lot symbol, status label, main reason, estimated value, lot quantity, current price, and suggested action
 - Link to the full Dust / Residuals dashboard
 - Link to Analytics
 
@@ -146,6 +147,16 @@ Recommended labels:
 - Binance > Lots
 - Possible incomplete sell
 - Unclassified signal
+
+Position exit status labels should remain compact:
+
+- Holding
+- Cannot sell
+- Dust residual
+- Review needed
+
+Suggested actions should map normalized bot reasons conservatively, especially
+separating minNotional/dust blockers from real strategy holds.
 
 ---
 

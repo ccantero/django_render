@@ -23,6 +23,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Compact homepage Active Operational Issues from unresolved critical/warning dust/drift signals only, plus informational residual counts
 - Dust / residual dashboard from `bot.dust_detections`
 - Read-only Telegram mobile diagnostics commands for bot health, BUY capacity status, positions, latest SELL diagnostics, and why-not-sell explanations
+- Read-only “Why positions are not selling” dashboard table sourced from open `bot.position_lots` and latest `bot.sell_decision_events`
 - Dust signal detail page
 - Dust detections show linked manual correction status by `source_detection_id`
 - Manual review actions:
@@ -62,6 +63,7 @@ The dashboard and bot are separate projects and share only the database.
 - Normalized fee totals use `bot.trade_operations.fee_amount_in_quote` for FILLED USDT-quote operations; fees that cannot be normalized to USDT are excluded.
 - PnL by day uses linked trade operation timestamps (`executed_at` then `created_at`), not a timestamp on `lot_closures`.
 - SELL coverage must never be inferred from `portfolio`.
+- Position exit status must be observational only: use `position_lots` for open inventory, `portfolio` only for display values, and persisted SELL diagnostics only for explanations.
 - The dashboard must not directly update:
   - `bot.position_lots`
   - `bot.trade_operations`

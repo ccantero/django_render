@@ -40,6 +40,7 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - Main dashboard dust UX now shows compact Active Operational Issues from unresolved critical/warning signals only, with info-only residuals summarized as counts/exposure while the dedicated Dust / Residuals page carries the full grouped table with filters and 25-row pagination.
 - Dust correction request links are disabled in the UI when the latest detection already has a linked `PENDING` or `APPLIED` correction; bot-side duplicate validation remains authoritative.
 - Main dashboard is now a concise operator console with normalized Bot Health status badges, Inventory Integrity, Performance Snapshot, latest four operations, active dust/drift issues, and informational residual counts.
+- Main dashboard includes a read-only “Why positions are not selling” table that separates dust/minNotional blockers, strategy holds, and review-needed drift from latest persisted SELL diagnostics.
 - Analytics dashboard exists at `/dashboard/analytics/` for read-only KPI detail, fees, PnL by symbol, and PnL by day sourced from `bot.lot_closures` and `bot.trade_operations`.
 - Monitoring cards exist for bot status, portfolio summary, valuation consistency, latest operation/recent trade, and drift alerts.
 - Tests cover dashboard access, manual correction permissions, form validation, model contract alignment, drift prefill behavior, and environment validation.
@@ -60,7 +61,7 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 3. Show linked source dust detection detail from correction detail.
 4. Add filter for operator guidance category.
 5. Add better pagination for large detection history.
-6. Add recent rejections/skips from `order_decisions` or `trade_operations` if the bot contract exposes them.
+6. Continue enriching SELL diagnostics only through persisted bot-owned `sell_decision_events`; dashboard display is read-only.
 7. Extend Telegram diagnostics only with additional read-only DB-backed views when the shared contract exposes them.
 8. Add explicit confirmation checkbox in the correction form if extra operator friction is desired.
 9. Add clearer labels for Binance Small Amount Exchange / manual dust conversion cases currently represented by broader reasons such as `earn_or_external_transfer`.

@@ -26,6 +26,7 @@ Implemented capabilities:
 - Drift visibility between portfolio and lots
 - Fees by asset card
 - Compact Active Operational Issues dust summary on the main dashboard, limited to unresolved critical/warning signals only; info-only residuals are summarized and are not promoted to active issues
+- Compact “Why positions are not selling” table on the main dashboard, sourced from open lots and latest persisted SELL diagnostics, with dust/minNotional positions separated from strategy holds
 - Dedicated Dust / Residuals dashboard sourced from `bot.dust_detections` with filters and 25-row pagination
 - Telegram mobile diagnostics commands on the existing webhook:
   - `/health`
@@ -46,6 +47,7 @@ Implemented capabilities:
 - UI-only duplicate click prevention for detections with linked `PENDING` or `APPLIED` corrections
 - Operator guidance labels for dust/drift signals
 - Tests for dashboard pages, permissions, form validation, valuation consistency, and drift quantity prefill
+- Tests for position exit status classification, suggested action mapping, and dashboard rendering
 - Tests for performance KPI Decimal calculations, null safety, zero-loss profit factor behavior, and identifiable manual correction PnL splitting
 - DRF schema and Swagger UI through drf-spectacular
 - Project-level environment validation for required settings

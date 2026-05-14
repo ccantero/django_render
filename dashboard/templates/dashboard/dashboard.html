@@ -332,6 +332,55 @@
 		</div>
 	</div>
 
+	<div class="op-card mb-3">
+		<div class="op-card-body">
+			<div class="d-flex flex-wrap justify-content-between align-items-start mb-2">
+				<div>
+					<h2 class="section-title">Why positions are not selling</h2>
+					<p class="text-muted small mb-0">
+						Read-only exit status from open lots and latest bot SELL diagnostics.
+					</p>
+				</div>
+				<div class="small text-muted mt-1">
+					Material {{ position_exit_status.material_count|default:"0" }} / dust {{ position_exit_status.dust_count|default:"0" }}
+				</div>
+			</div>
+
+			{% if position_exit_status.rows %}
+				<div class="table-responsive">
+					<table class="table table-sm compact-table mb-0">
+						<thead>
+							<tr>
+								<th>Symbol</th>
+								<th>Status label</th>
+								<th>Main reason</th>
+								<th class="text-right">Estimated value USDT</th>
+								<th class="text-right">Open lot qty</th>
+								<th class="text-right">Current price</th>
+								<th>Suggested action</th>
+							</tr>
+						</thead>
+						<tbody>
+							{% for row in position_exit_status.rows|slice:":8" %}
+								<tr class="dashboard-position-exit-row">
+									<td>{{ row.symbol|default:"-" }}</td>
+									<td><span class="badge {{ row.status_badge|default:'badge-light' }}">{{ row.status_label|default:"Review needed" }}</span></td>
+									<td>{{ row.main_reason|default:"unknown" }}</td>
+									<td class="text-right">{{ row.estimated_value_usdt|floatformat:4|default:"-" }}</td>
+									<td class="text-right">{{ row.open_lot_quantity|floatformat:8|default:"-" }}</td>
+									<td class="text-right">{{ row.current_price|floatformat:8|default:"-" }}</td>
+									<td>{{ row.suggested_action|default:"Review latest SELL diagnostics" }}</td>
+								</tr>
+							{% endfor %}
+						</tbody>
+					</table>
+				</div>
+			{% else %}
+				<p class="text-muted mb-0">No open lots found.</p>
+			{% endif %}
+		</div>
+	</div>
+
 	{% if not is_demo %}
 	<div class="op-card">
 		<div class="op-card-body">

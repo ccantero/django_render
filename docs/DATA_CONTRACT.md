@@ -405,12 +405,50 @@ Current Telegram diagnostics read these conceptual fields when available:
 - created_at
 - payload
 
+Dashboard position exit status may also read additive payload fields when the
+bot emits them:
+
+- `run_id`
+- `asset`
+- `open_lot_quantity`
+- `portfolio_quantity`
+- `estimated_value_usdt`
+- `reason`
+- `reasons`
+- `strategy_name`
+- `evaluated_at`
+
+The dashboard treats these fields as explanation metadata only. Open inventory
+still comes from `bot.position_lots`; `portfolio` remains display/projection
+only.
+
+Normalized SELL evaluation reason values:
+
+- `take_profit_not_reached`
+- `stop_loss_not_reached`
+- `take_profit_reached`
+- `stop_loss_reached`
+- `no_open_lots`
+- `insufficient_binance_balance`
+- `quantity_below_step_size`
+- `quantity_below_min_qty`
+- `quantity_below_min_notional`
+- `rounded_quantity_zero`
+- `realized_profit_below_threshold`
+- `dust_residual_protection`
+- `strategy_hold`
+- `exchange_filter_missing`
+- `read_only`
+- `unknown`
+
 Important:
 
 - This table is diagnostics/audit data only.
 - Dashboard consumers must not derive SELL coverage from this table.
 - Dashboard consumers must not update or delete rows in this table.
 - Telegram/mobile responses must escape dynamic values before HTML rendering.
+- Dashboard consumers may use latest rows to explain why an open-lot symbol is
+  currently not selling, but must not treat those rows as accounting state.
 
 ---
 
@@ -879,6 +917,46 @@ Start with simple DB-derived alerts:
 - Negative remaining lot quantity
 
 Alerts should be informational unless the condition is clearly critical.
+
+## 7.6 Position Exit Status
+
+The main dashboard may show a read-only “Why positions are not selling” view.
+
+Primary inventory source: `bot.position_lots`.
+
+Display/projection source: `bot.portfolio`.
+
+Explanation source: latest persisted `bot.sell_decision_events` row per symbol.
+
+Required dashboard columns:
+
+- Symbol
+- Status label
+- Main reason
+- Estimated value USDT
+- Open lot qty
+- Current price
+- Suggested action
+
+Suggested action mapping:
+
+- `quantity_below_min_notional`, `quantity_below_min_qty`, or
+  `rounded_quantity_zero`: `Dust: review/ignore or wait until reusable`
+- `stop_loss_not_reached` and `take_profit_not_reached`:
+  `Hold: strategy thresholds not reached`
+- `insufficient_binance_balance`:
+  `Review drift: Binance balance lower than lots`
+- `no_open_lots`: `No accounting inventory`
+- `exchange_filter_missing`: `Review exchange metadata`
+- `read_only`: `Bot is in READ_ONLY`
+
+Constraints:
+
+- Do not execute trades.
+- Do not call Binance from Django.
+- Do not mutate `position_lots`, `portfolio`, `trade_operations`,
+  `trade_fills`, or `lot_closures`.
+- Do not count dust/minNotional rows as material exposure in this view.
 
 ---
 

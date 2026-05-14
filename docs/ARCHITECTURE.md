@@ -159,6 +159,12 @@ The main dashboard also compares `bot.portfolio` projection value against open `
 
 The Wave 8 Phase 1 KPI section is read-only. It uses `bot.lot_closures.realized_pnl` for realized PnL, linked `bot.trade_operations.executed_at` or `created_at` for PnL-by-day grouping, `bot.trade_operations.fee_amount_in_quote` for normalized USDT fee totals, and FILLED BUY quote value as approximate gross deployed capital. Non-USDT or unavailable fee conversions are excluded from normalized totals. Manual/accounting correction PnL is split only when available trade operation metadata identifies it; otherwise it remains included in realized PnL totals with an explicit limitation note.
 
+The main dashboard position exit status section is read-only. It uses
+`bot.position_lots` as the inventory source, joins `bot.portfolio` only for
+display quantity/price/value, and reads the latest `bot.sell_decision_events`
+row per open-lot symbol for normalized reason explanations. It does not call
+Binance, execute trades, or mutate accounting state.
+
 ---
 
 ## 7. Manual Correction Request Flow
