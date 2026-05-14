@@ -14,7 +14,8 @@ It provides visibility, review, and request workflows over bot-owned database ta
 
 - Read bot health and trading state.
 - Display portfolio, lots, trades, fees, drift, and dust detections.
-- Serve allowlisted read-only Telegram diagnostics for mobile operators.
+- Serve allowlisted read-only Telegram diagnostics for mobile operators,
+  including conservative BUY capacity status from persisted bot state.
 - Display read-only operational performance KPIs from realized lot closures and filled trade operations.
 - Display grouped dust/residual signals with operator guidance.
 - Record manual review state.

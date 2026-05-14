@@ -29,9 +29,12 @@ Implemented capabilities:
 - Dedicated Dust / Residuals dashboard sourced from `bot.dust_detections` with filters and 25-row pagination
 - Telegram mobile diagnostics commands on the existing webhook:
   - `/health`
+  - `/buy_status`
   - `/position SYMBOL`
   - `/last_sell SYMBOL`
   - `/why_not_sell SYMBOL`
+- Telegram diagnostics render compact Decimal-safe numeric values for mobile
+  review while preserving read-only DB access and HTML escaping.
 - Dust signal detail page
 - Linked correction badges for dust detections using `bot.manual_corrections.source_detection_id`
 - Manual review buttons:

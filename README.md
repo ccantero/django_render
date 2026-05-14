@@ -22,7 +22,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Drift alerts between `bot.portfolio` and `bot.position_lots`
 - Compact homepage Active Operational Issues from unresolved critical/warning dust/drift signals only, plus informational residual counts
 - Dust / residual dashboard from `bot.dust_detections`
-- Read-only Telegram mobile diagnostics commands for bot health, positions, latest SELL diagnostics, and why-not-sell explanations
+- Read-only Telegram mobile diagnostics commands for bot health, BUY capacity status, positions, latest SELL diagnostics, and why-not-sell explanations
 - Dust signal detail page
 - Dust detections show linked manual correction status by `source_detection_id`
 - Manual review actions:
@@ -149,7 +149,8 @@ Optional Telegram diagnostics allowlist settings:
 
 The mobile diagnostics commands require the incoming Telegram chat ID or user ID
 to match one of those allowlists. The commands use safe HTML formatting and only
-read shared bot tables.
+read shared bot tables. Supported commands are `/health`, `/buy_status`,
+`/position SYMBOL`, `/last_sell SYMBOL`, and `/why_not_sell SYMBOL`.
 
 Run tests:
 

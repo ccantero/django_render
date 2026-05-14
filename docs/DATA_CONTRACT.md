@@ -348,6 +348,11 @@ exposure, even though they may remain latent inventory and possible future
 reusable liquidity. `portfolio` remains a projection and `position_lots`
 remains the FIFO accounting truth.
 
+Dashboard Telegram diagnostics may expose `/buy_status` from these persisted
+healthcheck details. The diagnostic is read-only and conservative: if max
+positions or capital data are not exposed by the bot, the dashboard reports
+`N/A`, `unknown`, or `uncertain` rather than asserting that BUYs are possible.
+
 Suggested dashboard status logic:
 
 ```text

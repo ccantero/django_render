@@ -116,14 +116,17 @@ The existing Telegram webhook supports concise, allowlisted, read-only operator
 commands:
 
 - `/health`
+- `/buy_status`
 - `/position SYMBOL`
 - `/last_sell SYMBOL`
 - `/why_not_sell SYMBOL`
 
 Messages use Telegram HTML parse mode, escape dynamic values before rendering,
-and should stay compact enough for mobile review. Inline keyboard buttons, if
-added later, must be navigation or refresh controls only and must never trigger
-trading.
+and should stay compact enough for mobile review. `/buy_status` is conservative:
+it reports unknown or uncertain state when healthcheck details, max-position
+configuration, or free-capital data are unavailable. Inline keyboard buttons,
+if added later, must be navigation or refresh controls only and must never
+trigger trading.
 
 ---
 

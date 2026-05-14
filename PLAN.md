@@ -26,7 +26,11 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - Dashboard requires login for operational views.
 - Dust / residual dashboard reads `bot.dust_detections`.
 - Telegram mobile diagnostics commands read shared bot state through the existing webhook:
-  `/health`, `/position SYMBOL`, `/last_sell SYMBOL`, and `/why_not_sell SYMBOL`.
+  `/health`, `/buy_status`, `/position SYMBOL`, `/last_sell SYMBOL`, and `/why_not_sell SYMBOL`.
+- Telegram mobile diagnostics now also support `/buy_status` for conservative
+  BUY capacity visibility from healthcheck position classification data.
+- Telegram diagnostics use compact Decimal-safe display formatting for prices,
+  quantities, percentages, USDT values, and drift values.
 - Manual correction request creation is staff/superuser-only.
 - Manual correction request form is POST and CSRF protected.
 - Dashboard does not apply manual corrections or mutate bot accounting tables directly.

@@ -1,9 +1,10 @@
 import logging
 import re
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from html import escape
 
 from django.conf import settings
+from django.db import DatabaseError
 from django.db.models import Avg, Sum
 from django.utils import timezone
 
@@ -13,12 +14,13 @@ from core.trading_models import (
 	Portfolio,
 	PositionLot,
 	SellDecisionEvent,
+	TradeOperation,
 )
 
 
 logger = logging.getLogger(__name__)
 
-DIAGNOSTIC_COMMANDS = {"/health", "/position", "/last_sell", "/why_not_sell"}
+DIAGNOSTIC_COMMANDS = {"/health", "/position", "/last_sell", "/why_not_sell", "/buy_status"}
 REJECTED_SELL_EVENTS = [
 	"sell_signal_rejected",
 	"sell_order_skipped",
@@ -42,6 +44,8 @@ def diagnostic_response(text, chat_id, user_id=None):
 
 	if command == "/health":
 		return format_health()
+	if command == "/buy_status":
+		return format_buy_status()
 
 	symbol = args[0] if args else ""
 	if not is_valid_symbol(symbol):
@@ -117,8 +121,82 @@ def format_health():
 	if any(value is not None for value in counts):
 		lines.append(
 			"raw/material/dust/unknown: "
-			f"<code>{h('/'.join(str(value if value is not None else 'N/A') for value in counts))}</code>"
+			f"<code>{h('/'.join(fmt_count(value) for value in counts))}</code>"
 		)
+	return "\n".join(lines)
+
+
+def format_buy_status():
+	latest = BotHealthcheck.objects.order_by("-created_at", "-id").first()
+	if latest is None:
+		return "\n".join([
+			"<b>⚪ BUY status</b>",
+			"",
+			"Raw/material/dust/unknown: <code>N/A/N/A/N/A/N/A</code>",
+			"Max positions: <code>N/A</code>",
+			"",
+			"Material: <code>none</code>",
+			"Dust: <code>none</code>",
+			"Unknown: <code>none</code>",
+			"",
+			"Free USDT: <code>N/A</code>",
+			"Latest BUY reason: <code>N/A</code>",
+			"",
+			"BUY state: <code>unknown</code>",
+			"Reason: <code>latest healthcheck missing</code>",
+		])
+
+	details = latest.details or {}
+	classification = _buy_classification_from_details(details)
+	if not classification["has_healthcheck_counts"]:
+		classification = _buy_classification_from_portfolio()
+
+	raw_count = classification["raw_count"]
+	material_count = classification["material_count"]
+	dust_count = classification["dust_count"]
+	unknown_count = classification["unknown_count"]
+	max_positions = _details_first(details, [
+		"max_positions",
+		"max_open_positions",
+		"max_concurrent_positions",
+		"position_limit",
+		"config.max_positions",
+		"config.max_open_positions",
+	])
+	free_usdt = _details_first(details, [
+		"free_usdt",
+		"available_usdt",
+		"free_capital_usdt",
+		"available_capital_usdt",
+		"capital.free_usdt",
+		"balances.USDT.free",
+	])
+	latest_buy_reason = latest_buy_rejection_reason()
+	state_label, emoji, reason = interpret_buy_state(
+		raw_count=raw_count,
+		material_count=material_count,
+		max_positions=max_positions,
+		free_usdt=free_usdt,
+		unknown_count=unknown_count,
+	)
+
+	lines = [
+		f"<b>{emoji} BUY status</b>",
+		"",
+		"Raw/material/dust/unknown: "
+		f"<code>{h('/'.join(fmt_count(value) for value in [raw_count, material_count, dust_count, unknown_count]))}</code>",
+		f"Max positions: <code>{h(fmt_count(max_positions))}</code>",
+		"",
+		f"Material: <code>{h(fmt_symbol_list(classification['material_symbols']))}</code>",
+		f"Dust: <code>{h(fmt_symbol_list(classification['dust_symbols']))}</code>",
+		f"Unknown: <code>{h(fmt_symbol_list(classification['unknown_symbols']))}</code>",
+		"",
+		f"Free USDT: <code>{h(fmt_usdt(free_usdt))}</code>",
+		f"Latest BUY reason: <code>{h(latest_buy_reason)}</code>",
+		"",
+		f"BUY state: <code>{h(state_label)}</code>",
+		f"Reason: <code>{h(reason)}</code>",
+	]
 	return "\n".join(lines)
 
 
@@ -148,12 +226,12 @@ def format_position(symbol):
 	lines = [
 		f"<b>📍 Position — {h(symbol)}</b>",
 		"",
-		f"Portfolio qty: <code>{h(fmt(portfolio_qty))}</code>",
-		f"Open lots: <code>{h(fmt(open_qty))}</code>",
-		f"Price: <code>{h(fmt(current_price))}</code>",
-		f"Value: <code>{h(fmt(estimated_value))} USDT</code>",
-		f"Entry: <code>{h(fmt(entry_price))}</code>",
-		f"Drift: <code>{h(fmt(drift))}</code>",
+		f"Portfolio qty: <code>{h(fmt_qty(portfolio_qty))}</code>",
+		f"Open lots: <code>{h(fmt_qty(open_qty))}</code>",
+		f"Price: <code>{h(fmt_price(current_price))}</code>",
+		f"Value: <code>{h(fmt_usdt(estimated_value))}</code>",
+		f"Entry: <code>{h(fmt_price(entry_price))}</code>",
+		f"Drift: <code>{h(fmt_drift(drift))}</code>",
 	]
 	if latest_dust:
 		lines.extend([
@@ -215,8 +293,8 @@ def format_sell_event(title, symbol, event, include_interpretation=False):
 		f"Reason: <code>{h(getattr(event, 'reason', None))}</code>",
 		f"Stage: <code>{h(getattr(event, 'validation_stage', None))}</code>",
 		f"PnL: <code>{h(fmt_percent(getattr(event, 'estimated_pnl_percent', None)))}</code>",
-		f"Entry: <code>{h(fmt(getattr(event, 'entry_price', None)))}</code>",
-		f"Current: <code>{h(fmt(getattr(event, 'current_price', None)))}</code>",
+		f"Entry: <code>{h(fmt_price(getattr(event, 'entry_price', None)))}</code>",
+		f"Current: <code>{h(fmt_price(getattr(event, 'current_price', None)))}</code>",
 		f"Stop: <code>{h(fmt_percent(getattr(event, 'stop_loss_threshold', None)))}</code>",
 		f"Take profit: <code>{h(fmt_percent(getattr(event, 'take_profit_threshold', None)))}</code>",
 		f"Profit guard: <code>{h(format_profit_guard(getattr(event, 'profit_guard_bypassed', None)))}</code>",
@@ -288,15 +366,80 @@ def h(value):
 
 
 def fmt(value):
-	if value is None:
+	return fmt_decimal(value, places=8)
+
+
+def fmt_price(value):
+	return fmt_decimal(value, places=8)
+
+
+def fmt_qty(value):
+	return fmt_decimal(value, places=8)
+
+
+def fmt_drift(value):
+	return fmt_decimal(value, places=8)
+
+
+def fmt_usdt(value):
+	decimal_value = to_decimal(value)
+	if decimal_value is None:
 		return "N/A"
-	return str(value)
+	if decimal_value == 0:
+		return "0 USDT"
+	places = 2 if abs(decimal_value) >= Decimal("1") else 4
+	return f"{fmt_decimal(decimal_value, places=places)} USDT"
 
 
 def fmt_percent(value):
-	if value is None:
+	decimal_value = to_decimal(value)
+	if decimal_value is None:
 		return "N/A"
-	return f"{value}%"
+	return f"{fmt_decimal(decimal_value, places=2)}%"
+
+
+def fmt_count(value):
+	decimal_value = to_decimal(value)
+	if decimal_value is None:
+		return "N/A"
+	if decimal_value == decimal_value.to_integral_value():
+		return str(decimal_value.to_integral_value())
+	return fmt_decimal(decimal_value, places=8)
+
+
+def fmt_symbol_list(value):
+	if not value:
+		return "none"
+	if isinstance(value, str):
+		items = [item.strip() for item in re.split(r"[\s,]+", value) if item.strip()]
+	else:
+		items = [str(item).strip() for item in value if str(item).strip()]
+	return ", ".join(items) if items else "none"
+
+
+def fmt_decimal(value, places=8):
+	decimal_value = to_decimal(value)
+	if decimal_value is None:
+		return "N/A"
+	if decimal_value == 0:
+		return "0"
+	quant = Decimal("1").scaleb(-places)
+	rounded = decimal_value.quantize(quant, rounding=ROUND_HALF_UP)
+	text = format(rounded, "f")
+	if "." in text:
+		text = text.rstrip("0").rstrip(".")
+	return text or "0"
+
+
+def to_decimal(value):
+	if value is None or value == "":
+		return None
+	if isinstance(value, Decimal):
+		return value
+	try:
+		return Decimal(str(value))
+	except (InvalidOperation, ValueError, TypeError):
+		return None
 
 
 def format_profit_guard(value):
@@ -334,3 +477,116 @@ def _decimal_diff(left, right):
 	if left is None and right is None:
 		return None
 	return (left or Decimal("0")) - (right or Decimal("0"))
+
+
+def _buy_classification_from_details(details):
+	return {
+		"raw_count": details.get("positions_count"),
+		"material_count": details.get("material_positions_count"),
+		"dust_count": details.get("dust_positions_count"),
+		"unknown_count": details.get("unknown_value_positions_count"),
+		"material_symbols": details.get("material_symbols") or [],
+		"dust_symbols": details.get("dust_symbols") or [],
+		"unknown_symbols": details.get("unknown_value_symbols") or [],
+		"has_healthcheck_counts": any(
+			details.get(key) is not None for key in [
+				"positions_count",
+				"material_positions_count",
+				"dust_positions_count",
+				"unknown_value_positions_count",
+			]
+		),
+	}
+
+
+def _buy_classification_from_portfolio():
+	rows = Portfolio.objects.filter(quantity__gt=0).order_by("symbol")
+	raw_count = 0
+	material_symbols = []
+	dust_symbols = []
+	unknown_symbols = []
+	for row in rows:
+		raw_count += 1
+		symbol = getattr(row, "symbol", "")
+		quantity = getattr(row, "quantity", None)
+		price = getattr(row, "current_price", None)
+		value = _decimal_product(quantity, price)
+		if price is None or price <= 0 or value is None:
+			unknown_symbols.append(symbol)
+		elif value >= Decimal("5"):
+			material_symbols.append(symbol)
+		elif value > 0:
+			dust_symbols.append(symbol)
+		else:
+			unknown_symbols.append(symbol)
+	return {
+		"raw_count": raw_count,
+		"material_count": len(material_symbols),
+		"dust_count": len(dust_symbols),
+		"unknown_count": len(unknown_symbols),
+		"material_symbols": material_symbols,
+		"dust_symbols": dust_symbols,
+		"unknown_symbols": unknown_symbols,
+		"has_healthcheck_counts": False,
+	}
+
+
+def interpret_buy_state(raw_count, material_count, max_positions, free_usdt=None, unknown_count=None):
+	raw = to_decimal(raw_count)
+	material = to_decimal(material_count)
+	maximum = to_decimal(max_positions)
+	unknown = to_decimal(unknown_count) or Decimal("0")
+
+	if maximum is None:
+		return "uncertain", "🟡", "max positions unavailable"
+	if material is None or raw is None:
+		return "unknown", "⚪", "position classification unavailable"
+	if material >= maximum:
+		return "blocked", "🔴", "material positions at max capacity"
+	if raw > maximum and material < maximum:
+		if material == 0:
+			return "uncertain", "🟡", "no material positions, but raw dust may be confusing capacity"
+		return "uncertain", "🟡", "raw positions exceed max while material positions do not; check bot BUY gating"
+	if unknown > 0:
+		return "uncertain", "🟡", "unknown-value positions may count as exposure"
+	if free_usdt is None:
+		return "uncertain", "🟡", "free capital unavailable"
+	return "can probably buy", "🟢", "material positions below max and free capital data is present"
+
+
+def latest_buy_rejection_reason():
+	try:
+		event = (
+			TradeOperation.objects
+			.filter(side="BUY")
+			.exclude(status__in=["FILLED", "filled"])
+			.order_by("-executed_at", "-created_at", "-id")
+			.first()
+		)
+	except (DatabaseError, AttributeError):
+		return "N/A"
+	if event is None:
+		return "N/A"
+	status = getattr(event, "status", None)
+	payload = getattr(event, "raw_payload", None) or {}
+	reason = None
+	if isinstance(payload, dict):
+		reason = payload.get("reason") or payload.get("rejection_reason") or payload.get("message")
+	return reason or status or "N/A"
+
+
+def _details_first(details, keys):
+	for key in keys:
+		value = _details_get(details, key)
+		if value is not None and value != "":
+			return value
+	return None
+
+
+def _details_get(details, key):
+	current = details
+	for part in key.split("."):
+		if not isinstance(current, dict) or part not in current:
+			return None
+		current = current[part]
+	return current
