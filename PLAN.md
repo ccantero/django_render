@@ -25,6 +25,8 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - Strict Codex workflow files were added under `AGENTS.md`, `.codex/skills/`, and `.codex/subagents/`.
 - Dashboard requires login for operational views.
 - Dust / residual dashboard reads `bot.dust_detections`.
+- Telegram mobile diagnostics commands read shared bot state through the existing webhook:
+  `/health`, `/position SYMBOL`, `/last_sell SYMBOL`, and `/why_not_sell SYMBOL`.
 - Manual correction request creation is staff/superuser-only.
 - Manual correction request form is POST and CSRF protected.
 - Dashboard does not apply manual corrections or mutate bot accounting tables directly.
@@ -55,10 +57,11 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 4. Add filter for operator guidance category.
 5. Add better pagination for large detection history.
 6. Add recent rejections/skips from `order_decisions` or `trade_operations` if the bot contract exposes them.
-7. Add explicit confirmation checkbox in the correction form if extra operator friction is desired.
-8. Add clearer labels for Binance Small Amount Exchange / manual dust conversion cases currently represented by broader reasons such as `earn_or_external_transfer`.
-9. Add dashboard action to mark a request as rejected only if the shared contract allows dashboard-side rejection.
-10. Consider paginating or date-filtering performance KPI history if `bot.lot_closures` grows large.
+7. Extend Telegram diagnostics only with additional read-only DB-backed views when the shared contract exposes them.
+8. Add explicit confirmation checkbox in the correction form if extra operator friction is desired.
+9. Add clearer labels for Binance Small Amount Exchange / manual dust conversion cases currently represented by broader reasons such as `earn_or_external_transfer`.
+10. Add dashboard action to mark a request as rejected only if the shared contract allows dashboard-side rejection.
+11. Consider paginating or date-filtering performance KPI history if `bot.lot_closures` grows large.
 
 ## P2 Architecture / Tech Debt
 

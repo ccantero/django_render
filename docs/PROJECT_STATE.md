@@ -27,6 +27,11 @@ Implemented capabilities:
 - Fees by asset card
 - Compact Active Operational Issues dust summary on the main dashboard, limited to unresolved critical/warning signals only; info-only residuals are summarized and are not promoted to active issues
 - Dedicated Dust / Residuals dashboard sourced from `bot.dust_detections` with filters and 25-row pagination
+- Telegram mobile diagnostics commands on the existing webhook:
+  - `/health`
+  - `/position SYMBOL`
+  - `/last_sell SYMBOL`
+  - `/why_not_sell SYMBOL`
 - Dust signal detail page
 - Linked correction badges for dust detections using `bot.manual_corrections.source_detection_id`
 - Manual review buttons:
@@ -41,6 +46,7 @@ Implemented capabilities:
 - Tests for performance KPI Decimal calculations, null safety, zero-loss profit factor behavior, and identifiable manual correction PnL splitting
 - DRF schema and Swagger UI through drf-spectacular
 - Project-level environment validation for required settings
+- Optional Telegram diagnostics allowlists through `TELEGRAM_ALLOWED_CHAT_IDS` and `TELEGRAM_ALLOWED_USER_IDS`
 - Public Django app liveness endpoint at `/health/` for external keepalive checks
 
 Validated operational correction path:

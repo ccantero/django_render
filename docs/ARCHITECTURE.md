@@ -14,6 +14,7 @@ It provides visibility, review, and request workflows over bot-owned database ta
 
 - Read bot health and trading state.
 - Display portfolio, lots, trades, fees, drift, and dust detections.
+- Serve allowlisted read-only Telegram diagnostics for mobile operators.
 - Display read-only operational performance KPIs from realized lot closures and filled trade operations.
 - Display grouped dust/residual signals with operator guidance.
 - Record manual review state.
@@ -102,6 +103,7 @@ Local development defaults to SQLite through `dj_database_url`. Production-style
 Browser dashboard pages -> django_render.urls -> dashboard.urls -> dashboard.views -> read model/forms -> templates
 Browser core pages/bot controls -> django_render.urls -> core.urls -> core.views
 External keepalive cron -> /health/ -> core.views.health -> JSON liveness response
+Telegram diagnostics -> /telegramapi/listener/ -> allowlist check -> read-only bot table queries -> Telegram HTML response
 API client -> django_render.urls -> currencyconverter/profile routers -> DRF viewsets -> serializers/models
 Swagger UI -> /api/docs -> drf-spectacular schema at /api/schema
 Telegram -> /telegramapi/listener/ -> token check -> TelegramMessage row and optional Telegram response
@@ -131,6 +133,7 @@ No Celery, Redis, or asynchronous worker service is currently wired in this proj
 - `bot.trade_fills` is the raw execution/audit layer.
 - `bot.lot_closures` is the FIFO closure audit layer.
 - `bot.dust_detections` is an observational read model.
+- `bot.sell_decision_events` is a read-only SELL diagnostics event log.
 - `bot.manual_corrections` is the manual correction request/audit workflow.
 
 ---

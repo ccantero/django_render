@@ -194,5 +194,40 @@ class DustDetection(ReadOnlyTradingModel):
 		app_label = "trading_read"
 
 
+class SellDecisionEvent(ReadOnlyTradingModel):
+	symbol = models.CharField(max_length=32)
+	event_name = models.CharField(max_length=128)
+	reason = models.TextField(blank=True, null=True)
+	validation_stage = models.CharField(max_length=128, blank=True, null=True)
+	estimated_pnl_percent = models.DecimalField(
+		max_digits=18,
+		decimal_places=8,
+		blank=True,
+		null=True,
+	)
+	entry_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	current_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
+	stop_loss_threshold = models.DecimalField(
+		max_digits=18,
+		decimal_places=8,
+		blank=True,
+		null=True,
+	)
+	take_profit_threshold = models.DecimalField(
+		max_digits=18,
+		decimal_places=8,
+		blank=True,
+		null=True,
+	)
+	profit_guard_bypassed = models.BooleanField(blank=True, null=True)
+	created_at = models.DateTimeField(blank=True, null=True)
+	payload = models.JSONField(blank=True, null=True)
+
+	class Meta:
+		managed = False
+		db_table = '"bot"."sell_decision_events"'
+		app_label = "trading_read"
+
+
 PortfolioPosition = Portfolio
 Healthcheck = BotHealthcheck

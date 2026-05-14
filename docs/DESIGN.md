@@ -108,6 +108,23 @@ Shows:
 - error message if failed
 - payload
 
+### Telegram mobile diagnostics
+
+Source: shared bot tables only.
+
+The existing Telegram webhook supports concise, allowlisted, read-only operator
+commands:
+
+- `/health`
+- `/position SYMBOL`
+- `/last_sell SYMBOL`
+- `/why_not_sell SYMBOL`
+
+Messages use Telegram HTML parse mode, escape dynamic values before rendering,
+and should stay compact enough for mobile review. Inline keyboard buttons, if
+added later, must be navigation or refresh controls only and must never trigger
+trading.
+
 ---
 
 ## Operator Guidance

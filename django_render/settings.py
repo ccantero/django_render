@@ -47,6 +47,8 @@ validate_required_env_vars(lambda name, default="": env.str(name, default=defaul
 SECRET_KEY = env.str('SECRET_KEY')
 TUTORIAL_BOT_TOKEN = env.str('TUTORIAL_BOT_TOKEN')
 TELEGRAM_WEBHOOK_TOKEN = env.str('TELEGRAM_WEBHOOK_TOKEN')
+TELEGRAM_ALLOWED_CHAT_IDS = env.str('TELEGRAM_ALLOWED_CHAT_IDS', default='')
+TELEGRAM_ALLOWED_USER_IDS = env.str('TELEGRAM_ALLOWED_USER_IDS', default='')
 
 ALLOWED_HOSTS = ['www.cantero-solutions.com.ar']
 

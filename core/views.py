@@ -10,6 +10,7 @@ from django.views.decorators.http import require_GET, require_POST
 import json
 import requests
 from core.models import BotControl, TelegramMessage
+from core.telegram_diagnostics import diagnostic_response
 
 TELEGRAM_WEBHOOK_TOKEN = settings.TELEGRAM_WEBHOOK_TOKEN
 
@@ -93,7 +94,8 @@ def listener(request):
 		t_from = t_message["from"]
 
 		chat_id = t_chat['id']
-		username = t_from['username']
+		user_id = t_from.get('id')
+		username = t_from.get('username', '')
 
 		myTelegramMessage = TelegramMessage()
 		myTelegramMessage.message = t_message_text
@@ -101,6 +103,11 @@ def listener(request):
 		myTelegramMessage.from_username = username
 		myTelegramMessage.chat_id = chat_id
 		myTelegramMessage.save()
+
+		diagnostic_message = diagnostic_response(t_message_text, chat_id, user_id=user_id)
+		if diagnostic_message is not None:
+			send_message(diagnostic_message, chat_id)
+			return JsonResponse({"ok": "POST request processed"})
 		
 		if t_message_text == "/start":
 			send_message("Hi " + str(username), chat_id)
@@ -124,7 +131,7 @@ def send_message(message, chat_id):
     data = {
         "chat_id": chat_id,
         "text": message,
-        "parse_mode": "Markdown",
+        "parse_mode": "HTML",
     }
     response = requests.post(
         f"{TELEGRAM_URL}{TUTORIAL_BOT_TOKEN}/sendMessage", data=data

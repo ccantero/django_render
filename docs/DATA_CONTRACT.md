@@ -47,6 +47,7 @@ The dashboard currently maps bot-owned tables in `core.trading_models` with `man
 - `bot.lot_closures`
 - `bot.snapshots`
 - `bot.dust_detections`
+- `bot.sell_decision_events`
 
 The dashboard also maps workflow tables in `core.models`:
 
@@ -374,7 +375,41 @@ Do not depend on this table for critical accounting unless its schema and semant
 
 ---
 
-## 3.8 Optional `bot_control`
+## 3.8 `sell_decision_events`
+
+Read-only SELL diagnostics emitted by the bot.
+
+Dashboard usage:
+
+- Show the latest SELL diagnostic for a symbol.
+- Explain the latest rejected or skipped SELL event to mobile operators.
+- Inspect validation details without executing trades or mutating accounting.
+
+Current Telegram diagnostics read these conceptual fields when available:
+
+- symbol
+- event_name
+- reason
+- validation_stage
+- estimated_pnl_percent
+- entry_price
+- current_price
+- stop_loss_threshold
+- take_profit_threshold
+- profit_guard_bypassed
+- created_at
+- payload
+
+Important:
+
+- This table is diagnostics/audit data only.
+- Dashboard consumers must not derive SELL coverage from this table.
+- Dashboard consumers must not update or delete rows in this table.
+- Telegram/mobile responses must escape dynamic values before HTML rendering.
+
+---
+
+## 3.9 Optional `bot_control`
 
 A safe control-plane table may exist or be added intentionally.
 
@@ -922,6 +957,8 @@ Bot-side desired hardening:
 - Do not expose API keys, secrets or raw environment variables.
 - Do not display sensitive Binance credentials.
 - Dashboard database user should preferably be read-only, except for an explicit control-plane table.
+- Telegram diagnostics must restrict access to configured chat/user allowlists.
+- Telegram diagnostics must use safe HTML escaping and must not include raw exceptions, DB URLs, tokens, or environment values.
 
 ---
 

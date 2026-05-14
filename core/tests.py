@@ -5,6 +5,7 @@ from django.urls import reverse
 from django.db import DatabaseError, connection
 from decimal import Decimal
 from types import SimpleNamespace
+import inspect
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -81,6 +82,256 @@ class TelegramWebhookTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         mock_send_message.assert_called()
+
+
+class TelegramDiagnosticsCommandTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.webhook_url = reverse('listener')
+
+    def post_telegram_message(self, text, chat_id=999, username='operator'):
+        payload = {
+            "message": {
+                "text": text,
+                "message_id": 456,
+                "chat": {"id": chat_id},
+                "from": {"id": 777, "username": username},
+            }
+        }
+        return self.client.post(
+            self.webhook_url,
+            data=json.dumps(payload),
+            content_type='application/json',
+            HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN='test-webhook-token',
+        )
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_unauthorized_chat_rejected_without_diagnostic_query(self, mock_health_manager, mock_send_message):
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/health', chat_id=111)
+
+        self.assertEqual(response.status_code, 200)
+        mock_send_message.assert_called_once()
+        self.assertIn('Unauthorized', mock_send_message.call_args[0][0])
+        mock_health_manager.order_by.assert_not_called()
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_invalid_symbol_rejected(self, mock_portfolio_manager, mock_send_message):
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/position saga/usdt')
+
+        self.assertEqual(response.status_code, 200)
+        mock_send_message.assert_called_once()
+        self.assertIn('Invalid symbol', mock_send_message.call_args[0][0])
+        mock_portfolio_manager.filter.assert_not_called()
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_health_formats_latest_healthcheck(self, mock_health_manager, mock_send_message):
+        created_at = timezone.now() - timezone.timedelta(minutes=3)
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=7,
+            status='healthy',
+            created_at=created_at,
+            details={
+                'run_id': 'run-123',
+                'positions_count': 4,
+                'material_positions_count': 2,
+                'dust_positions_count': 1,
+                'unknown_value_positions_count': 1,
+            },
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/health')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('<b>🟢 Bot health</b>', message)
+        self.assertIn('<code>run-123</code>', message)
+        self.assertIn('raw/material/dust/unknown', message)
+        self.assertIn('<code>4/2/1/1</code>', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.DustDetection.objects')
+    @patch('core.telegram_diagnostics.PositionLot.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_position_reads_portfolio_lots_and_latest_dust(
+        self,
+        mock_portfolio_manager,
+        mock_lot_manager,
+        mock_dust_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value.first.return_value = SimpleNamespace(
+            symbol='SAGAUSDT',
+            quantity=Decimal('12.5'),
+            entry_price=Decimal('0.2100'),
+            current_price=Decimal('0.2500'),
+        )
+        mock_lot_manager.filter.return_value.aggregate.return_value = {
+            'open_quantity': Decimal('10.0'),
+            'entry_price': Decimal('0.2050'),
+        }
+        mock_dust_manager.filter.return_value.order_by.return_value.first.return_value = SimpleNamespace(
+            event_type='lot_balance_drift_detected',
+            reason='<drift>',
+            detected_at=timezone.now(),
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/position SAGAUSDT')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('<b>📍 Position — SAGAUSDT</b>', message)
+        self.assertIn('Portfolio qty: <code>12.5</code>', message)
+        self.assertIn('Open lots: <code>10.0</code>', message)
+        self.assertIn('Value: <code>3.125', message)
+        self.assertIn('&lt;drift&gt;', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.SellDecisionEvent.objects')
+    def test_last_sell_reads_latest_sell_decision_event(self, mock_event_manager, mock_send_message):
+        mock_event_manager.filter.return_value.order_by.return_value.first.return_value = SimpleNamespace(
+            event_name='sell_signal_approved',
+            reason='stop_loss_reached',
+            validation_stage='approved',
+            estimated_pnl_percent=Decimal('-23.21'),
+            entry_price=Decimal('0.3100'),
+            current_price=Decimal('0.2380'),
+            stop_loss_threshold=Decimal('-3.00'),
+            take_profit_threshold=Decimal('5.00'),
+            profit_guard_bypassed=True,
+            created_at=timezone.now(),
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/last_sell SAGAUSDT')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('<b>🔴 SELL diagnostic — SAGAUSDT</b>', message)
+        self.assertIn('Reason: <code>stop_loss_reached</code>', message)
+        self.assertIn('PnL: <code>-23.21%</code>', message)
+        self.assertIn('Profit guard: <code>bypassed</code>', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.SellDecisionEvent.objects')
+    def test_why_not_sell_maps_reason_to_friendly_explanation(self, mock_event_manager, mock_send_message):
+        mock_event_manager.filter.return_value.order_by.return_value.first.return_value = SimpleNamespace(
+            event_name='sell_signal_rejected',
+            reason='profit_guard_blocked_min_notional',
+            validation_stage='profit_guard',
+            estimated_pnl_percent=Decimal('-1.25'),
+            entry_price=Decimal('0.3100'),
+            current_price=Decimal('0.3061'),
+            stop_loss_threshold=Decimal('-3.00'),
+            take_profit_threshold=Decimal('5.00'),
+            profit_guard_bypassed=False,
+            created_at=timezone.now(),
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/why_not_sell SAGAUSDT')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('<b>🤔 Why not sell — SAGAUSDT</b>', message)
+        self.assertIn('Profit guard blocked', message)
+        self.assertIn('Exchange minNotional blocked', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.SellDecisionEvent.objects')
+    def test_html_escaping_prevents_broken_markup(self, mock_event_manager, mock_send_message):
+        mock_event_manager.filter.return_value.order_by.return_value.first.return_value = SimpleNamespace(
+            event_name='sell_signal_rejected',
+            reason='<script>alert(1)</script>',
+            validation_stage='stage&check',
+            estimated_pnl_percent=None,
+            entry_price=None,
+            current_price=None,
+            stop_loss_threshold=None,
+            take_profit_threshold=None,
+            profit_guard_bypassed=False,
+            created_at=timezone.now(),
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/last_sell SAGAUSDT')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('&lt;script&gt;alert(1)&lt;/script&gt;', message)
+        self.assertIn('stage&amp;check', message)
+        self.assertNotIn('<script>', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.requests.post')
+    def test_send_message_uses_html_parse_mode(self, mock_post):
+        send_url = 'https://api.telegram.org/bottest-token/sendMessage'
+        with patch('core.views.TUTORIAL_BOT_TOKEN', 'test-token'):
+            from core.views import send_message
+
+            send_message('<b>ok</b>', 999)
+
+        mock_post.assert_called_once()
+        self.assertEqual(mock_post.call_args[0][0], send_url)
+        self.assertEqual(mock_post.call_args.kwargs['data']['parse_mode'], 'HTML')
+
+    def test_diagnostics_models_are_read_only(self):
+        from core.trading_models import SellDecisionEvent
+
+        self.assertFalse(SellDecisionEvent._meta.managed)
+        self.assertEqual(SellDecisionEvent._meta.db_table, '"bot"."sell_decision_events"')
+        with self.assertRaisesMessage(RuntimeError, 'read-only'):
+            SellDecisionEvent(symbol='SAGAUSDT', event_name='sell_signal_rejected').save()
+
+    def test_diagnostics_module_does_not_import_binance_client(self):
+        import core.telegram_diagnostics as telegram_diagnostics
+
+        source = inspect.getsource(telegram_diagnostics)
+        self.assertNotIn('from binance', source.lower())
+        self.assertNotIn('import binance', source.lower())
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.DustDetection.objects')
+    @patch('core.telegram_diagnostics.PositionLot.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_position_command_does_not_write_bot_owned_tables(
+        self,
+        mock_portfolio_manager,
+        mock_lot_manager,
+        mock_dust_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value.first.return_value = None
+        mock_lot_manager.filter.return_value.aggregate.return_value = {
+            'open_quantity': Decimal('0'),
+            'entry_price': None,
+        }
+        mock_dust_manager.filter.return_value.order_by.return_value.first.return_value = None
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/position SAGAUSDT')
+
+        self.assertEqual(response.status_code, 200)
+        for manager in [mock_portfolio_manager, mock_lot_manager, mock_dust_manager]:
+            manager.create.assert_not_called()
+            manager.bulk_create.assert_not_called()
+            manager.update_or_create.assert_not_called()
+            manager.filter.return_value.update.assert_not_called()
+        mock_send_message.assert_called_once()
 
 
 class DashboardEndpointTests(TestCase):
