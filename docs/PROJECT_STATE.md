@@ -36,6 +36,10 @@ Implemented capabilities:
   - `/why_not_sell SYMBOL`
 - Telegram diagnostics render compact Decimal-safe numeric values for mobile
   review while preserving read-only DB access and HTML escaping.
+- `/buy_status` now reports effective positions as `material + unknown`, treats
+  dust as non-blocking, falls back to runtime max-position config when the latest
+  healthcheck omits it, and keeps optional diagnostic gaps from collapsing the
+  whole BUY-capacity answer.
 - Dust signal detail page
 - Linked correction badges for dust detections using `bot.manual_corrections.source_detection_id`
 - Manual review buttons:

@@ -399,8 +399,11 @@ Current Telegram diagnostics read these conceptual fields when available:
 - estimated_pnl_percent
 - entry_price
 - current_price
+- configured_stop_loss
+- normalized_stop_loss_threshold
 - stop_loss_threshold
 - take_profit_threshold
+- sell_decision_reason
 - profit_guard_bypassed
 - created_at
 - payload
@@ -421,6 +424,16 @@ bot emits them:
 The dashboard treats these fields as explanation metadata only. Open inventory
 still comes from `bot.position_lots`; `portfolio` remains display/projection
 only.
+
+Stop-loss contract:
+
+- `STOP_LOSS_PCT` is an operator-facing loss percentage input.
+- Supported forms `3`, `0.03`, `-3`, and `-0.03` normalize to the same internal
+  threshold: `-3%`.
+- Internal comparison uses negative-loss semantics.
+- `stop_loss_reached` with `estimated_pnl_percent > 0` is invalid diagnostic
+  data and should be treated as an operational anomaly.
+- `profit_guard_bypassed=true` is valid only for real-loss stop-loss exits.
 
 Normalized SELL evaluation reason values:
 
@@ -519,6 +532,34 @@ Meaning:
 - Lot remaining quantities are updated.
 - Portfolio is refreshed as a projection.
 
+Optional opt-in SELL-side SPOT dust cleanup can make the Binance SELL execution
+quantity larger than the FIFO closure quantity. In that case:
+
+- a normal lot-backed SELL signal must already exist
+- only same-asset SPOT-free residual quantity may be appended
+- `trade_operations.executed_base_qty` remains the full Binance execution
+  quantity
+- SELL fill metadata `executed_qty` remains the full Binance execution quantity
+- FIFO closes only `lot_backed_quantity`
+- the extra residual is described in JSON payload metadata, not represented as
+  a lot closure
+
+Current metadata keys:
+
+- `spot_dust_included`
+- `lot_backed_quantity`
+- `extra_spot_dust_quantity`
+- `extra_spot_dust_estimated_value_usdt`
+- `dust_cleanup_policy = "append_same_asset_spot_dust_to_normal_sell"`
+
+Concrete example:
+
+```text
+executed_base_qty = 0.00038435
+lot_backed_quantity = 0.00037000
+extra_spot_dust_quantity = 0.00001435
+```
+
 ---
 
 ## 5. Invariants
@@ -537,10 +578,15 @@ This should allow a small tolerance for dust and rounding.
 
 ### 5.2 No SELL Without Lot Closures
 
-Every filled SELL operation should have matching `lot_closures` rows.
+Every filled SELL operation should have matching `lot_closures` rows for the
+lot-backed accounting quantity.
 
 ```text
+normal SELL:
 SELL executed quantity ≈ SUM(lot_closures.closed_quantity)
+
+SELL with spot_dust_included=true:
+lot_backed_quantity ≈ SUM(lot_closures.closed_quantity)
 ```
 
 ### 5.3 No Negative Open Quantity
@@ -901,7 +947,92 @@ Important:
 - These KPIs are operational metrics, not audited accounting statements.
 - The dashboard must not call Binance or execute trading logic to fill missing data.
 
-## 7.5 Operational Alerts
+## 7.5 BUY Diagnostics Contract - Pending Review
+
+The current shared contract exposes material-position classification through
+healthcheck details and BUY/SELL decisions through bot-owned decision surfaces,
+but this is not yet enough for a reliable `/buy_status` diagnostic.
+
+Observed diagnostic gap:
+
+```text
+BUY state: uncertain
+Reason: max positions unavailable
+Max positions: N/A
+Free USDT: N/A
+Latest BUY reason: N/A
+```
+
+This can occur even when the runtime reaches `buy_order_plan` and attempts a
+Binance BUY, so consumers must treat current `/buy_status` output as incomplete
+when key fields are `N/A`.
+
+Future contract options:
+
+1. Extend `bot.bot_healthcheck.details` with stable BUY diagnostic fields:
+   `max_positions`, `material_positions_count`,
+   `unknown_value_positions_count`, `dust_positions_count`, `free_usdt`,
+   `buy_capacity_state`, `latest_buy_state`, `latest_buy_reason`,
+   `latest_buy_symbol`, `latest_buy_error_class`, and
+   `latest_buy_error_code`.
+2. Reuse or expand existing bot-owned order decision data if it already
+   contains the needed BUY lifecycle and rejection details.
+3. Add a new bot-owned read-only diagnostic table only if existing surfaces are
+   insufficient.
+
+Consumer rules:
+
+- Dashboard/Telegram must not infer that BUY is blocked solely because
+  diagnostic fields are missing.
+- Dust-only inventory should be shown as non-blocking for `max_positions` when
+  material-position classification says `material=0` and `unknown=0`.
+- Binance execution errors must be shown separately from capacity gating.
+- Diagnostics are read-only and must not execute trades, call Binance, or
+  mutate accounting state.
+
+---
+
+## 7.6 Runtime Operational Events Contract - Future
+
+Future operational hardening should add a bot-owned event table for important
+runtime exceptions and degraded states.
+
+Candidate table:
+
+```text
+bot.runtime_events
+```
+
+Candidate fields:
+
+- `id BIGSERIAL PRIMARY KEY`
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`
+- `run_id TEXT NULL`
+- `severity TEXT NOT NULL`
+- `event_type TEXT NOT NULL`
+- `component TEXT NULL`
+- `exception_class TEXT NULL`
+- `message TEXT NULL`
+- `symbol TEXT NULL`
+- `traceback_hash TEXT NULL`
+- `payload JSONB NOT NULL DEFAULT '{}'::jsonb`
+
+Rules:
+
+- This table is operational observability only.
+- It is not accounting truth and not trading state.
+- Persisted runtime exceptions may degrade healthcheck status to
+  warning/error/critical.
+- Dashboard may read and display these events.
+- Telegram may alert on warning/error/critical events with dedupe/rate
+  limiting.
+- Payloads must be sanitized and must not include secrets, raw environment
+  values, API keys, DB URLs, or Telegram tokens.
+- Persistence failure must not crash the bot or mutate accounting tables.
+
+---
+
+## 7.7 Operational Alerts
 
 Start with simple DB-derived alerts:
 
@@ -918,7 +1049,7 @@ Start with simple DB-derived alerts:
 
 Alerts should be informational unless the condition is clearly critical.
 
-## 7.6 Position Exit Status
+## 7.8 Position Exit Status
 
 The main dashboard may show a read-only “Why positions are not selling” view.
 

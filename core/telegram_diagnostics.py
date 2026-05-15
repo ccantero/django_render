@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from html import escape
@@ -133,16 +134,20 @@ def format_buy_status():
 			"<b>⚪ BUY status</b>",
 			"",
 			"Raw/material/dust/unknown: <code>N/A/N/A/N/A/N/A</code>",
+			"Effective positions: <code>N/A/N/A</code>",
+			"Remaining capacity: <code>N/A</code>",
 			"Max positions: <code>N/A</code>",
 			"",
 			"Material: <code>none</code>",
 			"Dust: <code>none</code>",
+			"Dust positions: <code>non-blocking</code>",
 			"Unknown: <code>none</code>",
 			"",
-			"Free USDT: <code>N/A</code>",
-			"Latest BUY reason: <code>N/A</code>",
+			"Free USDT: <code>diagnostic unavailable</code>",
+			"Latest BUY decision: <code>unavailable</code>",
+			"Latest BUY reason: <code>unavailable</code>",
 			"",
-			"BUY state: <code>unknown</code>",
+			"BUY state: <code>diagnostic_unavailable</code>",
 			"Reason: <code>latest healthcheck missing</code>",
 		])
 
@@ -155,14 +160,7 @@ def format_buy_status():
 	material_count = classification["material_count"]
 	dust_count = classification["dust_count"]
 	unknown_count = classification["unknown_count"]
-	max_positions = _details_first(details, [
-		"max_positions",
-		"max_open_positions",
-		"max_concurrent_positions",
-		"position_limit",
-		"config.max_positions",
-		"config.max_open_positions",
-	])
+	max_positions = _resolve_max_positions(details)
 	free_usdt = _details_first(details, [
 		"free_usdt",
 		"available_usdt",
@@ -171,13 +169,23 @@ def format_buy_status():
 		"capital.free_usdt",
 		"balances.USDT.free",
 	])
-	latest_buy_reason = latest_buy_rejection_reason()
+	latest_buy_decision = latest_buy_decision_from_details(details)
+	latest_buy_reason = latest_buy_reason_from_details(details)
+	if latest_buy_reason is None:
+		latest_buy_reason = latest_buy_rejection_reason()
+	effective_positions = _effective_positions(material_count, unknown_count)
+	remaining_capacity = _remaining_capacity(max_positions, effective_positions)
 	state_label, emoji, reason = interpret_buy_state(
 		raw_count=raw_count,
 		material_count=material_count,
 		max_positions=max_positions,
 		free_usdt=free_usdt,
 		unknown_count=unknown_count,
+		read_only=_resolve_read_only(details),
+		min_required_buy_amount=_resolve_min_required_buy_amount(details),
+		latest_buy_decision=latest_buy_decision,
+		latest_buy_reason=latest_buy_reason,
+		latest_buy_error=_latest_buy_error(details),
 	)
 
 	lines = [
@@ -185,14 +193,18 @@ def format_buy_status():
 		"",
 		"Raw/material/dust/unknown: "
 		f"<code>{h('/'.join(fmt_count(value) for value in [raw_count, material_count, dust_count, unknown_count]))}</code>",
+		f"Effective positions: <code>{h(fmt_count(effective_positions))}/{h(fmt_count(max_positions))}</code>",
+		f"Remaining capacity: <code>{h(fmt_count(remaining_capacity))}</code>",
 		f"Max positions: <code>{h(fmt_count(max_positions))}</code>",
 		"",
 		f"Material: <code>{h(fmt_symbol_list(classification['material_symbols']))}</code>",
 		f"Dust: <code>{h(fmt_symbol_list(classification['dust_symbols']))}</code>",
+		"Dust positions: <code>non-blocking</code>",
 		f"Unknown: <code>{h(fmt_symbol_list(classification['unknown_symbols']))}</code>",
 		"",
-		f"Free USDT: <code>{h(fmt_usdt(free_usdt))}</code>",
-		f"Latest BUY reason: <code>{h(latest_buy_reason)}</code>",
+		f"Free USDT: <code>{h(fmt_usdt(free_usdt) if free_usdt is not None else 'diagnostic unavailable')}</code>",
+		f"Latest BUY decision: <code>{h(latest_buy_decision or 'unavailable')}</code>",
+		f"Latest BUY reason: <code>{h(latest_buy_reason or 'unavailable')}</code>",
 		"",
 		f"BUY state: <code>{h(state_label)}</code>",
 		f"Reason: <code>{h(reason)}</code>",
@@ -531,27 +543,156 @@ def _buy_classification_from_portfolio():
 	}
 
 
-def interpret_buy_state(raw_count, material_count, max_positions, free_usdt=None, unknown_count=None):
+def _resolve_max_positions(details):
+	value = _details_first(details, [
+		"max_positions",
+		"max_open_positions",
+		"max_concurrent_positions",
+		"position_limit",
+		"config.max_positions",
+		"config.max_open_positions",
+	])
+	if value is not None:
+		return value
+	return _runtime_config_first([
+		"MAX_POSITIONS",
+		"MAX_OPEN_POSITIONS",
+		"MAX_CONCURRENT_POSITIONS",
+		"POSITION_LIMIT",
+	])
+
+
+def _resolve_min_required_buy_amount(details):
+	value = _details_first(details, [
+		"min_required_buy_amount",
+		"buy_allocation_usdt",
+		"buy_amount_usdt",
+		"min_buy_amount_usdt",
+		"config.min_required_buy_amount",
+		"config.buy_allocation_usdt",
+	])
+	if value is not None:
+		return value
+	return _runtime_config_first([
+		"MIN_REQUIRED_BUY_AMOUNT",
+		"BUY_ALLOCATION_USDT",
+		"BUY_AMOUNT_USDT",
+		"MIN_BUY_AMOUNT_USDT",
+	])
+
+
+def _resolve_read_only(details):
+	value = _details_first(details, [
+		"read_only",
+		"is_read_only",
+		"config.read_only",
+	])
+	if value is not None:
+		return _as_bool(value)
+	return _as_bool(_runtime_config_first(["READ_ONLY"]))
+
+
+def _runtime_config_first(keys):
+	for key in keys:
+		value = getattr(settings, key, None)
+		if value not in (None, ""):
+			return value
+		value = os.environ.get(key)
+		if value not in (None, ""):
+			return value
+	return None
+
+
+def _as_bool(value):
+	if isinstance(value, bool):
+		return value
+	if value is None:
+		return False
+	return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _effective_positions(material_count, unknown_count):
+	material = to_decimal(material_count)
+	unknown = to_decimal(unknown_count)
+	if material is None:
+		return None
+	if unknown is None:
+		unknown = Decimal("0")
+	return material + unknown
+
+
+def _remaining_capacity(max_positions, effective_positions):
+	maximum = to_decimal(max_positions)
+	effective = to_decimal(effective_positions)
+	if maximum is None or effective is None:
+		return None
+	return max(maximum - effective, Decimal("0"))
+
+
+def latest_buy_decision_from_details(details):
+	return _details_first(details, [
+		"latest_buy_decision",
+		"latest_buy_state",
+		"buy.latest_decision",
+		"buy.latest_state",
+	])
+
+
+def latest_buy_reason_from_details(details):
+	return _details_first(details, [
+		"latest_buy_reason",
+		"buy.latest_reason",
+	])
+
+
+def _latest_buy_error(details):
+	return _details_first(details, [
+		"latest_buy_error",
+		"latest_buy_error_class",
+		"latest_buy_error_code",
+		"buy.latest_error",
+	])
+
+
+def interpret_buy_state(
+	raw_count,
+	material_count,
+	max_positions,
+	free_usdt=None,
+	unknown_count=None,
+	read_only=False,
+	min_required_buy_amount=None,
+	latest_buy_decision=None,
+	latest_buy_reason=None,
+	latest_buy_error=None,
+):
 	raw = to_decimal(raw_count)
 	material = to_decimal(material_count)
 	maximum = to_decimal(max_positions)
 	unknown = to_decimal(unknown_count) or Decimal("0")
+	effective = _effective_positions(material_count, unknown_count)
+	free = to_decimal(free_usdt)
+	min_required = to_decimal(min_required_buy_amount)
+	decision = str(latest_buy_decision or "").strip().lower()
+	reason = str(latest_buy_reason or "").strip().lower()
 
 	if maximum is None:
-		return "uncertain", "🟡", "max positions unavailable"
-	if material is None or raw is None:
-		return "unknown", "⚪", "position classification unavailable"
-	if material >= maximum:
-		return "blocked", "🔴", "material positions at max capacity"
-	if raw > maximum and material < maximum:
-		if material == 0:
-			return "uncertain", "🟡", "no material positions, but raw dust may be confusing capacity"
-		return "uncertain", "🟡", "raw positions exceed max while material positions do not; check bot BUY gating"
-	if unknown > 0:
-		return "uncertain", "🟡", "unknown-value positions may count as exposure"
-	if free_usdt is None:
-		return "uncertain", "🟡", "free capital unavailable"
-	return "can probably buy", "🟢", "material positions below max and free capital data is present"
+		return "diagnostic_unavailable", "⚪", "max positions unavailable"
+	if material is None or raw is None or effective is None:
+		return "diagnostic_unavailable", "⚪", "position classification unavailable"
+	if read_only:
+		return "blocked_by_read_only", "🔴", "READ_ONLY=true"
+	if decision in {"execution_error", "planned_failed", "submitted_failed"} or (
+		decision in {"planned", "submitted"} and latest_buy_error
+	):
+		return "execution_error", "🔴", "latest BUY execution failed"
+	if decision == "no_candidate" or "no_candidate" in reason:
+		return "no_candidate", "⚪", "scanner did not select a candidate"
+	if effective >= maximum:
+		return "blocked_by_positions", "🔴", "effective positions at max capacity"
+	if free is not None and min_required is not None and free < min_required:
+		return "blocked_by_usdt", "🔴", "free USDT below configured buy amount"
+	return "available", "🟢", "capacity available"
 
 
 def latest_buy_rejection_reason():
@@ -564,15 +705,15 @@ def latest_buy_rejection_reason():
 			.first()
 		)
 	except (DatabaseError, AttributeError):
-		return "N/A"
+		return None
 	if event is None:
-		return "N/A"
+		return None
 	status = getattr(event, "status", None)
 	payload = getattr(event, "raw_payload", None) or {}
 	reason = None
 	if isinstance(payload, dict):
 		reason = payload.get("reason") or payload.get("rejection_reason") or payload.get("message")
-	return reason or status or "N/A"
+	return reason or status
 
 
 def _details_first(details, keys):

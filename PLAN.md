@@ -63,10 +63,13 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 5. Add better pagination for large detection history.
 6. Continue enriching SELL diagnostics only through persisted bot-owned `sell_decision_events`; dashboard display is read-only.
 7. Extend Telegram diagnostics only with additional read-only DB-backed views when the shared contract exposes them.
-8. Add explicit confirmation checkbox in the correction form if extra operator friction is desired.
-9. Add clearer labels for Binance Small Amount Exchange / manual dust conversion cases currently represented by broader reasons such as `earn_or_external_transfer`.
-10. Add dashboard action to mark a request as rejected only if the shared contract allows dashboard-side rejection.
-11. Consider paginating or date-filtering performance KPI history if `bot.lot_closures` grows large.
+8. Persist a stable latest BUY decision surface from the bot so `/buy_status`
+   can distinguish `no_candidate` and `execution_error` without relying on
+   best-effort healthcheck detail fields.
+9. Add explicit confirmation checkbox in the correction form if extra operator friction is desired.
+10. Add clearer labels for Binance Small Amount Exchange / manual dust conversion cases currently represented by broader reasons such as `earn_or_external_transfer`.
+11. Add dashboard action to mark a request as rejected only if the shared contract allows dashboard-side rejection.
+12. Consider paginating or date-filtering performance KPI history if `bot.lot_closures` grows large.
 
 ## P2 Architecture / Tech Debt
 

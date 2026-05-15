@@ -7,6 +7,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 import inspect
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -161,40 +162,90 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.TradeOperation.objects')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
-    def test_buy_status_returns_healthcheck_position_classification(self, mock_health_manager, mock_send_message):
+    def test_buy_status_returns_capacity_with_runtime_max_positions_fallback(
+        self,
+        mock_health_manager,
+        mock_trade_manager,
+        mock_send_message,
+    ):
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=9,
             status='healthy',
             created_at=timezone.now(),
             details={
-                'positions_count': 15,
-                'material_positions_count': 0,
-                'dust_positions_count': 15,
+                'positions_count': 17,
+                'material_positions_count': 5,
+                'dust_positions_count': 12,
                 'unknown_value_positions_count': 0,
-                'material_symbols': [],
-                'dust_symbols': ['SAGAUSDT', 'BTCUSDT'],
+                'material_symbols': ['BTCUSDT'],
+                'dust_symbols': ['SAGAUSDT', 'ETHUSDT'],
                 'unknown_value_symbols': [],
-                'max_positions': 10,
-                'free_usdt': Decimal('0.028549210000000000'),
+                'free_usdt': Decimal('123.450000000000000000'),
+                'latest_buy_reason': 'capacity available',
             },
         )
+        mock_trade_manager.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = None
+
+        with patch.dict(os.environ, {'MAX_POSITIONS': '10'}):
+            with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+                response = self.post_telegram_message('/buy_status')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('<b>🟢 BUY status</b>', message)
+        self.assertIn('Raw/material/dust/unknown: <code>17/5/12/0</code>', message)
+        self.assertIn('Effective positions: <code>5/10</code>', message)
+        self.assertIn('Remaining capacity: <code>5</code>', message)
+        self.assertIn('Max positions: <code>10</code>', message)
+        self.assertIn('Material: <code>BTCUSDT</code>', message)
+        self.assertIn('Dust: <code>SAGAUSDT, ETHUSDT</code>', message)
+        self.assertIn('Dust positions: <code>non-blocking</code>', message)
+        self.assertIn('Unknown: <code>none</code>', message)
+        self.assertIn('Free USDT: <code>123.45 USDT</code>', message)
+        self.assertIn('Latest BUY reason: <code>capacity available</code>', message)
+        self.assertIn('BUY state: <code>available</code>', message)
+        self.assertIn('Reason: <code>capacity available</code>', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.TradeOperation.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_buy_status_keeps_capacity_when_optional_fields_are_missing(
+        self,
+        mock_health_manager,
+        mock_trade_manager,
+        mock_send_message,
+    ):
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=10,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 6,
+                'material_positions_count': 4,
+                'dust_positions_count': 1,
+                'unknown_value_positions_count': 1,
+                'material_symbols': ['BTCUSDT'],
+                'dust_symbols': ['SAGAUSDT'],
+                'unknown_value_symbols': ['MYSTERYUSDT'],
+                'max_positions': 10,
+            },
+        )
+        mock_trade_manager.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = None
 
         with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
             response = self.post_telegram_message('/buy_status')
 
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
-        self.assertIn('<b>🟡 BUY status</b>', message)
-        self.assertIn('Raw/material/dust/unknown: <code>15/0/15/0</code>', message)
-        self.assertIn('Max positions: <code>10</code>', message)
-        self.assertIn('Material: <code>none</code>', message)
-        self.assertIn('Dust: <code>SAGAUSDT, BTCUSDT</code>', message)
-        self.assertIn('Unknown: <code>none</code>', message)
-        self.assertIn('Free USDT: <code>0.0285 USDT</code>', message)
-        self.assertIn('Latest BUY reason: <code>N/A</code>', message)
-        self.assertIn('BUY state: <code>uncertain</code>', message)
-        self.assertIn('raw dust may be confusing capacity', message)
+        self.assertIn('Effective positions: <code>5/10</code>', message)
+        self.assertIn('Remaining capacity: <code>5</code>', message)
+        self.assertIn('Free USDT: <code>diagnostic unavailable</code>', message)
+        self.assertIn('Latest BUY reason: <code>unavailable</code>', message)
+        self.assertIn('BUY state: <code>available</code>', message)
+        self.assertIn('Reason: <code>capacity available</code>', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -220,13 +271,13 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
         self.assertIn('<b>⚪ BUY status</b>', message)
-        self.assertIn('BUY state: <code>unknown</code>', message)
+        self.assertIn('BUY state: <code>diagnostic_unavailable</code>', message)
         self.assertIn('Reason: <code>latest healthcheck missing</code>', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
-    def test_buy_status_displays_blocked_when_material_positions_reach_max(self, mock_health_manager, mock_send_message):
+    def test_buy_status_displays_blocked_when_effective_positions_reach_max(self, mock_health_manager, mock_send_message):
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=10,
             status='healthy',
@@ -249,13 +300,13 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
         self.assertIn('<b>🔴 BUY status</b>', message)
-        self.assertIn('BUY state: <code>blocked</code>', message)
-        self.assertIn('material positions at max capacity', message)
+        self.assertIn('BUY state: <code>blocked_by_positions</code>', message)
+        self.assertIn('effective positions at max capacity', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
-    def test_buy_status_warns_when_raw_positions_exceed_max_but_material_do_not(self, mock_health_manager, mock_send_message):
+    def test_buy_status_treats_dust_as_non_blocking_when_raw_positions_exceed_max(self, mock_health_manager, mock_send_message):
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=11,
             status='healthy',
@@ -277,9 +328,9 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
-        self.assertIn('<b>🟡 BUY status</b>', message)
-        self.assertIn('BUY state: <code>uncertain</code>', message)
-        self.assertIn('raw positions exceed max while material positions do not', message)
+        self.assertIn('<b>🟢 BUY status</b>', message)
+        self.assertIn('BUY state: <code>available</code>', message)
+        self.assertIn('Dust positions: <code>non-blocking</code>', message)
 
     def test_numeric_formatting_trims_trailing_zeros(self):
         from core.telegram_diagnostics import fmt_drift, fmt_price, fmt_qty
@@ -287,6 +338,41 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertEqual(fmt_price(Decimal('0.031570000000000000')), '0.03157')
         self.assertEqual(fmt_qty(Decimal('15.000000000000000000')), '15')
         self.assertEqual(fmt_drift(Decimal('0E-18')), '0')
+
+    def test_buy_state_reports_configured_blockers(self):
+        from core.telegram_diagnostics import interpret_buy_state
+
+        self.assertEqual(
+            interpret_buy_state(5, 4, 10, free_usdt=Decimal('4'), min_required_buy_amount=Decimal('5'))[0],
+            'blocked_by_usdt',
+        )
+        self.assertEqual(
+            interpret_buy_state(5, 4, 10, read_only=True)[0],
+            'blocked_by_read_only',
+        )
+
+    def test_buy_state_reports_latest_buy_outcomes(self):
+        from core.telegram_diagnostics import interpret_buy_state
+
+        self.assertEqual(
+            interpret_buy_state(
+                5,
+                4,
+                10,
+                latest_buy_decision='submitted',
+                latest_buy_error='BinanceAPIException',
+            )[0],
+            'execution_error',
+        )
+        self.assertEqual(
+            interpret_buy_state(
+                5,
+                4,
+                10,
+                latest_buy_decision='no_candidate',
+            )[0],
+            'no_candidate',
+        )
 
     def test_percent_formatting_rounds_to_two_decimals(self):
         from core.telegram_diagnostics import fmt_percent

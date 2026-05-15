@@ -154,6 +154,22 @@ to match one of those allowlists. The commands use safe HTML formatting and only
 read shared bot tables. Supported commands are `/health`, `/buy_status`,
 `/position SYMBOL`, `/last_sell SYMBOL`, and `/why_not_sell SYMBOL`.
 
+### Troubleshooting `/buy_status`
+
+`/buy_status` treats BUY capacity conservatively without letting optional
+diagnostic gaps hide useful information:
+
+- `Effective positions` means `material + unknown`; unknown-value positions count
+  against capacity until the bot can value them.
+- Dust positions are shown explicitly as `non-blocking` and do not consume BUY
+  capacity.
+- If persisted healthcheck details do not include `max_positions`, the dashboard
+  falls back to runtime config/env aliases such as `MAX_POSITIONS`.
+- If free USDT cannot be read, the command shows
+  `Free USDT: diagnostic unavailable` while still reporting capacity.
+- If the latest BUY reason is absent, the command shows
+  `Latest BUY reason: unavailable`; that alone does not block BUY status.
+
 Run tests:
 
 ```bash

@@ -123,11 +123,14 @@ commands:
 - `/why_not_sell SYMBOL`
 
 Messages use Telegram HTML parse mode, escape dynamic values before rendering,
-and should stay compact enough for mobile review. `/buy_status` is conservative:
-it reports unknown or uncertain state when healthcheck details, max-position
-configuration, or free-capital data are unavailable. Inline keyboard buttons,
-if added later, must be navigation or refresh controls only and must never
-trigger trading.
+and should stay compact enough for mobile review. `/buy_status` is conservative
+about exposure rather than pessimistic about missing optional fields: effective
+positions are `material + unknown`, dust is explicitly non-blocking, missing free
+USDT renders as `diagnostic unavailable`, and a missing latest BUY reason renders
+as `unavailable` without blocking capacity. It uses `diagnostic_unavailable` only
+when required inputs such as position classification or max-position config
+cannot be read. Inline keyboard buttons, if added later, must be navigation or
+refresh controls only and must never trigger trading.
 
 ---
 
