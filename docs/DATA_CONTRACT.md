@@ -164,6 +164,14 @@ Dashboard usage:
 - Show side, symbol, status, quantities, prices, fees, realized PnL if present
 - Prefer this table over raw fills for user-facing trade history
 
+Current diagnostic metadata:
+
+- Filled stop-loss SELL operations may include
+  `raw_payload.sell_reason = "stop_loss_reached"`.
+- This metadata is operational context used by the bot for optional
+  symbol-specific re-entry cooldown checks; it does not change economic or FIFO
+  accounting semantics.
+
 Conceptual fields:
 
 - operation id
@@ -325,8 +333,8 @@ Conceptual fields:
 - details payload, which may include error context
 - run id if available
 
-Current bot healthcheck details may include additive material-position
-classification fields:
+Current bot healthcheck details include additive material-position
+classification and BUY diagnostic fields:
 
 - `positions_count`: raw positive-quantity portfolio rows
 - `material_positions_count`: rows with estimated value greater than or equal
@@ -338,6 +346,17 @@ classification fields:
 - `material_symbols`
 - `dust_symbols`
 - `unknown_value_symbols`
+- `effective_positions_count`: material plus unknown-value positions, the same
+  count used for BUY capacity gating
+- `max_positions`
+- `remaining_buy_capacity`
+- `free_usdt`
+- `read_only`
+- `latest_buy_state`
+- `latest_buy_reason`
+- `latest_buy_symbol`
+- `latest_buy_error_class`
+- `latest_buy_error_code`
 
 These fields are healthcheck JSON details only. They do not add or modify
 database columns, and they do not change the accounting source-of-truth model.
@@ -348,10 +367,51 @@ exposure, even though they may remain latent inventory and possible future
 reusable liquidity. `portfolio` remains a projection and `position_lots`
 remains the FIFO accounting truth.
 
+Potential future exposure-oriented metrics such as deployed-capital percentage,
+cash-reserve percentage, or material exposure in USDT are roadmap ideas only;
+they are not part of the current healthcheck contract.
+
+`latest_buy_state` is one of:
+
+```text
+available
+scanning
+no_candidate
+blocked_by_positions
+blocked_by_usdt
+blocked_by_read_only
+planned
+submitted
+filled
+execution_error
+skipped
+```
+
+Stable `latest_buy_reason` values currently written by the bot include:
+
+```text
+capacity_available
+scanner_running
+scanner_no_candidate
+effective_positions_at_max_capacity
+free_usdt_below_buy_amount
+read_only
+buy_order_planned
+buy_order_submitted
+buy_order_filled
+binance_api_error
+execution_error
+validation_rejected
+```
+
+Consumer note: `effective_positions_at_max_capacity` is the explicit persisted
+capacity reason for `blocked_by_positions`. The generic `validation_rejected`
+reason still exists for other validation failures and should not be interpreted
+as a synonym for max-position capacity exhaustion.
+
 Dashboard Telegram diagnostics may expose `/buy_status` from these persisted
-healthcheck details. The diagnostic is read-only and conservative: if max
-positions or capital data are not exposed by the bot, the dashboard reports
-`N/A`, `unknown`, or `uncertain` rather than asserting that BUYs are possible.
+healthcheck details. The diagnostic is read-only; consumers should use these
+bot-owned fields instead of inferring BUY state from missing guessed values.
 
 Suggested dashboard status logic:
 
@@ -434,6 +494,9 @@ Stop-loss contract:
 - `stop_loss_reached` with `estimated_pnl_percent > 0` is invalid diagnostic
   data and should be treated as an operational anomaly.
 - `profit_guard_bypassed=true` is valid only for real-loss stop-loss exits.
+- Positive historical stop-loss thresholds such as `3.0` are invalid diagnostic
+  state; consumers should prefer `normalized_stop_loss_threshold` when
+  interpreting current semantics.
 
 Normalized SELL evaluation reason values:
 
@@ -947,48 +1010,30 @@ Important:
 - These KPIs are operational metrics, not audited accounting statements.
 - The dashboard must not call Binance or execute trading logic to fill missing data.
 
-## 7.5 BUY Diagnostics Contract - Pending Review
+## 7.5 BUY Diagnostics Contract
 
-The current shared contract exposes material-position classification through
-healthcheck details and BUY/SELL decisions through bot-owned decision surfaces,
-but this is not yet enough for a reliable `/buy_status` diagnostic.
-
-Observed diagnostic gap:
-
-```text
-BUY state: uncertain
-Reason: max positions unavailable
-Max positions: N/A
-Free USDT: N/A
-Latest BUY reason: N/A
-```
-
-This can occur even when the runtime reaches `buy_order_plan` and attempts a
-Binance BUY, so consumers must treat current `/buy_status` output as incomplete
-when key fields are `N/A`.
-
-Future contract options:
-
-1. Extend `bot.bot_healthcheck.details` with stable BUY diagnostic fields:
-   `max_positions`, `material_positions_count`,
-   `unknown_value_positions_count`, `dust_positions_count`, `free_usdt`,
-   `buy_capacity_state`, `latest_buy_state`, `latest_buy_reason`,
-   `latest_buy_symbol`, `latest_buy_error_class`, and
-   `latest_buy_error_code`.
-2. Reuse or expand existing bot-owned order decision data if it already
-   contains the needed BUY lifecycle and rejection details.
-3. Add a new bot-owned read-only diagnostic table only if existing surfaces are
-   insufficient.
+The bot persists the stable BUY diagnostic surface in
+`bot.bot_healthcheck.details`. It is the contract consumers should use for
+`/buy_status`; no Django or Telegram handler should call Binance to reconstruct
+BUY state.
 
 Consumer rules:
 
 - Dashboard/Telegram must not infer that BUY is blocked solely because
   diagnostic fields are missing.
+- `no_candidate` means capacity may be available, but the scanner selected no
+  candidate to buy. It is not the same as `blocked_by_positions`,
+  `blocked_by_usdt`, or `blocked_by_read_only`.
 - Dust-only inventory should be shown as non-blocking for `max_positions` when
   material-position classification says `material=0` and `unknown=0`.
 - Binance execution errors must be shown separately from capacity gating.
 - Diagnostics are read-only and must not execute trades, call Binance, or
   mutate accounting state.
+- Healthcheck persistence is best-effort. Failure to write diagnostics must
+  not block trading, and consumers must tolerate the latest row being older
+  than the latest attempted cycle if persistence fails.
+- A richer dedicated BUY decision table is optional future work only if this
+  healthcheck surface later proves insufficient.
 
 ---
 

@@ -29,11 +29,14 @@ Implemented capabilities:
 - Compact “Why positions are not selling” table on the main dashboard, sourced from open lots and latest persisted SELL diagnostics, with dust/minNotional positions separated from strategy holds
 - Dedicated Dust / Residuals dashboard sourced from `bot.dust_detections` with filters and 25-row pagination
 - Telegram mobile diagnostics commands on the existing webhook:
+  - `/help`
   - `/health`
   - `/buy_status`
   - `/position SYMBOL`
   - `/last_sell SYMBOL`
   - `/why_not_sell SYMBOL`
+- Telegram diagnostics include a compact command guide and format skipped/rejected
+  SELL diagnostics with a short summary before raw event details for mobile review.
 - Telegram diagnostics render compact Decimal-safe numeric values for mobile
   review while preserving read-only DB access and HTML escaping.
 - `/buy_status` now reports effective positions as `material + unknown`, treats

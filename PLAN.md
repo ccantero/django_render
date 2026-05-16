@@ -26,7 +26,9 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - Dashboard requires login for operational views.
 - Dust / residual dashboard reads `bot.dust_detections`.
 - Telegram mobile diagnostics commands read shared bot state through the existing webhook:
-  `/health`, `/buy_status`, `/position SYMBOL`, `/last_sell SYMBOL`, and `/why_not_sell SYMBOL`.
+  `/help`, `/health`, `/buy_status`, `/position SYMBOL`, `/last_sell SYMBOL`, and `/why_not_sell SYMBOL`.
+- Telegram diagnostics expose a compact `/help` guide and present skipped/rejected
+  SELL explanations with a mobile-first summary before raw event details.
 - Telegram mobile diagnostics now also support `/buy_status` for conservative
   BUY capacity visibility from healthcheck position classification data.
 - Telegram diagnostics use compact Decimal-safe display formatting for prices,

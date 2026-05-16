@@ -116,6 +116,7 @@ Source: shared bot tables only.
 The existing Telegram webhook supports concise, allowlisted, read-only operator
 commands:
 
+- `/help`
 - `/health`
 - `/buy_status`
 - `/position SYMBOL`
@@ -123,7 +124,9 @@ commands:
 - `/why_not_sell SYMBOL`
 
 Messages use Telegram HTML parse mode, escape dynamic values before rendering,
-and should stay compact enough for mobile review. `/buy_status` is conservative
+and should stay compact enough for mobile review. `/help` should act as a compact
+operator guide, and skipped/rejected SELL diagnostics should lead with a plain
+language summary before lower-level event fields. `/buy_status` is conservative
 about exposure rather than pessimistic about missing optional fields: effective
 positions are `material + unknown`, dust is explicitly non-blocking, missing free
 USDT renders as `diagnostic unavailable`, and a missing latest BUY reason renders

@@ -21,7 +21,7 @@ from core.trading_models import (
 
 logger = logging.getLogger(__name__)
 
-DIAGNOSTIC_COMMANDS = {"/health", "/position", "/last_sell", "/why_not_sell", "/buy_status"}
+DIAGNOSTIC_COMMANDS = {"/help", "/health", "/position", "/last_sell", "/why_not_sell", "/buy_status"}
 REJECTED_SELL_EVENTS = [
 	"sell_signal_rejected",
 	"sell_order_skipped",
@@ -45,6 +45,8 @@ def diagnostic_response(text, chat_id, user_id=None):
 
 	if command == "/health":
 		return format_health()
+	if command == "/help":
+		return format_help()
 	if command == "/buy_status":
 		return format_buy_status()
 
@@ -125,6 +127,30 @@ def format_health():
 			f"<code>{h('/'.join(fmt_count(value) for value in counts))}</code>"
 		)
 	return "\n".join(lines)
+
+
+def format_help():
+	return "\n".join([
+		"<b>🤖 Bot commands</b>",
+		"",
+		"<b>General</b>",
+		"• /start — greet the user",
+		"• /help — show this guide",
+		"",
+		"<b>Status</b>",
+		"• /health — bot heartbeat and position counts",
+		"• /buy_status — BUY capacity and blockers",
+		"",
+		"<b>Symbol diagnostics</b>",
+		"• /position SYMBOL — quantity, value, and drift",
+		"• /last_sell SYMBOL — latest SELL diagnostic",
+		"• /why_not_sell SYMBOL — latest skipped/rejected SELL reason",
+		"",
+		"<b>Legacy</b>",
+		"• /getmyinvest — placeholder, not implemented yet",
+		"",
+		"Example: <code>/position XRPUSDT</code>",
+	])
 
 
 def format_buy_status():
@@ -274,17 +300,18 @@ def format_why_not_sell(symbol):
 		return f"<b>🤔 Why not sell — {h(symbol)}</b>\n\nNo rejected/skipped SELL event found."
 
 	explanations = explain_rejection(event)
-	block = "\n".join(f"- {item}" for item in explanations)
+	block = "\n".join(f"• {item}" for item in explanations)
 	return "\n".join([
 		f"<b>🤔 Why not sell — {h(symbol)}</b>",
 		"",
+		"<b>Summary</b>",
+		block,
+		"",
+		"<b>Details</b>",
 		f"Event: <code>{h(getattr(event, 'event_name', None))}</code>",
 		f"Reason: <code>{h(getattr(event, 'reason', None))}</code>",
 		f"Stage: <code>{h(getattr(event, 'validation_stage', None))}</code>",
 		f"PnL: <code>{h(fmt_percent(getattr(event, 'estimated_pnl_percent', None)))}</code>",
-		"",
-		"Interpretation:",
-		f"<pre>{h(block)}</pre>",
 	])
 
 

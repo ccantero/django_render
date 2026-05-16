@@ -162,6 +162,24 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
+    def test_help_lists_available_diagnostics_commands(self, mock_send_message):
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/help')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('<b>🤖 Bot commands</b>', message)
+        self.assertIn('/start', message)
+        self.assertIn('/help', message)
+        self.assertIn('/health', message)
+        self.assertIn('/buy_status', message)
+        self.assertIn('/position SYMBOL', message)
+        self.assertIn('/last_sell SYMBOL', message)
+        self.assertIn('/why_not_sell SYMBOL', message)
+        self.assertIn('/getmyinvest', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.TradeOperation.objects')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
     def test_buy_status_returns_capacity_with_runtime_max_positions_fallback(
@@ -473,6 +491,9 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
         self.assertIn('<b>🤔 Why not sell — SAGAUSDT</b>', message)
+        self.assertIn('<b>Summary</b>', message)
+        self.assertIn('• Profit guard blocked', message)
+        self.assertNotIn('<pre>', message)
         self.assertIn('Profit guard blocked', message)
         self.assertIn('Exchange minNotional blocked', message)
 
