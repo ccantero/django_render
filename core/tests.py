@@ -7,6 +7,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 import inspect
 import json
+import logging
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -16,14 +17,22 @@ from dashboard.dashboard_read_model import (
     _build_fee_summary,
     _build_performance_kpis,
     _build_position_exit_status,
+    _build_inventory_scope_summary,
+    _build_latest_trade_from_recent_operations,
     _build_quote_fee_summary,
     _build_valuation_consistency,
     _calculate_performance_kpis,
+    _dashboard_profile_enabled,
+    _homepage_sell_diagnostics_enabled,
+    _ensure_dashboard_profile_console_logging,
+    _latest_sell_events_by_symbol,
     _position_exit_suggested_action,
+    get_dashboard_context,
 )
 from dashboard.dust_read_model import (
     _active_operational_issues,
     _build_summary,
+    _build_homepage_summary,
     _clean_filters,
     _dashboard_queryset,
     _filtered_group_detections,
@@ -881,21 +890,20 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'BTCUSDT')
         self.assertContains(response, 'Reconciliation: <strong>warning</strong>', html=True)
-        self.assertContains(response, 'Performance Snapshot')
+        self.assertContains(response, 'Historical KPIs are deferred')
         self.assertContains(response, 'Analytics')
         self.assertContains(response, 'Portfolio vs lots drift')
         self.assertContains(response, '0.75 USDT')
         self.assertContains(response, '0.00100000')
-        self.assertContains(response, '0.25')
         self.assertContains(response, 'Dust / Residuals')
         self.assertContains(response, 'Active issues first')
-        self.assertContains(response, 'Net realized PnL')
-        self.assertContains(response, '12.25')
-        self.assertContains(response, 'Win rate')
+        self.assertNotContains(response, 'Net realized PnL')
+        self.assertNotContains(response, '12.25')
+        self.assertNotContains(response, 'Win rate')
         self.assertNotContains(response, 'Average win')
         self.assertNotContains(response, 'Average loss')
-        self.assertContains(response, 'Profit factor')
-        self.assertContains(response, '6.00')
+        self.assertNotContains(response, 'Profit factor')
+        self.assertNotContains(response, '6.00')
         self.assertNotContains(response, 'Gross deployed capital')
         self.assertNotContains(response, 'PnL by symbol')
         self.assertNotContains(response, 'PnL by day')
@@ -929,14 +937,13 @@ class DashboardEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Operations Console')
-        self.assertContains(response, 'Performance Snapshot')
-        self.assertContains(response, 'Net realized PnL')
+        self.assertContains(response, 'Historical KPIs are deferred')
+        self.assertNotContains(response, 'Net realized PnL')
         self.assertContains(response, 'Analytics')
         self.assertContains(response, 'Dust Dashboard')
         self.assertNotContains(response, 'PnL by symbol')
         self.assertNotContains(response, 'PnL by day')
-        self.assertContains(response, 'Profit factor')
-        self.assertContains(response, 'N/A')
+        self.assertNotContains(response, 'Profit factor')
         self.assertNotContains(response, 'Average win')
         self.assertNotContains(response, 'Average loss')
         self.assertNotContains(response, 'Gross deployed capital')
@@ -1172,7 +1179,7 @@ class DashboardEndpointTests(TestCase):
         response = self.client.get(self.dashboard_url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Why positions are not selling')
+        self.assertContains(response, 'Open FIFO lot exit status')
         self.assertContains(response, 'ZECUSDT')
         self.assertContains(response, 'Holding')
         self.assertContains(response, 'stop_loss not reached, take_profit not reached')
@@ -1186,7 +1193,7 @@ class DashboardEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Public demo')
-        self.assertContains(response, 'Performance Snapshot')
+        self.assertContains(response, 'Historical KPIs are deferred')
         self.assertNotContains(response, 'Total Fees')
         self.assertNotContains(response, 'Fees (USDT)')
         self.assertNotContains(response, 'Control seguro')
@@ -2590,6 +2597,305 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(summary['material_count'], 2)
         self.assertEqual(summary['dust_count'], 1)
 
+    def test_inventory_scope_summary_distinguishes_lots_from_excluded_balances(self):
+        portfolio_rows = [
+            SimpleNamespace(symbol='ZECUSDT', asset='ZEC', quantity=Decimal('0.5'), current_price=Decimal('84.50')),
+            SimpleNamespace(symbol='USDCUSDT', asset='USDC', quantity=Decimal('25'), current_price=Decimal('1')),
+            SimpleNamespace(symbol='ABCUSDT', asset='ABC', quantity=Decimal('2'), current_price=Decimal('3')),
+        ]
+        open_lots = {
+            'ZECUSDT': {'symbol': 'ZECUSDT', 'open_quantity': Decimal('0.5')},
+        }
+        position_exit_status = {'material_count': 1, 'dust_count': 0}
+
+        summary = _build_inventory_scope_summary(portfolio_rows, open_lots, position_exit_status)
+
+        self.assertIsNone(summary['spot_assets_count'])
+        self.assertEqual(summary['bot_managed_lot_symbols_count'], 1)
+        self.assertEqual(summary['material_tradable_positions_count'], 1)
+        self.assertEqual(summary['excluded_balances_count'], 2)
+        self.assertEqual(
+            [row['symbol'] for row in summary['excluded_balances']],
+            ['ABCUSDT', 'USDCUSDT'],
+        )
+        self.assertEqual(summary['excluded_balances'][1]['reason'], 'stablecoin cash balance')
+
+    def test_latest_sell_events_by_symbol_keeps_latest_open_lot_event_only(self):
+        older = SimpleNamespace(symbol='ZECUSDT', id=1)
+        latest = SimpleNamespace(symbol='ZECUSDT', id=2)
+        unrelated = SimpleNamespace(symbol='BTCUSDT', id=3)
+        eth = SimpleNamespace(symbol='ETHUSDT', id=4)
+
+        class FakeSellDecisionEventQuery:
+            def __init__(self):
+                self.filter_kwargs = None
+                self.order_fields = None
+
+            def filter(self, **kwargs):
+                self.filter_kwargs = kwargs
+                return self
+
+            def order_by(self, *fields):
+                self.order_fields = fields
+                return self
+
+            def __getitem__(self, item):
+                self.slice = item
+                return [latest, eth, older]
+
+        query = FakeSellDecisionEventQuery()
+        open_lots = {'ZECUSDT': {}, 'ETHUSDT': {}, 'ADAUSDT': {}}
+
+        with patch('dashboard.dashboard_read_model.SellDecisionEvent.objects', query):
+            events = _latest_sell_events_by_symbol(open_lots)
+
+        self.assertEqual(query.filter_kwargs, {'symbol__in': ['ZECUSDT', 'ETHUSDT', 'ADAUSDT']})
+        self.assertEqual(query.order_fields, ('-created_at', '-id'))
+        self.assertEqual(query.slice, slice(None, 200, None))
+        self.assertEqual(events, {'ZECUSDT': latest, 'ETHUSDT': eth})
+        self.assertNotIn('ADAUSDT', events)
+        self.assertNotIn(unrelated.symbol, events)
+
+    def test_latest_sell_events_by_symbol_returns_empty_mapping_when_query_fails(self):
+        class FailingSellDecisionEventQuery:
+            def filter(self, **kwargs):
+                raise DatabaseError('missing diagnostics table')
+
+        with patch('dashboard.dashboard_read_model.SellDecisionEvent.objects', FailingSellDecisionEventQuery()):
+            events = _latest_sell_events_by_symbol({'ZECUSDT': {}})
+
+        self.assertEqual(events, {})
+
+    def test_homepage_skips_sell_diagnostics_by_default(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(_homepage_sell_diagnostics_enabled())
+
+    def test_homepage_env_flag_enables_sell_diagnostics(self):
+        with patch.dict(os.environ, {'DASHBOARD_INCLUDE_SELL_DIAGNOSTICS': 'true'}):
+            self.assertTrue(_homepage_sell_diagnostics_enabled())
+
+    def test_position_exit_rows_render_without_loaded_diagnostics(self):
+        summary = _build_position_exit_status(
+            {'ZECUSDT': {'open_quantity': Decimal('1'), 'open_lot_count': 1}},
+            [SimpleNamespace(symbol='ZECUSDT', asset='ZEC', quantity=Decimal('1'), current_price=Decimal('5'))],
+            {},
+            diagnostics_loaded=False,
+        )
+
+        row = summary['rows'][0]
+        self.assertEqual(row['status_label'], 'Diagnostics not loaded')
+        self.assertEqual(row['main_reason'], 'not loaded on homepage')
+
+    def test_recent_operations_provide_latest_trade_without_second_query(self):
+        latest = SimpleNamespace(gross_quote=Decimal('10'), net_quote=Decimal('9'))
+
+        latest_trade = _build_latest_trade_from_recent_operations([latest])
+
+        self.assertEqual(latest_trade['row'], latest)
+        self.assertEqual(latest_trade['gross_quote'], Decimal('10'))
+        self.assertEqual(latest_trade['net_quote'], Decimal('9'))
+
+    def test_dust_homepage_summary_can_skip_count_query(self):
+        class CountShouldNotRun:
+            def count(self):
+                raise AssertionError('homepage dust summary must not call count()')
+
+        latest = SimpleNamespace(run_id='latest-run', detected_at=timezone.now())
+        summary = _build_homepage_summary(
+            CountShouldNotRun(),
+            [{'severity': 'warning', 'latest_estimated_value_usdt': Decimal('2')}],
+            latest=latest,
+        )
+
+        self.assertIsNone(summary['total_detections'])
+        self.assertEqual(summary['warning_count'], 1)
+
+    def test_dashboard_context_keeps_rendering_when_sell_diagnostics_query_fails(self):
+        class FailingSellDecisionEventQuery:
+            def filter(self, **kwargs):
+                raise DatabaseError('missing diagnostics table')
+
+        with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
+            portfolio_manager.all.return_value.order_by.return_value = []
+            with patch('dashboard.dashboard_read_model._build_bot_status', return_value={}):
+                with patch('dashboard.dashboard_read_model._build_fee_summary', return_value={}):
+                    with patch('dashboard.dashboard_read_model._build_quote_fee_summary', return_value={}):
+                        with patch('dashboard.dashboard_read_model._build_performance_kpis', return_value={}):
+                            with patch('dashboard.dashboard_read_model._build_recent_operations', return_value=[]):
+                                with patch('dashboard.dashboard_read_model._build_latest_trade_from_recent_operations', return_value=None):
+                                    with patch(
+                                        'dashboard.dashboard_read_model._open_lots_by_symbol',
+                                        return_value={'ZECUSDT': {'open_quantity': Decimal('1')}},
+                                    ):
+                                        with patch(
+                                            'dashboard.dashboard_read_model.SellDecisionEvent.objects',
+                                            FailingSellDecisionEventQuery(),
+                                        ):
+                                            with patch(
+                                                'dashboard.dashboard_read_model.get_dust_overview_context',
+                                                return_value={'data_error': None},
+                                            ):
+                                                read_model = get_dashboard_context()
+
+        self.assertEqual(read_model.context['position_exit_status']['rows'][0]['symbol'], 'ZECUSDT')
+
+    def test_dashboard_context_keeps_rendering_when_dust_summary_fails(self):
+        with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
+            portfolio_manager.all.return_value.order_by.return_value = []
+            with patch('dashboard.dashboard_read_model._build_bot_status', return_value={}):
+                with patch('dashboard.dashboard_read_model._build_fee_summary', return_value={}):
+                    with patch('dashboard.dashboard_read_model._build_quote_fee_summary', return_value={}):
+                        with patch('dashboard.dashboard_read_model._build_performance_kpis', return_value={}):
+                            with patch('dashboard.dashboard_read_model._build_recent_operations', return_value=[]):
+                                with patch('dashboard.dashboard_read_model._build_latest_trade_from_recent_operations', return_value=None):
+                                    with patch('dashboard.dashboard_read_model._open_lots_by_symbol', return_value={}):
+                                        with patch(
+                                            'dashboard.dashboard_read_model.get_dust_overview_context',
+                                            side_effect=DatabaseError('dust unavailable'),
+                                        ):
+                                            read_model = get_dashboard_context()
+
+        self.assertIn('dust detections: dust unavailable', read_model.context['data_error'])
+
+    @patch('dashboard.views.get_dashboard_context')
+    def test_homepage_requests_compact_performance_context(self, mock_get_dashboard_context):
+        mock_get_dashboard_context.return_value.context = self.empty_dashboard_context()
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.dashboard_url)
+
+        self.assertEqual(response.status_code, 200)
+        mock_get_dashboard_context.assert_called_once_with(include_performance_kpis=False)
+
+    @patch('dashboard.views.get_dashboard_context')
+    def test_dashboard_explains_position_exit_scope_and_excluded_balances(self, mock_get_dashboard_context):
+        context = self.empty_dashboard_context()
+        context['inventory_scope'] = {
+            'spot_assets_count': None,
+            'bot_managed_lot_symbols_count': 1,
+            'material_tradable_positions_count': 1,
+            'dust_non_tradable_positions_count': 0,
+            'excluded_balances_count': 1,
+            'excluded_balances': [
+                {
+                    'symbol': 'USDCUSDT',
+                    'asset': 'USDC',
+                    'reason': 'stablecoin cash balance',
+                },
+            ],
+        }
+        mock_get_dashboard_context.return_value.context = context
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.dashboard_url)
+
+        self.assertContains(response, 'Open FIFO lot exit status')
+        self.assertContains(response, 'Only symbols with open FIFO lots appear here.')
+        self.assertContains(response, 'Stablecoin cash balances are intentionally excluded.')
+        self.assertContains(response, 'Pure SPOT balances without open lots are not SELL candidates.')
+        self.assertContains(response, 'Excluded balances')
+        self.assertContains(response, 'USDCUSDT')
+
+    @patch('dashboard.views.get_dashboard_analytics_context')
+    def test_analytics_requests_full_performance_context(self, mock_get_dashboard_context):
+        mock_get_dashboard_context.return_value.context = self.empty_dashboard_context()
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('dashboard_analytics'))
+
+        self.assertEqual(response.status_code, 200)
+        mock_get_dashboard_context.assert_called_once_with()
+
+    def test_homepage_context_skips_kpi_builder(self):
+        with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
+            portfolio_manager.all.return_value.order_by.return_value = []
+            with patch('dashboard.dashboard_read_model._build_bot_status', return_value={}):
+                with patch('dashboard.dashboard_read_model._build_fee_summary', return_value={}):
+                    with patch('dashboard.dashboard_read_model._build_quote_fee_summary', return_value={}):
+                        with patch('dashboard.dashboard_read_model._build_performance_kpis') as kpis:
+                            with patch('dashboard.dashboard_read_model._build_recent_operations', return_value=[]):
+                                with patch('dashboard.dashboard_read_model._build_latest_trade_from_recent_operations', return_value=None):
+                                    with patch('dashboard.dashboard_read_model._open_lots_by_symbol', return_value={}):
+                                        with patch(
+                                            'dashboard.dashboard_read_model.get_dust_overview_context',
+                                            return_value={'data_error': None},
+                                        ):
+                                            get_dashboard_context(include_performance_kpis=False)
+
+        kpis.assert_not_called()
+
+    def test_analytics_context_is_cached_for_60_seconds(self):
+        from dashboard.dashboard_read_model import get_dashboard_analytics_context
+        from django.core.cache import cache
+
+        cache.clear()
+        with patch('dashboard.dashboard_read_model.get_dashboard_context') as context_builder:
+            context_builder.return_value = SimpleNamespace(context={'performance_kpis': {'net_realized_pnl': Decimal('1')}})
+
+            first = get_dashboard_analytics_context()
+            second = get_dashboard_analytics_context()
+
+        self.assertEqual(first.context, second.context)
+        context_builder.assert_called_once_with(include_performance_kpis=True)
+
+    def test_compact_performance_kpis_skip_history_tables(self):
+        summary = _calculate_performance_kpis(
+            [{'trade_operation_id': 1, 'realized_pnl': Decimal('3')}],
+            {1: {'symbol': 'BTCUSDT', 'timestamp': timezone.now(), 'manual_correction': False}},
+            [],
+            [],
+            include_history=False,
+        )
+
+        self.assertEqual(summary['gross_realized_pnl'], Decimal('3'))
+        self.assertEqual(summary['pnl_by_symbol'], [])
+        self.assertEqual(summary['pnl_by_day'], [])
+
+    def test_dashboard_profile_flag_is_opt_in(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(_dashboard_profile_enabled())
+        with patch.dict(os.environ, {'DASHBOARD_PROFILE': 'true'}):
+            self.assertTrue(_dashboard_profile_enabled())
+
+    def test_dashboard_context_works_when_profile_enabled(self):
+        with patch.dict(os.environ, {'DASHBOARD_PROFILE': 'true'}):
+            with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
+                portfolio_manager.all.return_value.order_by.return_value = []
+                with patch('dashboard.dashboard_read_model._build_bot_status', return_value={}):
+                    with patch('dashboard.dashboard_read_model._build_fee_summary', return_value={}):
+                        with patch('dashboard.dashboard_read_model._build_quote_fee_summary', return_value={}):
+                            with patch('dashboard.dashboard_read_model._build_performance_kpis', return_value={}):
+                                with patch('dashboard.dashboard_read_model._build_recent_operations', return_value=[]):
+                                    with patch('dashboard.dashboard_read_model._build_latest_trade_from_recent_operations', return_value=None):
+                                        with patch('dashboard.dashboard_read_model._open_lots_by_symbol', return_value={}):
+                                            with patch(
+                                                'dashboard.dashboard_read_model.get_dust_overview_context',
+                                                return_value={'data_error': None},
+                                            ):
+                                                read_model = get_dashboard_context()
+
+        self.assertEqual(read_model.context['position_exit_status']['rows'], [])
+
+    def test_dashboard_profile_enables_local_console_logger(self):
+        logger = logging.getLogger('dashboard.dashboard_read_model')
+        existing_handlers = list(logger.handlers)
+        existing_level = logger.level
+        existing_propagate = logger.propagate
+        try:
+            logger.handlers = []
+            logger.setLevel(logging.NOTSET)
+            logger.propagate = True
+
+            _ensure_dashboard_profile_console_logging()
+
+            self.assertEqual(logger.level, logging.INFO)
+            self.assertFalse(logger.propagate)
+            self.assertTrue(any(getattr(handler, '_dashboard_profile_handler', False) for handler in logger.handlers))
+        finally:
+            logger.handlers = existing_handlers
+            logger.setLevel(existing_level)
+            logger.propagate = existing_propagate
+
     def test_position_exit_suggested_action_mapping(self):
         self.assertEqual(
             _position_exit_suggested_action(['quantity_below_min_qty']),
@@ -2749,7 +3055,16 @@ class DashboardEndpointTests(TestCase):
                 'rows': [],
                 'material_count': 0,
                 'dust_count': 0,
+                'diagnostics_loaded': False,
                 'data_error': None,
+            },
+            'inventory_scope': {
+                'spot_assets_count': None,
+                'bot_managed_lot_symbols_count': 0,
+                'material_tradable_positions_count': 0,
+                'dust_non_tradable_positions_count': 0,
+                'excluded_balances_count': 0,
+                'excluded_balances': [],
             },
             'data_error': None,
             'is_demo': False,

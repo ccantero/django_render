@@ -155,11 +155,31 @@ Dust list/detail views also batch-read `bot.manual_corrections` by `source_detec
 
 The main dashboard uses a defensive best-effort active issue helper over grouped latest-run dust signals. It shows unresolved critical/warning signals only, excludes reviewed/ignored/external-or-Earn and blocking-correction groups when that state is available, and keeps informational residuals in a count/exposure summary instead of promoting them to active issues. The full audit history remains on the dedicated Dust / Residuals dashboard.
 
+For homepage latency, the overview skips SELL diagnostics by default and renders
+open-lot rows without persisted explanations; `DASHBOARD_INCLUDE_SELL_DIAGNOSTICS=true`
+re-enables the bounded recent diagnostic lookup for local/debug review. Recent
+operations are fetched once and reused for the latest-trade card, and dust
+overview uses a capped latest-run candidate set without a homepage-wide
+`COUNT(*)`. Exact historical latest-per-symbol SELL lookup needs an index such
+as:
+
+```sql
+CREATE INDEX CONCURRENTLY idx_sell_events_symbol_created_id
+ON bot.sell_decision_events(symbol, created_at DESC, id DESC);
+```
+
 The dashboard must display uncertainty and avoid treating approximate exposure as audited PnL.
 
 The main dashboard also compares `bot.portfolio` projection value against open `bot.position_lots` valued with `portfolio.current_price`. Missing prices are counted and shown as warnings; they are not silently converted to zero-value audited PnL.
 
-The Wave 8 Phase 1 KPI section is read-only. It uses `bot.lot_closures.realized_pnl` for realized PnL, linked `bot.trade_operations.executed_at` or `created_at` for PnL-by-day grouping, `bot.trade_operations.fee_amount_in_quote` for normalized USDT fee totals, and FILLED BUY quote value as approximate gross deployed capital. Non-USDT or unavailable fee conversions are excluded from normalized totals. Manual/accounting correction PnL is split only when available trade operation metadata identifies it; otherwise it remains included in realized PnL totals with an explicit limitation note.
+The Wave 8 Phase 1 KPI section is read-only and deferred to the Analytics dashboard rather than computed during homepage rendering. It uses `bot.lot_closures.realized_pnl` for realized PnL, linked `bot.trade_operations.executed_at` or `created_at` for PnL-by-day grouping, `bot.trade_operations.fee_amount_in_quote` for normalized USDT fee totals, and FILLED BUY quote value as approximate gross deployed capital. Non-USDT or unavailable fee conversions are excluded from normalized totals. Manual/accounting correction PnL is split only when available trade operation metadata identifies it; otherwise it remains included in realized PnL totals with an explicit limitation note. Analytics context is cached for 60 seconds.
+
+The homepage asks the KPI read model for compact summary data only; detailed
+PnL-by-symbol and PnL-by-day history remains an Analytics-dashboard concern.
+For local investigation, `DASHBOARD_PROFILE=true` adds opt-in section-level
+timings for the main dashboard read
+model, and optional `DASHBOARD_PROFILE_SQL=true` logs slow SQL snippets above
+`DASHBOARD_SLOW_QUERY_MS` (default `100`) without exposing credentials or DB URLs.
 
 The main dashboard position exit status section is read-only. It uses
 `bot.position_lots` as the inventory source, joins `bot.portfolio` only for

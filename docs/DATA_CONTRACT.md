@@ -1128,6 +1128,16 @@ Display/projection source: `bot.portfolio`.
 
 Explanation source: latest persisted `bot.sell_decision_events` row per symbol.
 
+This view is scoped to bot-managed open FIFO lots only. Cash-like balances such
+as stablecoins and pure SPOT/projection balances without open lots should not be
+presented as SELL candidates merely because they exist outside the lot inventory
+view.
+
+SELL diagnostics are optional explanation metadata for this view. Consumers
+should continue rendering open inventory from `bot.position_lots` when
+`sell_decision_events` cannot be read, rather than hiding or failing the whole
+dashboard.
+
 Required dashboard columns:
 
 - Symbol
@@ -1157,6 +1167,10 @@ Reason interpretation mapping:
 If a persisted reason exists but is not mapped yet, consumers should show
 `Review` plus a human prompt to inspect the latest `sell_decision_events`
 payload. They should not show `Unknown` merely because the reason is new.
+
+For presentation only, consumers may visually de-escalate non-critical
+estimated values below `0.01 USDT` as tiny dust so immaterial residuals do not
+look operationally catastrophic.
 
 Constraints:
 

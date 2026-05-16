@@ -29,17 +29,19 @@ Home dashboard responsibility: concise operator console for health, urgent actio
 
 - Compact Bot Health card with normalized health badge, status, heartbeat age, read-only state, and latest message
 - Compact Inventory Integrity card with material positions, portfolio-vs-lots drift, reconciliation status, and muted tolerance/missing-price details
-- Compact Performance Snapshot card with net realized PnL, fees USDT, profit factor, and win rate
+- Compact Analytics card that links to deferred KPI detail instead of computing full-history metrics on the homepage
+- Detailed PnL-by-symbol and PnL-by-day history is intentionally deferred to Analytics rather than built for the homepage
 - Compact latest operations table, capped at four rows
 - Compact Active Operational Issues dust summary with at most five unresolved critical/warning signals
 - Informational Residuals summary with count, approximate exposure, and latest detection timestamp; info-only residuals are not promoted to active issues
-- Compact “Why positions are not selling” table with one row per open-lot symbol, status label, main reason, PnL %, estimated value, lot quantity, current price, last diagnostic timestamp, and suggested action
+- Compact open FIFO lot exit-status table with one row per open-lot symbol, status label, main reason, PnL %, estimated value, lot quantity, current price, last diagnostic timestamp, and suggested action. Stablecoin cash balances and pure SPOT/projection balances without open lots are explicitly outside this SELL-candidate view.
 - Link to the full Dust / Residuals dashboard
 - Link to Analytics
 
 ### Analytics dashboard
 
 Analytics dashboard responsibility: Performance analysis: KPIs, fees, PnL breakdowns, historical tables.
+Analytics read-model output may be cached briefly because the page is read-only and historical aggregates are intentionally deferred away from the homepage.
 
 - Performance KPI cards:
   - net realized PnL

@@ -1,10 +1,16 @@
 from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
+from contextlib import nullcontext
+import logging
+import os
+from time import perf_counter
 from types import SimpleNamespace
 from typing import List
 
-from django.db import DatabaseError
+from django.core.exceptions import FieldError
+from django.core.cache import cache
+from django.db import DatabaseError, connection
 from django.db.models import Count, Sum
 from django.utils import timezone
 
@@ -50,6 +56,13 @@ DUST_EXIT_REASONS = {
 	"rounded_quantity_zero",
 	"dust_residual_protection",
 }
+STABLECOIN_CASH_ASSETS = {"USDT", "USDC"}
+logger = logging.getLogger(__name__)
+RECENT_OPERATIONS_LIMIT = 20
+SELL_EVENT_MIN_WINDOW = 200
+SELL_EVENT_WINDOW_PER_SYMBOL = 20
+ANALYTICS_CACHE_KEY = "dashboard:analytics_context:v1"
+ANALYTICS_CACHE_SECONDS = 60
 
 SELL_REASON_PRESENTATION = {
 	"stop_loss_not_reached": {
@@ -122,7 +135,32 @@ class DashboardReadModel:
 	assumptions: List[str]
 
 
-def get_dashboard_context():
+def get_dashboard_context(include_performance_kpis=False):
+	if _dashboard_profile_enabled():
+		_ensure_dashboard_profile_console_logging()
+		with _DashboardProfiler() as profiler:
+			return _get_dashboard_context(
+				include_performance_kpis=include_performance_kpis,
+				profiler=profiler,
+			)
+	return _get_dashboard_context(include_performance_kpis=include_performance_kpis)
+
+
+def get_dashboard_analytics_context():
+	cached_context = cache.get(ANALYTICS_CACHE_KEY)
+	if cached_context is not None:
+		return DashboardReadModel(
+			context=cached_context,
+			queries=_important_queries(),
+			assumptions=_assumptions(),
+		)
+
+	read_model = get_dashboard_context(include_performance_kpis=True)
+	cache.set(ANALYTICS_CACHE_KEY, read_model.context, ANALYTICS_CACHE_SECONDS)
+	return read_model
+
+
+def _get_dashboard_context(include_performance_kpis=False, profiler=None):
 	context = {
 		"bot_control": _get_bot_control(),
 		"bot_status": _empty_bot_status(),
@@ -136,63 +174,87 @@ def get_dashboard_context():
 		"reconciliation": _empty_reconciliation(),
 		"dust_summary": _empty_dust_summary(),
 		"position_exit_status": _empty_position_exit_status(),
+		"inventory_scope": _empty_inventory_scope_summary(),
 		"data_error": None,
 		"is_demo": False,
 	}
 
 	try:
-		portfolio_rows = list(Portfolio.objects.all().order_by("symbol"))
-		context["portfolio_summary"] = _build_portfolio_summary(portfolio_rows)
+		with _profile_section(profiler, "portfolio_summary"):
+			portfolio_rows = list(Portfolio.objects.all().order_by("symbol"))
+			context["portfolio_summary"] = _build_portfolio_summary(portfolio_rows)
 	except DatabaseError as exc:
 		_add_data_error(context, "portfolio", exc)
 		portfolio_rows = []
 
 	try:
-		context["bot_status"] = _build_bot_status()
+		with _profile_section(profiler, "healthcheck"):
+			context["bot_status"] = _build_bot_status()
 	except DatabaseError as exc:
 		_add_data_error(context, "bot status", exc)
 
-	try:
-		context["fee_summary"] = _build_fee_summary()
-	except DatabaseError as exc:
-		_add_data_error(context, "fees", exc)
+	if include_performance_kpis:
+		try:
+			with _profile_section(profiler, "fees_calculations"):
+				context["fee_summary"] = _build_fee_summary()
+				context["quote_fee_summary"] = _build_quote_fee_summary()
+		except DatabaseError as exc:
+			_add_data_error(context, "fees", exc)
+
+		try:
+			with _profile_section(profiler, "kpis"):
+				context["performance_kpis"] = _build_performance_kpis(include_history=True)
+		except DatabaseError as exc:
+			_add_data_error(context, "performance KPIs", exc)
 
 	try:
-		context["quote_fee_summary"] = _build_quote_fee_summary()
-	except DatabaseError as exc:
-		_add_data_error(context, "USDT fees", exc)
-
-	try:
-		context["performance_kpis"] = _build_performance_kpis()
-	except DatabaseError as exc:
-		_add_data_error(context, "performance KPIs", exc)
-
-	try:
-		context["recent_operations"] = _build_recent_operations()
-		context["latest_trade"] = _build_latest_trade()
+		with _profile_section(profiler, "recent_operations"):
+			context["recent_operations"] = _build_recent_operations()
+			context["latest_trade"] = _build_latest_trade_from_recent_operations(
+				context["recent_operations"]
+			)
 	except DatabaseError as exc:
 		_add_data_error(context, "latest trade", exc)
 
 	try:
-		open_lots = _open_lots_by_symbol()
-		context["reconciliation"] = _build_reconciliation(portfolio_rows, open_lots)
-		context["valuation_consistency"] = _build_valuation_consistency(portfolio_rows, open_lots)
+		with _profile_section(profiler, "open_lots_aggregation"):
+			open_lots = _open_lots_by_symbol()
+		with _profile_section(profiler, "drift"):
+			context["reconciliation"] = _build_reconciliation(portfolio_rows, open_lots)
+			context["valuation_consistency"] = _build_valuation_consistency(portfolio_rows, open_lots)
 	except DatabaseError as exc:
 		_add_data_error(context, "reconciliation", exc)
 		open_lots = {}
 
 	try:
-		context["position_exit_status"] = _build_position_exit_status(
-			open_lots,
-			portfolio_rows,
-			_latest_sell_events_by_symbol(open_lots),
-		)
+		diagnostics_loaded = _homepage_sell_diagnostics_enabled()
+		if diagnostics_loaded:
+			with _profile_section(profiler, "latest_sell_events"):
+				latest_sell_events = _latest_sell_events_by_symbol(open_lots)
+		else:
+			latest_sell_events = {}
+		with _profile_section(profiler, "why_positions_not_selling"):
+			context["position_exit_status"] = _build_position_exit_status(
+				open_lots,
+				portfolio_rows,
+				latest_sell_events,
+				diagnostics_loaded=diagnostics_loaded,
+			)
+			context["inventory_scope"] = _build_inventory_scope_summary(
+				portfolio_rows,
+				open_lots,
+				context["position_exit_status"],
+			)
 	except DatabaseError as exc:
 		_add_data_error(context, "position exit status", exc)
 
-	context["dust_summary"] = get_dust_overview_context()
-	if context["dust_summary"].get("data_error"):
-		_add_data_error(context, "dust detections", context["dust_summary"]["data_error"])
+	try:
+		with _profile_section(profiler, "drift_dust_issues"):
+			context["dust_summary"] = get_dust_overview_context(profiler=profiler)
+			if context["dust_summary"].get("data_error"):
+				_add_data_error(context, "dust detections", context["dust_summary"]["data_error"])
+	except DatabaseError as exc:
+		_add_data_error(context, "dust detections", exc)
 
 	return DashboardReadModel(
 		context=context,
@@ -397,6 +459,21 @@ def get_demo_dashboard_context():
 			"material_count": 1,
 			"dust_count": 1,
 			"data_error": None,
+		},
+		"inventory_scope": {
+			"spot_assets_count": None,
+			"bot_managed_lot_symbols_count": 3,
+			"material_tradable_positions_count": 2,
+			"dust_non_tradable_positions_count": 1,
+			"excluded_balances_count": 1,
+			"excluded_balances": [
+				{
+					"symbol": "USDCUSDT",
+					"asset": "USDC",
+					"quantity": Decimal("25"),
+					"reason": "stablecoin cash balance",
+				},
+			],
 		},
 		"data_error": None,
 		"is_demo": True,
@@ -644,7 +721,7 @@ def _empty_quote_fee_summary():
 	}
 
 
-def _build_performance_kpis():
+def _build_performance_kpis(include_history=True):
 	closure_rows = list(
 		LotClosure.objects
 		.values("trade_operation_id", "realized_pnl")
@@ -678,10 +755,16 @@ def _build_performance_kpis():
 		.filter(status="FILLED", side="BUY")
 		.values("gross_quote")
 	)
-	return _calculate_performance_kpis(closure_rows, operations, fee_rows, buy_rows)
+	return _calculate_performance_kpis(
+		closure_rows,
+		operations,
+		fee_rows,
+		buy_rows,
+		include_history=include_history,
+	)
 
 
-def _calculate_performance_kpis(closure_rows, operation_rows, fee_rows, buy_rows):
+def _calculate_performance_kpis(closure_rows, operation_rows, fee_rows, buy_rows, include_history=True):
 	total_fees_usdt = sum(
 		(row.get("fee_amount_in_quote") or Decimal("0"))
 		for row in fee_rows
@@ -727,23 +810,24 @@ def _calculate_performance_kpis(closure_rows, operation_rows, fee_rows, buy_rows
 		else:
 			bot_realized_pnl += realized_pnl
 
-		symbol = operation.get("symbol") or "unknown"
-		symbol_row = pnl_by_symbol.setdefault(
-			symbol,
-			{"symbol": symbol, "realized_pnl": Decimal("0"), "closures_count": 0},
-		)
-		symbol_row["realized_pnl"] += realized_pnl
-		symbol_row["closures_count"] += 1
-
-		timestamp = operation.get("timestamp")
-		if timestamp is not None:
-			day = timezone.localtime(timestamp).date() if timezone.is_aware(timestamp) else timestamp.date()
-			day_row = pnl_by_day.setdefault(
-				day,
-				{"date": day, "realized_pnl": Decimal("0"), "closures_count": 0},
+		if include_history:
+			symbol = operation.get("symbol") or "unknown"
+			symbol_row = pnl_by_symbol.setdefault(
+				symbol,
+				{"symbol": symbol, "realized_pnl": Decimal("0"), "closures_count": 0},
 			)
-			day_row["realized_pnl"] += realized_pnl
-			day_row["closures_count"] += 1
+			symbol_row["realized_pnl"] += realized_pnl
+			symbol_row["closures_count"] += 1
+
+			timestamp = operation.get("timestamp")
+			if timestamp is not None:
+				day = timezone.localtime(timestamp).date() if timezone.is_aware(timestamp) else timestamp.date()
+				day_row = pnl_by_day.setdefault(
+					day,
+					{"date": day, "realized_pnl": Decimal("0"), "closures_count": 0},
+				)
+				day_row["realized_pnl"] += realized_pnl
+				day_row["closures_count"] += 1
 
 	decided_count = win_count + loss_count
 	win_rate = None
@@ -828,8 +912,8 @@ def _empty_performance_kpis():
 	}
 
 
-def _build_latest_trade():
-	row = TradeOperation.objects.order_by("-executed_at", "-created_at", "-id").first()
+def _build_latest_trade_from_recent_operations(recent_operations):
+	row = recent_operations[0] if recent_operations else None
 	if row is None:
 		return {"row": None, "gross_quote": None, "net_quote": None}
 	return {
@@ -839,7 +923,8 @@ def _build_latest_trade():
 	}
 
 
-def _build_recent_operations(limit=4):
+def _build_recent_operations(limit=RECENT_OPERATIONS_LIMIT):
+	# TODO(index): bot.trade_operations(executed_at DESC, created_at DESC, id DESC)
 	return list(
 		TradeOperation.objects
 		.order_by("-executed_at", "-created_at", "-id")[:limit]
@@ -847,6 +932,7 @@ def _build_recent_operations(limit=4):
 
 
 def _open_lots_by_symbol():
+	# TODO(index): partial index on bot.position_lots(symbol) WHERE quantity_open > 0
 	rows = (
 		PositionLot.objects
 		.filter(remaining_quantity__gt=0)
@@ -863,16 +949,121 @@ def _latest_sell_events_by_symbol(open_lots):
 		return {}
 
 	events = {}
-	for event in (
-		SellDecisionEvent.objects
-		.filter(symbol__in=symbols)
-		.order_by("symbol", "-created_at", "-id")
-	):
-		events.setdefault(event.symbol, event)
+	try:
+		# Full historical latest-per-symbol accuracy needs:
+		# CREATE INDEX CONCURRENTLY idx_sell_events_symbol_created_id
+		# ON bot.sell_decision_events(symbol, created_at DESC, id DESC);
+		# Homepage intentionally uses a bounded recent window until that index exists.
+		limit = max(SELL_EVENT_MIN_WINDOW, len(symbols) * SELL_EVENT_WINDOW_PER_SYMBOL)
+		queryset = (
+			SellDecisionEvent.objects
+			.filter(symbol__in=symbols)
+			.order_by("-created_at", "-id")[:limit]
+		)
+		for event in queryset:
+			events.setdefault(event.symbol, event)
+	except (DatabaseError, FieldError):
+		logger.exception("Unable to read sell decision diagnostics for dashboard position exit status")
+		return {}
 	return events
 
 
-def _build_position_exit_status(open_lots, portfolio_rows, sell_events_by_symbol):
+def _dashboard_profile_enabled():
+	return os.environ.get("DASHBOARD_PROFILE", "").strip().lower() == "true"
+
+
+def _homepage_sell_diagnostics_enabled():
+	return os.environ.get("DASHBOARD_INCLUDE_SELL_DIAGNOSTICS", "").strip().lower() == "true"
+
+
+def _ensure_dashboard_profile_console_logging():
+	logger.setLevel(logging.INFO)
+	logger.propagate = False
+	if any(getattr(handler, "_dashboard_profile_handler", False) for handler in logger.handlers):
+		return
+	handler = logging.StreamHandler()
+	handler.setLevel(logging.INFO)
+	handler.setFormatter(logging.Formatter("%(message)s"))
+	handler._dashboard_profile_handler = True
+	logger.addHandler(handler)
+
+
+def _dashboard_profile_sql_enabled():
+	return os.environ.get("DASHBOARD_PROFILE_SQL", "").strip().lower() == "true"
+
+
+def _dashboard_slow_query_ms():
+	try:
+		return float(os.environ.get("DASHBOARD_SLOW_QUERY_MS", "100"))
+	except (TypeError, ValueError):
+		return 100.0
+
+
+def _profile_section(profiler, name):
+	if profiler is None:
+		return nullcontext()
+	return profiler.section(name)
+
+
+class _DashboardProfiler:
+	def __enter__(self):
+		self.query_count = 0
+		self.total_seconds = 0
+		self.started = perf_counter()
+		self._section_stack = []
+
+		def wrapper(execute, sql, params, many, context):
+			started = perf_counter()
+			try:
+				return execute(sql, params, many, context)
+			finally:
+				elapsed_ms = (perf_counter() - started) * 1000
+				self.query_count += 1
+				self.total_seconds += elapsed_ms / 1000
+				if _dashboard_profile_sql_enabled() and elapsed_ms >= _dashboard_slow_query_ms():
+					logger.info(
+						'dashboard_slow_query elapsed_ms=%.2f sql="%s"',
+						elapsed_ms,
+						" ".join(str(sql).split())[:300],
+					)
+
+		self._wrapper = wrapper
+		self._context = connection.execute_wrapper(wrapper)
+		self._context.__enter__()
+		return self
+
+	def __exit__(self, exc_type, exc, tb):
+		self._context.__exit__(exc_type, exc, tb)
+		logger.info(
+			"dashboard_profile total elapsed_ms=%.2f queries=%s",
+			(perf_counter() - self.started) * 1000,
+			self.query_count,
+		)
+
+	def section(self, name):
+		return _DashboardProfileSection(self, name)
+
+
+class _DashboardProfileSection:
+	def __init__(self, profiler, name):
+		self.profiler = profiler
+		self.name = name
+
+	def __enter__(self):
+		self.started = perf_counter()
+		self.start_queries = self.profiler.query_count
+		return self
+
+	def __exit__(self, exc_type, exc, tb):
+		logger.info(
+			"dashboard_profile section=%s elapsed_ms=%.2f queries=%s",
+			self.name,
+			(perf_counter() - self.started) * 1000,
+			self.profiler.query_count - self.start_queries,
+		)
+
+
+def _build_position_exit_status(open_lots, portfolio_rows, sell_events_by_symbol, diagnostics_loaded=True):
 	portfolio_by_symbol = {row.symbol: row for row in portfolio_rows}
 	rows = []
 	material_count = 0
@@ -887,8 +1078,17 @@ def _build_position_exit_status(open_lots, portfolio_rows, sell_events_by_symbol
 		estimated_value = _payload_decimal(event, "estimated_value_usdt")
 		if estimated_value is None:
 			estimated_value = _position_value(open_quantity, current_price)
-		reasons = _sell_event_reasons(event)
-		presentation = _position_exit_presentation(reasons, _event_decimal(event, "estimated_pnl_percent"))
+		if diagnostics_loaded:
+			reasons = _sell_event_reasons(event)
+			presentation = _position_exit_presentation(reasons, _event_decimal(event, "estimated_pnl_percent"))
+		else:
+			reasons = []
+			presentation = {
+				"status_label": "Diagnostics not loaded",
+				"status_badge": "badge-secondary",
+				"interpretation": "SELL diagnostics are not loaded on the lightweight homepage.",
+				"suggested_action": "Open Analytics or a future SELL diagnostics detail view for persisted explanations.",
+			}
 
 		if estimated_value is not None and estimated_value > Decimal("0") and estimated_value < DUST_MIN_VALUE:
 			dust_count += 1
@@ -901,7 +1101,7 @@ def _build_position_exit_status(open_lots, portfolio_rows, sell_events_by_symbol
 			"asset": _payload_value(event, "asset") or getattr(portfolio, "asset", None) or _asset_from_symbol(symbol),
 			"status_label": presentation["status_label"],
 			"status_badge": presentation["status_badge"],
-			"main_reason": _format_sell_reasons(reasons),
+			"main_reason": _format_sell_reasons(reasons) if reasons else "not loaded on homepage",
 			"reasons": reasons,
 			"estimated_pnl_percent": _event_decimal(event, "estimated_pnl_percent"),
 			"interpretation": presentation["interpretation"],
@@ -920,7 +1120,38 @@ def _build_position_exit_status(open_lots, portfolio_rows, sell_events_by_symbol
 		"rows": rows,
 		"material_count": material_count,
 		"dust_count": dust_count,
+		"diagnostics_loaded": diagnostics_loaded,
 		"data_error": None,
+	}
+
+
+def _build_inventory_scope_summary(portfolio_rows, open_lots, position_exit_status):
+	excluded_balances = []
+	for row in portfolio_rows:
+		if row.symbol in open_lots:
+			continue
+		asset = row.asset or _asset_from_symbol(row.symbol)
+		reason = (
+			"stablecoin cash balance"
+			if asset in STABLECOIN_CASH_ASSETS
+			else "projection balance without open lots"
+		)
+		excluded_balances.append({
+			"symbol": row.symbol,
+			"asset": asset,
+			"quantity": row.quantity,
+			"reason": reason,
+		})
+	excluded_balances.sort(key=lambda row: row["symbol"])
+
+	return {
+		# The homepage does not currently read a canonical all-SPOT-balances table.
+		"spot_assets_count": None,
+		"bot_managed_lot_symbols_count": len(open_lots),
+		"material_tradable_positions_count": position_exit_status.get("material_count", 0),
+		"dust_non_tradable_positions_count": position_exit_status.get("dust_count", 0),
+		"excluded_balances_count": len(excluded_balances),
+		"excluded_balances": excluded_balances,
 	}
 
 
@@ -1166,7 +1397,19 @@ def _empty_position_exit_status():
 		"rows": [],
 		"material_count": 0,
 		"dust_count": 0,
+		"diagnostics_loaded": False,
 		"data_error": None,
+	}
+
+
+def _empty_inventory_scope_summary():
+	return {
+		"spot_assets_count": None,
+		"bot_managed_lot_symbols_count": 0,
+		"material_tradable_positions_count": 0,
+		"dust_non_tradable_positions_count": 0,
+		"excluded_balances_count": 0,
+		"excluded_balances": [],
 	}
 
 

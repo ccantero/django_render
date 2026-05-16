@@ -33,6 +33,8 @@ GROUP_FIELDS = (
 )
 DEFAULT_GROUP_LIMIT = 50
 GROUP_CANDIDATE_LIMIT = 200
+HOMEPAGE_GROUP_LIMIT = 10
+HOMEPAGE_GROUP_CANDIDATE_LIMIT = 25
 TOP_RISK_LIMIT = 3
 ACTIVE_OPERATIONAL_ISSUES_LIMIT = 5
 DUST_PAGE_SIZE = 25
@@ -153,7 +155,7 @@ def get_dust_detail_context(filters=None):
 	)
 
 
-def get_dust_overview_context():
+def get_dust_overview_context(profiler=None):
 	context = {
 		"critical_count": 0,
 		"warning_count": 0,
@@ -170,16 +172,23 @@ def get_dust_overview_context():
 
 	try:
 		queryset = _latest_run_queryset()
-		context["top_grouped_detections"] = _grouped_detections(queryset)
-		context["top_grouped_detections"] = _with_review_state(context["top_grouped_detections"])
-		context["top_grouped_detections"] = _with_correction_state(context["top_grouped_detections"])
-		context["active_operational_issues"] = _active_operational_issues(
-			context["top_grouped_detections"]
+		context["top_grouped_detections"] = _grouped_detections(
+			queryset,
+			limit=HOMEPAGE_GROUP_LIMIT,
+			candidate_limit=HOMEPAGE_GROUP_CANDIDATE_LIMIT,
 		)
+		context["top_grouped_detections"] = _with_review_state(context["top_grouped_detections"])
+		active_candidates = _active_operational_issues(context["top_grouped_detections"])
+		if profiler is None:
+			active_candidates = _with_correction_state(active_candidates)
+		else:
+			with profiler.section("manual_corrections"):
+				active_candidates = _with_correction_state(active_candidates)
+		context["active_operational_issues"] = _active_operational_issues(active_candidates)
 		context["informational_residuals"] = _informational_residual_summary(
 			context["top_grouped_detections"]
 		)
-		context.update(_build_summary(queryset, context["top_grouped_detections"]))
+		context.update(_build_homepage_summary(queryset, context["top_grouped_detections"]))
 	except DatabaseError as exc:
 		context["data_error"] = f"Query too slow: {exc}"
 
@@ -318,7 +327,7 @@ def _latest_detection_row(queryset):
 	)
 
 
-def _grouped_detections(queryset, limit=DEFAULT_GROUP_LIMIT):
+def _grouped_detections(queryset, limit=DEFAULT_GROUP_LIMIT, candidate_limit=GROUP_CANDIDATE_LIMIT):
 	grouped_rows = list(
 		queryset
 		.annotate(**_group_key_expressions())
@@ -332,7 +341,7 @@ def _grouped_detections(queryset, limit=DEFAULT_GROUP_LIMIT):
 			"severity_priority",
 			"-latest_detected_at",
 			"symbol",
-		)[:GROUP_CANDIDATE_LIMIT]
+		)[:candidate_limit]
 	)
 	latest_rows = _latest_rows_for_groups(queryset, grouped_rows)
 	rows = [_merge_group_with_latest(row, latest_rows) for row in grouped_rows]
@@ -922,6 +931,27 @@ def _build_summary(queryset=None, grouped_rows=None):
 
 	return {
 		"total_detections": queryset.count(),
+		"critical_count": counts["critical"],
+		"warning_count": counts["warning"],
+		"info_count": counts["info"],
+		"total_estimated_value_usdt": total_estimated_value_usdt,
+		"latest_run_id": latest.run_id if latest else None,
+		"latest_detected_at": latest.detected_at if latest else None,
+	}
+
+
+def _build_homepage_summary(queryset, grouped_rows, latest=None):
+	counts = {"critical": 0, "warning": 0, "info": 0}
+	total_estimated_value_usdt = Decimal("0")
+	for row in grouped_rows:
+		severity = row.get("severity")
+		if severity in counts:
+			counts[severity] += 1
+		total_estimated_value_usdt += row.get("latest_estimated_value_usdt") or Decimal("0")
+
+	latest = latest or _latest_detection_row(queryset)
+	return {
+		"total_detections": None,
 		"critical_count": counts["critical"],
 		"warning_count": counts["warning"],
 		"info_count": counts["info"],

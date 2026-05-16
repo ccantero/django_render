@@ -4,7 +4,11 @@ from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from dashboard.dashboard_read_model import get_dashboard_context, get_demo_dashboard_context
+from dashboard.dashboard_read_model import (
+	get_dashboard_analytics_context,
+	get_dashboard_context,
+	get_demo_dashboard_context,
+)
 from dashboard.dust_read_model import (
 	get_dust_dashboard_context,
 	get_dust_detail_context,
@@ -16,13 +20,13 @@ from core.models import ManualCorrection
 
 @login_required
 def dashboard(request):
-	read_model = get_dashboard_context()
+	read_model = get_dashboard_context(include_performance_kpis=False)
 	return render(request, "dashboard/dashboard.html", read_model.context)
 
 
 @login_required
 def dashboard_analytics(request):
-	read_model = get_dashboard_context()
+	read_model = get_dashboard_analytics_context()
 	return render(request, "dashboard/analytics.html", read_model.context)
 
 

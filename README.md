@@ -204,6 +204,16 @@ python manage.py test core
 pytest
 ```
 
+Local dashboard profiling is opt-in only:
+
+```bash
+DASHBOARD_PROFILE=true python manage.py runserver
+DASHBOARD_PROFILE=true DASHBOARD_PROFILE_SQL=true DASHBOARD_SLOW_QUERY_MS=100 python manage.py runserver
+```
+
+This logs per-section dashboard timings locally; slow SQL logging is disabled unless explicitly enabled.
+The profiler writes directly to the local runserver console when enabled.
+
 The test settings provide safe defaults for required secrets and use SQLite at `/tmp/django_render_test.sqlite3`.
 
 Keepalive endpoint:

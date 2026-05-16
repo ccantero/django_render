@@ -141,7 +141,7 @@
 							<span class="badge badge-warning">check</span>
 						{% endif %}
 					</div>
-					<p class="mb-1">Material positions: <strong>{{ portfolio_summary.material_positions_count }}</strong></p>
+					<p class="mb-1">Material projected positions: <strong>{{ portfolio_summary.material_positions_count }}</strong></p>
 					<p class="mb-1">Portfolio vs lots drift: <strong>{{ valuation_consistency.drift_value|floatformat:2 }} USDT</strong></p>
 					<p class="mb-1">Reconciliation: <strong>{{ reconciliation.status }}</strong></p>
 					<p class="text-muted small mb-0">
@@ -159,30 +159,13 @@
 			<div class="op-card h-100">
 				<div class="op-card-body">
 					<div class="d-flex justify-content-between align-items-start mb-2">
-						<h2 class="section-title">Performance Snapshot</h2>
+						<h2 class="section-title">Analytics</h2>
 						{% if not is_demo %}
 							<a class="small" href="{% url 'dashboard_analytics' %}">Analytics</a>
 						{% endif %}
 					</div>
-					<div class="row">
-						<div class="col-6 mb-2">
-							<p class="metric-label">Net realized PnL</p>
-							<p class="metric-value">{{ performance_kpis.net_realized_pnl|floatformat:2 }}</p>
-						</div>
-						<div class="col-6 mb-2">
-							<p class="metric-label">Fees USDT</p>
-							<p class="metric-value">{{ performance_kpis.total_fees_usdt|floatformat:2 }}</p>
-						</div>
-						<div class="col-6">
-							<p class="metric-label">Profit factor</p>
-							<p class="metric-value">{% if performance_kpis.profit_factor is not None %}{{ performance_kpis.profit_factor|floatformat:2 }}{% else %}N/A{% endif %}</p>
-						</div>
-						<div class="col-6">
-							<p class="metric-label">Win rate</p>
-							<p class="metric-value">{% if performance_kpis.win_rate is not None %}{{ performance_kpis.win_rate|floatformat:2 }}%{% else %}N/A{% endif %}</p>
-						</div>
-					</div>
-					<p class="text-muted small mb-0 mt-2">Operational KPI snapshot; detailed KPI tables remain in Analytics.</p>
+					<p class="mb-2">Historical KPIs are deferred so this homepage stays operational and fast.</p>
+					<p class="text-muted small mb-0">Open Analytics for cached realized PnL, fees, win rate, profit factor, and historical breakdowns.</p>
 				</div>
 			</div>
 		</div>
@@ -336,14 +319,25 @@
 		<div class="op-card-body">
 			<div class="d-flex flex-wrap justify-content-between align-items-start mb-2">
 				<div>
-					<h2 class="section-title">Why positions are not selling</h2>
+					<h2 class="section-title">Open FIFO lot exit status</h2>
 					<p class="text-muted small mb-0">
-						Read-only exit status from open lots and latest bot SELL diagnostics.
+						Only symbols with open FIFO lots appear here. Stablecoin cash balances are intentionally excluded.
+						Pure SPOT balances without open lots are not SELL candidates.
+						{% if not position_exit_status.diagnostics_loaded %}
+							SELL diagnostics are not loaded on this lightweight homepage; open <a href="{% url 'dashboard_analytics' %}">Analytics</a> for deeper review.
+						{% endif %}
 					</p>
 				</div>
 				<div class="small text-muted mt-1">
-					Material {{ position_exit_status.material_count|default:"0" }} / dust {{ position_exit_status.dust_count|default:"0" }}
+					Bot-managed lot symbols {{ inventory_scope.bot_managed_lot_symbols_count|default:"0" }} /
+					material tradable {{ inventory_scope.material_tradable_positions_count|default:"0" }} /
+					dust non-tradable {{ inventory_scope.dust_non_tradable_positions_count|default:"0" }}
 				</div>
+			</div>
+
+			<div class="small text-muted mb-3">
+				Binance SPOT assets: <strong>{% if inventory_scope.spot_assets_count != None %}{{ inventory_scope.spot_assets_count }}{% else %}not available in this dashboard view{% endif %}</strong>.
+				Excluded balances: <strong>{{ inventory_scope.excluded_balances_count|default:"0" }}</strong>.
 			</div>
 
 			{% if position_exit_status.rows %}
@@ -385,7 +379,38 @@
 					</table>
 				</div>
 			{% else %}
-				<p class="text-muted mb-0">No open lots found.</p>
+				<p class="text-muted mb-0">No open FIFO lots found. Cash or SPOT-only balances may still exist, but they are not bot-managed SELL candidates.</p>
+			{% endif %}
+
+			{% if inventory_scope.excluded_balances %}
+				<div class="mt-3">
+					<h3 class="h6 mb-2">Excluded balances</h3>
+					<p class="text-muted small mb-2">
+						Projection balances shown for scope only; they are excluded from SELL diagnostics because they have no open FIFO lots or are cash-like balances.
+					</p>
+					<div class="table-responsive">
+						<table class="table table-sm compact-table mb-0">
+							<thead>
+								<tr>
+									<th>Symbol</th>
+									<th>Asset</th>
+									<th class="text-right">Quantity</th>
+									<th>Why excluded</th>
+								</tr>
+							</thead>
+							<tbody>
+								{% for row in inventory_scope.excluded_balances|slice:":5" %}
+									<tr>
+										<td>{{ row.symbol }}</td>
+										<td>{{ row.asset }}</td>
+										<td class="text-right">{{ row.quantity|floatformat:8|default:"-" }}</td>
+										<td>{{ row.reason }}</td>
+									</tr>
+								{% endfor %}
+							</tbody>
+						</table>
+					</div>
+				</div>
 			{% endif %}
 		</div>
 	</div>
