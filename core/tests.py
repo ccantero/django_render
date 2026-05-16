@@ -32,6 +32,7 @@ from dashboard.dust_read_model import (
     _filter_by_review_status,
     _informational_residual_summary,
     _with_correction_state,
+    _with_review_state,
     _reviews_for_rows,
     get_dust_dashboard_context,
     update_dust_signal_review,
@@ -40,6 +41,7 @@ from dashboard.forms import ManualCorrectionRequestForm
 from core.models import DustSignalReview, ManualCorrection
 from core.trading_models import DustDetection, TradeOperation
 from dashboard.views import _manual_correction_quantity
+from core.telegram_diagnostics import format_dust_drift_alert
 
 
 class HealthEndpointTests(TestCase):
@@ -491,11 +493,105 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
         self.assertIn('<b>🤔 Why not sell — SAGAUSDT</b>', message)
-        self.assertIn('<b>Summary</b>', message)
-        self.assertIn('• Profit guard blocked', message)
+        self.assertIn('Status: <code>Review</code>', message)
+        self.assertIn('Interpretation:', message)
         self.assertNotIn('<pre>', message)
-        self.assertIn('Profit guard blocked', message)
-        self.assertIn('Exchange minNotional blocked', message)
+        self.assertNotIn('Unknown', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.SellDecisionEvent.objects')
+    def test_why_not_sell_known_reason_has_actionable_interpretation(self, mock_event_manager, mock_send_message):
+        mock_event_manager.filter.return_value.order_by.return_value.first.return_value = SimpleNamespace(
+            event_name='sell_order_skipped',
+            reason='stop_loss_not_reached',
+            validation_stage='strategy',
+            estimated_pnl_percent=Decimal('-0.14'),
+            entry_price=Decimal('1.00'),
+            current_price=Decimal('0.9986'),
+            stop_loss_threshold=Decimal('-3.00'),
+            take_profit_threshold=Decimal('5.00'),
+            profit_guard_bypassed=False,
+            created_at=timezone.now(),
+            payload={
+                'strategy_name': 'full_exit',
+                'estimated_value_usdt': '12.34',
+                'open_lot_quantity': '4.56',
+                'asset': 'XRP',
+            },
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/why_not_sell XRPUSDT')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('Status: <code>Holding</code>', message)
+        self.assertIn('Stop loss has not been reached.', message)
+        self.assertIn('Suggested action:', message)
+        self.assertIn('No action. Continue monitoring.', message)
+        self.assertNotIn('Unknown', message)
+        self.assertIn('Strategy: <code>full_exit</code>', message)
+        self.assertIn('Estimated value: <code>12.34 USDT</code>', message)
+
+    def test_dust_drift_alert_formats_manual_external_operation_human_readably(self):
+        message = format_dust_drift_alert({
+            'event': 'lot_balance_drift_detected',
+            'severity': 'warning',
+            'run_id': 'run-123',
+            'symbol': 'XRPUSDT',
+            'asset': 'XRP',
+            'reason': 'manual_external_operation',
+            'estimated_value_usdt': Decimal('0.000197302011'),
+        })
+
+        self.assertIn('<b>⚠️ Dust / drift detected — XRPUSDT</b>', message)
+        self.assertIn('Reason: <code>Manual / external operation</code>', message)
+        self.assertIn('tiny dust value', message)
+        self.assertIn('Review in dashboard.', message)
+        self.assertIn('Run ID: <code>run-123</code>', message)
+
+    def test_dust_drift_alert_normalizes_reason_before_mapping(self):
+        message = format_dust_drift_alert({
+            'event': 'lot_balance_drift_detected',
+            'severity': 'warning',
+            'symbol': 'XRPUSDT',
+            'asset': 'XRP',
+            'reason': '  MANUAL_EXTERNAL_OPERATION  ',
+            'estimated_value_usdt': Decimal('1'),
+        })
+
+        self.assertIn('Reason: <code>Manual / external operation</code>', message)
+
+    def test_dust_drift_alert_marks_possible_incomplete_sell_as_urgent(self):
+        message = format_dust_drift_alert({
+            'event': 'lot_balance_drift_detected',
+            'severity': 'critical',
+            'symbol': 'BTCUSDT',
+            'asset': 'BTC',
+            'reason': 'possible_incomplete_sell',
+            'estimated_value_usdt': Decimal('25'),
+        })
+
+        self.assertIn('🔴 Dust / drift detected', message)
+        self.assertIn('Possible incomplete sell', message)
+        self.assertIn('Review urgently.', message)
+
+    def test_dust_drift_alert_escapes_dynamic_fields(self):
+        message = format_dust_drift_alert({
+            'event': '<event>',
+            'severity': 'warning',
+            'run_id': 'run&1',
+            'symbol': '<XRP>',
+            'asset': 'X&RP',
+            'reason': '<manual>',
+            'estimated_value_usdt': Decimal('1'),
+        })
+
+        self.assertIn('&lt;XRP&gt;', message)
+        self.assertIn('X&amp;RP', message)
+        self.assertIn('&lt;manual&gt;', message)
+        self.assertIn('run&amp;1', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -1049,6 +1145,7 @@ class DashboardEndpointTests(TestCase):
                     'status_label': 'Holding',
                     'status_badge': 'badge-info',
                     'main_reason': 'stop_loss not reached, take_profit not reached',
+                    'interpretation': 'Stop loss has not been reached. Current loss is still inside the configured stop-loss threshold.',
                     'estimated_value_usdt': Decimal('42.25'),
                     'open_lot_quantity': Decimal('0.50000000'),
                     'current_price': Decimal('84.50'),
@@ -1079,6 +1176,7 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'ZECUSDT')
         self.assertContains(response, 'Holding')
         self.assertContains(response, 'stop_loss not reached, take_profit not reached')
+        self.assertContains(response, 'Stop loss has not been reached. Current loss is still inside the configured stop-loss threshold.')
         self.assertContains(response, 'Hold: strategy thresholds not reached')
         self.assertContains(response, 'ORDIUSDT')
         self.assertContains(response, 'Review drift: Binance balance lower than lots')
@@ -1702,13 +1800,36 @@ class DashboardEndpointTests(TestCase):
         })
 
         self.assertEqual(below_min['operator_label'], 'Below min notional')
-        self.assertEqual(below_min['operator_action'], 'Monitor / optionally ignore')
+        self.assertIn('Usually no action', below_min['operator_action'])
         self.assertEqual(lots_greater['operator_label'], 'Lots > Binance')
         self.assertEqual(lots_greater['operator_priority'], 'accounting drift, needs review')
-        self.assertEqual(binance_greater['operator_label'], 'Binance > Lots')
-        self.assertEqual(binance_greater['operator_action'], 'Investigate manual buy/deposit/Earn return')
+        self.assertEqual(binance_greater['operator_label'], 'Binance balance without bot lot')
+        self.assertIn('CREATE_EXTERNAL_LOT', binance_greater['operator_action'])
         self.assertEqual(incomplete_sell['operator_label'], 'Possible incomplete sell')
-        self.assertIn('Inspect Binance history', incomplete_sell['operator_action'])
+        self.assertIn('Review urgently', incomplete_sell['operator_action'])
+
+    @patch('dashboard.dust_read_model._reviews_for_rows')
+    def test_reviewed_dust_signal_suppresses_paging_but_keeps_history_row(self, mock_reviews):
+        mock_reviews.return_value = {
+            ('XRPUSDT', 'XRP', 'warning', 'lot_balance_drift_detected', 'manual_external_operation'):
+                SimpleNamespace(
+                    status=DustSignalReview.STATUS_IGNORED,
+                    note='tiny dust',
+                    reviewed_by=None,
+                    reviewed_at=timezone.now(),
+                )
+        }
+        rows = _with_review_state([{
+            'symbol': 'XRPUSDT',
+            'asset': 'XRP',
+            'reason': 'manual_external_operation',
+            'event_type': 'lot_balance_drift_detected',
+            'severity': 'warning',
+        }])
+
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]['telegram_paging_suppressed'])
+        self.assertIn('detections remain in history', rows[0]['review_effect_text'])
 
     @patch('dashboard.dust_read_model.ManualCorrection.objects')
     def test_detection_with_no_correction_shows_create_action_state(self, manager):
@@ -2460,12 +2581,12 @@ class DashboardEndpointTests(TestCase):
 
         self.assertEqual(rows_by_symbol['ZECUSDT']['status_label'], 'Holding')
         self.assertEqual(rows_by_symbol['ZECUSDT']['main_reason'], 'stop_loss not reached, take_profit not reached')
-        self.assertEqual(rows_by_symbol['ZECUSDT']['suggested_action'], 'Hold: strategy thresholds not reached')
-        self.assertEqual(rows_by_symbol['ETHUSDT']['status_label'], 'Dust residual')
+        self.assertEqual(rows_by_symbol['ZECUSDT']['suggested_action'], 'No action. Continue monitoring.')
+        self.assertEqual(rows_by_symbol['ETHUSDT']['status_label'], 'Dust / Below minNotional')
         self.assertEqual(rows_by_symbol['ETHUSDT']['estimated_value_usdt'], Decimal('2.300'))
-        self.assertEqual(rows_by_symbol['ETHUSDT']['suggested_action'], 'Dust: review/ignore or wait until reusable')
-        self.assertEqual(rows_by_symbol['ORDIUSDT']['status_label'], 'Review needed')
-        self.assertEqual(rows_by_symbol['ORDIUSDT']['suggested_action'], 'Review drift: Binance balance lower than lots')
+        self.assertEqual(rows_by_symbol['ETHUSDT']['suggested_action'], 'Review as dust. It may become reusable if future buys increase the balance.')
+        self.assertEqual(rows_by_symbol['ORDIUSDT']['status_label'], 'Drift / Review needed')
+        self.assertEqual(rows_by_symbol['ORDIUSDT']['suggested_action'], 'Review for manual/external operation, Earn movement, fee residual, or incomplete sell.')
         self.assertEqual(summary['material_count'], 2)
         self.assertEqual(summary['dust_count'], 1)
 
@@ -2482,6 +2603,59 @@ class DashboardEndpointTests(TestCase):
             _position_exit_suggested_action(['exchange_filter_missing']),
             'Review exchange metadata',
         )
+
+    def test_position_exit_reason_mapping_uses_requested_labels(self):
+        open_lots = {
+            'XRPUSDT': {'symbol': 'XRPUSDT', 'open_quantity': Decimal('4.56'), 'open_lot_count': 1},
+            'ADAUSDT': {'symbol': 'ADAUSDT', 'open_quantity': Decimal('10'), 'open_lot_count': 1},
+            'ETHUSDT': {'symbol': 'ETHUSDT', 'open_quantity': Decimal('0.0001'), 'open_lot_count': 1},
+            'ORDIUSDT': {'symbol': 'ORDIUSDT', 'open_quantity': Decimal('3'), 'open_lot_count': 1},
+        }
+        portfolio_rows = [
+            SimpleNamespace(symbol='XRPUSDT', asset='XRP', quantity=Decimal('4.56'), current_price=Decimal('1')),
+            SimpleNamespace(symbol='ADAUSDT', asset='ADA', quantity=Decimal('10'), current_price=Decimal('1')),
+            SimpleNamespace(symbol='ETHUSDT', asset='ETH', quantity=Decimal('0.0001'), current_price=Decimal('2000')),
+            SimpleNamespace(symbol='ORDIUSDT', asset='ORDI', quantity=Decimal('3'), current_price=Decimal('6')),
+        ]
+        sell_events = {
+            'XRPUSDT': SimpleNamespace(
+                reason='stop_loss_not_reached',
+                estimated_pnl_percent=Decimal('-0.14'),
+                current_price=Decimal('1'),
+                payload={},
+                created_at=timezone.now(),
+            ),
+            'ETHUSDT': SimpleNamespace(
+                reason='rounded_quantity_zero',
+                estimated_pnl_percent=None,
+                current_price=Decimal('2000'),
+                payload={},
+                created_at=timezone.now(),
+            ),
+            'ADAUSDT': SimpleNamespace(
+                reason='take_profit_not_reached',
+                estimated_pnl_percent=Decimal('1.25'),
+                current_price=Decimal('1'),
+                payload={},
+                created_at=timezone.now(),
+            ),
+            'ORDIUSDT': SimpleNamespace(
+                reason='insufficient_binance_balance',
+                estimated_pnl_percent=None,
+                current_price=Decimal('6'),
+                payload={},
+                created_at=timezone.now(),
+            ),
+        }
+
+        rows = {row['symbol']: row for row in _build_position_exit_status(open_lots, portfolio_rows, sell_events)['rows']}
+
+        self.assertEqual(rows['XRPUSDT']['status_label'], 'Holding')
+        self.assertIn('Stop loss has not been reached', rows['XRPUSDT']['interpretation'])
+        self.assertEqual(rows['ADAUSDT']['status_label'], 'Holding')
+        self.assertIn('Take profit has not been reached yet', rows['ADAUSDT']['interpretation'])
+        self.assertEqual(rows['ETHUSDT']['status_label'], 'Dust / Unsellable')
+        self.assertEqual(rows['ORDIUSDT']['status_label'], 'Drift / Review needed')
 
     def empty_dashboard_context(self):
         return {

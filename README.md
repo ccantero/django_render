@@ -64,6 +64,7 @@ The dashboard and bot are separate projects and share only the database.
 - PnL by day uses linked trade operation timestamps (`executed_at` then `created_at`), not a timestamp on `lot_closures`.
 - SELL coverage must never be inferred from `portfolio`.
 - Position exit status must be observational only: use `position_lots` for open inventory, `portfolio` only for display values, and persisted SELL diagnostics only for explanations.
+- Position exit status distinguishes strategy holds, dust/min-filter blockers, drift, metadata issues, read-only mode, and anomalous diagnostics; known reasons must render an interpretation and suggested next step rather than “Unknown.”
 - The dashboard must not directly update:
   - `bot.position_lots`
   - `bot.trade_operations`
@@ -154,7 +155,31 @@ to match one of those allowlists. The commands use safe HTML formatting and only
 read shared bot tables. Supported commands are `/help`, `/health`, `/buy_status`,
 `/position SYMBOL`, `/last_sell SYMBOL`, and `/why_not_sell SYMBOL`. `/help`
 returns a compact operator guide, and SELL rejection diagnostics present a short
-human-readable summary before lower-level event details for easier mobile review.
+human-readable interpretation and suggested action before lower-level event
+details for easier mobile review. Dust/drift alert templates are also kept human
+readable: tiny values are labeled as tiny dust, while raw event/reason/stage
+fields remain available for debugging.
+
+Reviewing or ignoring a dust signal suppresses repeated paging only. It does not
+delete `bot.dust_detections`, change FIFO accounting, or apply a correction.
+
+Example operator-facing alert shapes:
+
+```text
+🤔 Why not sell — XRPUSDT
+Status: Holding
+Reason: stop_loss_not_reached
+Interpretation: Stop loss has not been reached...
+Suggested action: No action. Continue monitoring.
+```
+
+```text
+⚠️ Dust / drift detected — XRPUSDT
+Status: Warning
+Reason: Manual / external operation
+Interpretation: tiny dust value...
+Suggested action: Review in dashboard...
+```
 
 ### Troubleshooting `/buy_status`
 

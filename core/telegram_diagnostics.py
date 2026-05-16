@@ -28,6 +28,26 @@ REJECTED_SELL_EVENTS = [
 	"sell_skipped_not_profitable",
 ]
 SYMBOL_RE = re.compile(r"^[A-Z0-9]{1,20}$")
+SELL_REASON_PRESENTATION = {
+	"stop_loss_not_reached": ("Holding", "Stop loss has not been reached. Current loss is still inside the configured stop-loss threshold.", "No action. Continue monitoring."),
+	"take_profit_not_reached": ("Holding", "Take profit has not been reached yet.", "No action. Continue monitoring."),
+	"rounded_quantity_zero": ("Dust / Unsellable", "Quantity rounds to zero after exchange step-size rules.", "Review as dust. Ignore, wait until reusable, or handle through manual correction if drift exists."),
+	"quantity_below_min_notional": ("Dust / Below minNotional", "Position value is below Binance minimum notional.", "Review as dust. It may become reusable if future buys increase the balance."),
+	"quantity_below_min_qty": ("Dust / Below minQty", "Quantity is below Binance minimum quantity.", "Review as dust."),
+	"insufficient_binance_balance": ("Drift / Review needed", "Binance SPOT balance is lower than open lots.", "Review for manual/external operation, Earn movement, fee residual, or incomplete sell."),
+	"no_open_lots": ("No accounting inventory", "No open FIFO lots exist for this symbol.", "No sell is possible from bot accounting."),
+	"exchange_filter_missing": ("Metadata issue", "Exchange filter metadata is unavailable.", "Review exchange metadata/scanner cache."),
+	"read_only": ("Read-only", "Bot is in READ_ONLY mode.", "No live orders will be submitted."),
+	"strategy_hold": ("Holding", "Strategy decided to hold.", "No action."),
+}
+DUST_REASON_PRESENTATION = {
+	"manual_external_operation": ("Manual / external operation", "Binance balance changed outside the normal bot BUY/SELL flow.", "Review Binance history. If intentional and material, create the proper manual correction. If tiny dust, review/ignore."),
+	"possible_incomplete_sell": ("Possible incomplete sell", "Bot lots and Binance SPOT may not fully reconcile after a SELL.", "Review urgently. Check recent SELL, lot closures, and Binance balance."),
+	"earn_or_external_transfer": ("Earn / external transfer", "Asset may have moved outside immediately tradable SPOT inventory.", "Review Binance Earn/SPOT movement. Do not auto-correct without confirmation."),
+	"below_min_notional": ("Below minNotional", "Position is too small to sell under Binance filters.", "Usually no action. Review/ignore or wait until future buys make it reusable."),
+	"balance_without_lot_coverage": ("Binance balance without bot lot", "Binance has SPOT inventory not represented in bot FIFO lots.", "If this should become bot-managed inventory, request CREATE_EXTERNAL_LOT."),
+	"lot_balance_drift": ("Lot / balance drift", "Open lots and Binance SPOT balance differ.", "Review drift direction. Use CREATE_EXTERNAL_LOT if Binance > lots, or CLOSE_LOTS_EXTERNAL_SELL if lots > Binance."),
+}
 
 
 def diagnostic_response(text, chat_id, user_id=None):
@@ -299,19 +319,29 @@ def format_why_not_sell(symbol):
 	if event is None:
 		return f"<b>🤔 Why not sell — {h(symbol)}</b>\n\nNo rejected/skipped SELL event found."
 
-	explanations = explain_rejection(event)
-	block = "\n".join(f"• {item}" for item in explanations)
+	status, interpretation, suggested_action = sell_reason_presentation(event)
+	payload = getattr(event, "payload", None) or {}
+	asset = payload.get("asset") or _asset_from_symbol(symbol)
 	return "\n".join([
 		f"<b>🤔 Why not sell — {h(symbol)}</b>",
 		"",
-		"<b>Summary</b>",
-		block,
-		"",
-		"<b>Details</b>",
+		f"Status: <code>{h(status)}</code>",
 		f"Event: <code>{h(getattr(event, 'event_name', None))}</code>",
 		f"Reason: <code>{h(getattr(event, 'reason', None))}</code>",
 		f"Stage: <code>{h(getattr(event, 'validation_stage', None))}</code>",
 		f"PnL: <code>{h(fmt_percent(getattr(event, 'estimated_pnl_percent', None)))}</code>",
+		"",
+		"Interpretation:",
+		h(interpretation),
+		"",
+		"Suggested action:",
+		h(suggested_action),
+		"",
+		"Details:",
+		f"• Strategy: <code>{h(payload.get('strategy_name'))}</code>",
+		f"• Estimated value: <code>{h(fmt_usdt(payload.get('estimated_value_usdt')))}</code>",
+		f"• Open lot qty: <code>{h(fmt_qty(payload.get('open_lot_quantity')))} {h(asset)}</code>",
+		f"• Last diagnostic: <code>{h(format_dt(getattr(event, 'created_at', None)))}</code>",
 	])
 
 
@@ -371,6 +401,69 @@ def explain_rejection(event):
 	return explanations or ["Unknown"]
 
 
+def sell_reason_presentation(event):
+	reason = str(getattr(event, "reason", "") or "").strip().lower()
+	pnl = to_decimal(getattr(event, "estimated_pnl_percent", None))
+	if reason == "stop_loss_reached" and pnl is not None and pnl > 0:
+		return (
+			"Anomaly",
+			"Invalid diagnostic state. Stop-loss should only trigger on real losses.",
+			"Review bot version and stop-loss normalization.",
+		)
+	return SELL_REASON_PRESENTATION.get(
+		reason,
+		("Review", "Diagnostic reason is not mapped yet.", "Review latest sell_decision_events payload."),
+	)
+
+
+def format_dust_drift_alert(values):
+	reason = str(values.get("reason") or "").strip().lower()
+	label, interpretation, suggested_action = DUST_REASON_PRESENTATION.get(
+		reason,
+		("Review", "Diagnostic reason is not mapped yet.", "Review latest dust detection payload."),
+	)
+	severity = str(values.get("severity") or "info").lower()
+	severity_label = {
+		"critical": "🔴 Critical",
+		"warning": "⚠️ Warning",
+		"info": "ℹ️ Info",
+	}.get(severity, "ℹ️ Info")
+	title_emoji = {
+		"critical": "🔴",
+		"warning": "⚠️",
+		"info": "ℹ️",
+	}.get(severity, "ℹ️")
+	estimated_value = to_decimal(values.get("estimated_value_usdt"))
+	tiny_value = estimated_value is not None and estimated_value < Decimal("0.01")
+	if tiny_value and severity != "critical":
+		interpretation = (
+			f"A tiny {values.get('asset') or 'asset'} balance difference was detected between Binance SPOT and bot accounting. "
+			"The value is a tiny dust value, so this is likely operational dust unless quantity drift is material."
+		)
+		suggested_action = (
+			"Review in dashboard. If this is already reviewed/ignored, suppress the alert through dust signal review. "
+			"Do not create a manual correction unless the quantity/value is meaningful or the drift persists unexpectedly."
+		)
+	return "\n".join([
+		f"<b>{title_emoji} Dust / drift detected — {h(values.get('symbol'))}</b>",
+		"",
+		f"Status: <code>{h(severity_label)}</code>",
+		f"Reason: <code>{h(label if label != 'Review' else reason or label)}</code>",
+		f"Estimated value: <code>{h(fmt_usdt_precise(estimated_value))}</code>",
+		"",
+		"Interpretation:",
+		h(interpretation),
+		"",
+		"Suggested action:",
+		h(suggested_action),
+		"",
+		"Details:",
+		f"• Asset: <code>{h(values.get('asset'))}</code>",
+		f"• Event: <code>{h(values.get('event') or values.get('event_type'))}</code>",
+		f"• Run ID: <code>{h(values.get('run_id'))}</code>",
+	])
+
+
 def interpret_sell_event(event):
 	reason = str(getattr(event, "reason", "") or "").lower()
 	stage = str(getattr(event, "validation_stage", "") or "").lower()
@@ -428,6 +521,21 @@ def fmt_usdt(value):
 		return "0 USDT"
 	places = 2 if abs(decimal_value) >= Decimal("1") else 4
 	return f"{fmt_decimal(decimal_value, places=places)} USDT"
+
+
+def fmt_usdt_precise(value):
+	decimal_value = to_decimal(value)
+	if decimal_value is None:
+		return "N/A"
+	places = 6 if abs(decimal_value) < Decimal("1") else 2
+	return f"{fmt_decimal(decimal_value, places=places)} USDT"
+
+
+def _asset_from_symbol(symbol):
+	for suffix in ("USDT", "BUSD", "USDC", "BTC", "ETH"):
+		if symbol.endswith(suffix) and len(symbol) > len(suffix):
+			return symbol[:-len(suffix)]
+	return symbol
 
 
 def fmt_percent(value):

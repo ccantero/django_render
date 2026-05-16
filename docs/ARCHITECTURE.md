@@ -164,8 +164,15 @@ The Wave 8 Phase 1 KPI section is read-only. It uses `bot.lot_closures.realized_
 The main dashboard position exit status section is read-only. It uses
 `bot.position_lots` as the inventory source, joins `bot.portfolio` only for
 display quantity/price/value, and reads the latest `bot.sell_decision_events`
-row per open-lot symbol for normalized reason explanations. It does not call
-Binance, execute trades, or mutate accounting state.
+row per open-lot symbol for normalized reason explanations. Known reasons map to
+operator-facing labels, interpretations, and suggested actions; unmapped reasons
+fall back to review rather than pretending there is no diagnostic. It does not
+call Binance, execute trades, or mutate accounting state.
+
+Dust review state is a dashboard workflow concern. Reviewed, ignored, and
+external-or-Earn rows suppress repeated paging only; the underlying
+`bot.dust_detections` history remains available for audit, and no accounting
+mutation occurs.
 
 ---
 

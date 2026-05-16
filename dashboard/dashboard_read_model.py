@@ -51,6 +51,69 @@ DUST_EXIT_REASONS = {
 	"dust_residual_protection",
 }
 
+SELL_REASON_PRESENTATION = {
+	"stop_loss_not_reached": {
+		"status_label": "Holding",
+		"status_badge": "badge-info",
+		"interpretation": "Stop loss has not been reached. Current loss is still inside the configured stop-loss threshold.",
+		"suggested_action": "No action. Continue monitoring.",
+	},
+	"take_profit_not_reached": {
+		"status_label": "Holding",
+		"status_badge": "badge-info",
+		"interpretation": "Take profit has not been reached yet.",
+		"suggested_action": "No action. Continue monitoring.",
+	},
+	"rounded_quantity_zero": {
+		"status_label": "Dust / Unsellable",
+		"status_badge": "badge-secondary",
+		"interpretation": "Quantity rounds to zero after exchange step-size rules.",
+		"suggested_action": "Review as dust. Ignore, wait until reusable, or handle through manual correction if drift exists.",
+	},
+	"quantity_below_min_notional": {
+		"status_label": "Dust / Below minNotional",
+		"status_badge": "badge-secondary",
+		"interpretation": "Position value is below Binance minimum notional.",
+		"suggested_action": "Review as dust. It may become reusable if future buys increase the balance.",
+	},
+	"quantity_below_min_qty": {
+		"status_label": "Dust / Below minQty",
+		"status_badge": "badge-secondary",
+		"interpretation": "Quantity is below Binance minimum quantity.",
+		"suggested_action": "Review as dust.",
+	},
+	"insufficient_binance_balance": {
+		"status_label": "Drift / Review needed",
+		"status_badge": "badge-warning",
+		"interpretation": "Binance SPOT balance is lower than open lots.",
+		"suggested_action": "Review for manual/external operation, Earn movement, fee residual, or incomplete sell.",
+	},
+	"no_open_lots": {
+		"status_label": "No accounting inventory",
+		"status_badge": "badge-warning",
+		"interpretation": "No open FIFO lots exist for this symbol.",
+		"suggested_action": "No sell is possible from bot accounting.",
+	},
+	"exchange_filter_missing": {
+		"status_label": "Metadata issue",
+		"status_badge": "badge-warning",
+		"interpretation": "Exchange filter metadata is unavailable.",
+		"suggested_action": "Review exchange metadata/scanner cache.",
+	},
+	"read_only": {
+		"status_label": "Read-only",
+		"status_badge": "badge-secondary",
+		"interpretation": "Bot is in READ_ONLY mode.",
+		"suggested_action": "No live orders will be submitted.",
+	},
+	"strategy_hold": {
+		"status_label": "Holding",
+		"status_badge": "badge-info",
+		"interpretation": "Strategy decided to hold.",
+		"suggested_action": "No action.",
+	},
+}
+
 
 @dataclass
 class DashboardReadModel:
@@ -825,7 +888,7 @@ def _build_position_exit_status(open_lots, portfolio_rows, sell_events_by_symbol
 		if estimated_value is None:
 			estimated_value = _position_value(open_quantity, current_price)
 		reasons = _sell_event_reasons(event)
-		status_label, status_badge = _position_exit_status_label(reasons, estimated_value)
+		presentation = _position_exit_presentation(reasons, _event_decimal(event, "estimated_pnl_percent"))
 
 		if estimated_value is not None and estimated_value > Decimal("0") and estimated_value < DUST_MIN_VALUE:
 			dust_count += 1
@@ -836,17 +899,19 @@ def _build_position_exit_status(open_lots, portfolio_rows, sell_events_by_symbol
 			"run_id": _payload_value(event, "run_id"),
 			"symbol": symbol,
 			"asset": _payload_value(event, "asset") or getattr(portfolio, "asset", None) or _asset_from_symbol(symbol),
-			"status_label": status_label,
-			"status_badge": status_badge,
+			"status_label": presentation["status_label"],
+			"status_badge": presentation["status_badge"],
 			"main_reason": _format_sell_reasons(reasons),
 			"reasons": reasons,
+			"estimated_pnl_percent": _event_decimal(event, "estimated_pnl_percent"),
+			"interpretation": presentation["interpretation"],
 			"open_lot_quantity": open_quantity,
 			"portfolio_quantity": _payload_decimal(event, "portfolio_quantity") or getattr(portfolio, "quantity", None),
 			"current_price": current_price,
 			"estimated_value_usdt": estimated_value,
 			"take_profit_threshold": _event_decimal(event, "take_profit_threshold") or _payload_decimal(event, "take_profit_threshold"),
 			"stop_loss_threshold": _event_decimal(event, "stop_loss_threshold") or _payload_decimal(event, "stop_loss_threshold"),
-			"suggested_action": _position_exit_suggested_action(reasons),
+			"suggested_action": presentation["suggested_action"],
 			"strategy_name": _payload_value(event, "strategy_name"),
 			"evaluated_at": _payload_value(event, "evaluated_at") or getattr(event, "created_at", None),
 		})
@@ -953,6 +1018,26 @@ def _position_exit_suggested_action(reasons):
 	if "dust_residual_protection" in reason_set:
 		return "Dust: review/ignore or wait until reusable"
 	return "Review latest SELL diagnostics"
+
+
+def _position_exit_presentation(reasons, estimated_pnl_percent=None):
+	reason_set = set(reasons)
+	if "stop_loss_reached" in reason_set and estimated_pnl_percent is not None and estimated_pnl_percent > 0:
+		return {
+			"status_label": "Anomaly",
+			"status_badge": "badge-danger",
+			"interpretation": "Invalid diagnostic state. Stop-loss should only trigger on real losses.",
+			"suggested_action": "Review bot version and stop-loss normalization.",
+		}
+	for reason in reasons:
+		if reason in SELL_REASON_PRESENTATION:
+			return SELL_REASON_PRESENTATION[reason]
+	return {
+		"status_label": "Review",
+		"status_badge": "badge-light",
+		"interpretation": "Diagnostic reason is not mapped yet.",
+		"suggested_action": "Review latest sell_decision_events payload.",
+	}
 
 
 def _format_sell_reasons(reasons):

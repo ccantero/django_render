@@ -359,6 +359,7 @@
 									<span class="badge {% if row.review_status == 'ignored' %}badge-secondary{% elif row.review_status == 'needs_manual_correction' %}badge-danger{% elif row.review_status == 'review_later' %}badge-warning{% elif row.review_status == 'reviewed' or row.review_status == 'external_or_earn' %}badge-success{% else %}badge-light{% endif %}">
 										{{ row.review_status|default:"pending" }}
 									</span>
+									<div class="small text-muted">{{ row.review_effect_text }}</div>
 								</td>
 								<td><a class="btn btn-outline-primary btn-sm" href="{% url 'dust_detail' %}?{{ row.detail_querystring }}">View details</a></td>
 							</tr>

@@ -479,7 +479,31 @@ bot emits them:
 - `reason`
 - `reasons`
 - `strategy_name`
+- `quantity_fraction`
+- `sell_decision_metadata`
+- `partial_remainder_protection`
+- `partial_remainder_protection_reason`
+- `requested_sell_quantity`
+- `projected_remaining_quantity`
+- `projected_remaining_quantity_rounded`
+- `projected_remaining_notional`
+- `promoted_quantity_fraction`
 - `evaluated_at`
+
+`sell_decision_metadata` is additive observability data. Current strategy
+metadata may include `original_open_lot_quantity`, `requested_fraction`,
+`requested_quantity`, `strategy_name`, `reason`, `estimated_pnl_percent`,
+`current_price`, and `entry_price`. Consumers must treat it as explanation
+metadata only, not as SELL coverage truth.
+
+When a partial take-profit exit is promoted to avoid an unsellable projected
+remainder, payload metadata includes
+`partial_remainder_protection=true`,
+`partial_remainder_protection_reason="partial_exit_promoted_to_full_exit"`,
+the projected remainder quantity/notional values, and
+`promoted_quantity_fraction=1.0`. These keys explain the final SELL decision;
+they do not change FIFO truth, and consumers must still derive open inventory
+from `position_lots`.
 
 The dashboard treats these fields as explanation metadata only. Open inventory
 still comes from `bot.position_lots`; `portfolio` remains display/projection
@@ -1109,22 +1133,30 @@ Required dashboard columns:
 - Symbol
 - Status label
 - Main reason
+- PnL %
 - Estimated value USDT
 - Open lot qty
 - Current price
+- Last diagnostic timestamp
 - Suggested action
 
-Suggested action mapping:
+Reason interpretation mapping:
 
-- `quantity_below_min_notional`, `quantity_below_min_qty`, or
-  `rounded_quantity_zero`: `Dust: review/ignore or wait until reusable`
-- `stop_loss_not_reached` and `take_profit_not_reached`:
-  `Hold: strategy thresholds not reached`
-- `insufficient_binance_balance`:
-  `Review drift: Binance balance lower than lots`
-- `no_open_lots`: `No accounting inventory`
-- `exchange_filter_missing`: `Review exchange metadata`
-- `read_only`: `Bot is in READ_ONLY`
+- `stop_loss_not_reached`: `Holding`; stop loss has not been reached yet.
+- `take_profit_not_reached`: `Holding`; take profit has not been reached yet.
+- `rounded_quantity_zero`: `Dust / Unsellable`; quantity rounds to zero after exchange step-size rules.
+- `quantity_below_min_notional`: `Dust / Below minNotional`; value is below Binance minimum notional.
+- `quantity_below_min_qty`: `Dust / Below minQty`; quantity is below Binance minimum quantity.
+- `insufficient_binance_balance`: `Drift / Review needed`; Binance SPOT balance is lower than open lots.
+- `no_open_lots`: `No accounting inventory`; no sell is possible from FIFO accounting.
+- `exchange_filter_missing`: `Metadata issue`; exchange filter metadata is unavailable.
+- `read_only`: `Read-only`; no live orders will be submitted.
+- `strategy_hold`: `Holding`; strategy decided to hold.
+- `stop_loss_reached` with positive `estimated_pnl_percent`: `Anomaly`; invalid diagnostic state requiring review.
+
+If a persisted reason exists but is not mapped yet, consumers should show
+`Review` plus a human prompt to inspect the latest `sell_decision_events`
+payload. They should not show `Unknown` merely because the reason is new.
 
 Constraints:
 

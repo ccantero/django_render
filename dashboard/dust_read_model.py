@@ -443,14 +443,28 @@ def _operator_guidance(row):
 			"operator_label": "Below min notional",
 			"operator_badge": "badge-info",
 			"operator_priority": "informational",
-			"operator_action": "Monitor / optionally ignore",
+			"operator_action": "Usually no action. Review/ignore or wait until future buys make it reusable.",
+		}
+	if reason == "manual_external_operation":
+		return {
+			"operator_label": "Manual / external operation",
+			"operator_badge": "badge-warning",
+			"operator_priority": "needs review",
+			"operator_action": "Review Binance history. If intentional and material, create the proper manual correction. If tiny dust, review/ignore.",
 		}
 	if reason == "possible_incomplete_sell":
 		return {
 			"operator_label": "Possible incomplete sell",
 			"operator_badge": "badge-warning",
 			"operator_priority": "warning",
-			"operator_action": "Inspect Binance history, then create correction request if external operation confirmed",
+			"operator_action": "Review urgently. Check recent SELL, lot closures, and Binance balance.",
+		}
+	if reason == "earn_or_external_transfer":
+		return {
+			"operator_label": "Earn / external transfer",
+			"operator_badge": "badge-warning",
+			"operator_priority": "needs review",
+			"operator_action": "Review Binance Earn/SPOT movement. Do not auto-correct without confirmation.",
 		}
 	if reason == "lot_balance_drift" or event_type == "lot_balance_drift_detected":
 		if open_lot_quantity is not None and spot_quantity is not None:
@@ -476,10 +490,10 @@ def _operator_guidance(row):
 		}
 	if reason == "balance_without_lot_coverage" or event_type == "balance_without_lot_coverage_detected":
 		return {
-			"operator_label": "Binance > Lots",
+			"operator_label": "Binance balance without bot lot",
 			"operator_badge": "badge-warning",
 			"operator_priority": "external balance, needs review",
-			"operator_action": "Investigate manual buy/deposit/Earn return",
+			"operator_action": "If this should become bot-managed inventory, request CREATE_EXTERNAL_LOT.",
 		}
 	return {
 		"operator_label": "Unclassified signal",
@@ -649,6 +663,12 @@ def _with_review_state(rows):
 		row["review_note"] = review.note if review else ""
 		row["reviewed_by"] = review.reviewed_by if review else None
 		row["reviewed_at"] = review.reviewed_at if review else None
+		row["telegram_paging_suppressed"] = row["review_status"] in HANDLED_REVIEW_STATUSES
+		row["review_effect_text"] = (
+			"Telegram paging suppressed; detections remain in history."
+			if row["telegram_paging_suppressed"]
+			else "Telegram paging remains active until reviewed, ignored, or suppressed."
+		)
 	return rows
 
 

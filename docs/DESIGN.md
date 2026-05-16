@@ -33,7 +33,7 @@ Home dashboard responsibility: concise operator console for health, urgent actio
 - Compact latest operations table, capped at four rows
 - Compact Active Operational Issues dust summary with at most five unresolved critical/warning signals
 - Informational Residuals summary with count, approximate exposure, and latest detection timestamp; info-only residuals are not promoted to active issues
-- Compact “Why positions are not selling” table with one row per open-lot symbol, status label, main reason, estimated value, lot quantity, current price, and suggested action
+- Compact “Why positions are not selling” table with one row per open-lot symbol, status label, main reason, PnL %, estimated value, lot quantity, current price, last diagnostic timestamp, and suggested action
 - Link to the full Dust / Residuals dashboard
 - Link to Analytics
 
@@ -126,7 +126,10 @@ commands:
 Messages use Telegram HTML parse mode, escape dynamic values before rendering,
 and should stay compact enough for mobile review. `/help` should act as a compact
 operator guide, and skipped/rejected SELL diagnostics should lead with a plain
-language summary before lower-level event fields. `/buy_status` is conservative
+language interpretation and suggested action before lower-level event fields.
+Dust/drift alerts should use human labels, expose raw reason/event identifiers in
+details, and explicitly call out tiny dust values below `0.01 USDT` without
+making them look like large incidents. `/buy_status` is conservative
 about exposure rather than pessimistic about missing optional fields: effective
 positions are `material + unknown`, dust is explicitly non-blocking, missing free
 USDT renders as `diagnostic unavailable`, and a missing latest BUY reason renders
@@ -154,15 +157,20 @@ Recommended labels:
 - Possible incomplete sell
 - Unclassified signal
 
-Position exit status labels should remain compact:
+Position exit status should map known persisted SELL reasons conservatively:
 
-- Holding
-- Cannot sell
-- Dust residual
-- Review needed
+- `stop_loss_not_reached` / `take_profit_not_reached` -> `Holding`
+- `rounded_quantity_zero` -> `Dust / Unsellable`
+- `quantity_below_min_notional` -> `Dust / Below minNotional`
+- `quantity_below_min_qty` -> `Dust / Below minQty`
+- `insufficient_binance_balance` -> `Drift / Review needed`
+- `no_open_lots` -> `No accounting inventory`
+- `exchange_filter_missing` -> `Metadata issue`
+- `read_only` -> `Read-only`
+- positive-PnL `stop_loss_reached` -> `Anomaly`
 
-Suggested actions should map normalized bot reasons conservatively, especially
-separating minNotional/dust blockers from real strategy holds.
+Mapped reasons should show a human interpretation and suggested next step.
+Unmapped non-empty reasons fall back to `Review`, never `Unknown`.
 
 ---
 
@@ -194,6 +202,7 @@ Validated operator case:
 - The request should keep `status = PENDING`, a positive quantity, reviewed price, reason, requester identity, `source_detection_id` when available, and dashboard provenance in payload.
 - Labels should make Binance Small Amount Exchange / manual dust conversion understandable to operators when the raw detection reason is broader, such as `earn_or_external_transfer`.
 - Historical detections should stay visible as audit history after correction, but current views should avoid making old rows look newly unresolved.
+- Review/ignore/external-or-Earn state suppresses Telegram paging only; it does not delete persisted detections or mutate accounting state.
 
 ---
 

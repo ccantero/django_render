@@ -27,6 +27,7 @@ Implemented capabilities:
 - Fees by asset card
 - Compact Active Operational Issues dust summary on the main dashboard, limited to unresolved critical/warning signals only; info-only residuals are summarized and are not promoted to active issues
 - Compact “Why positions are not selling” table on the main dashboard, sourced from open lots and latest persisted SELL diagnostics, with dust/minNotional positions separated from strategy holds
+- Position exit rows now expose operator-facing status labels, mapped interpretations, PnL %, last diagnostic time, and suggested actions for known persisted SELL reasons
 - Dedicated Dust / Residuals dashboard sourced from `bot.dust_detections` with filters and 25-row pagination
 - Telegram mobile diagnostics commands on the existing webhook:
   - `/help`
@@ -36,7 +37,8 @@ Implemented capabilities:
   - `/last_sell SYMBOL`
   - `/why_not_sell SYMBOL`
 - Telegram diagnostics include a compact command guide and format skipped/rejected
-  SELL diagnostics with a short summary before raw event details for mobile review.
+  SELL diagnostics with status, interpretation, suggested action, and raw event details for mobile review.
+- Human-readable dust/drift alert formatting exists for notifier callers, including tiny-dust wording, urgency for incomplete SELL drift, and safe HTML escaping.
 - Telegram diagnostics render compact Decimal-safe numeric values for mobile
   review while preserving read-only DB access and HTML escaping.
 - `/buy_status` now reports effective positions as `material + unknown`, treats
@@ -133,6 +135,7 @@ Any change to bot-owned tables that affects dashboard interpretation must update
 - More filters/pagination may be needed as dust detections grow.
 - `/health/` only confirms that the Django web process is reachable; it is not a bot/database health check.
 - Historical dust/drift rows remain visible after correction, so views must keep making active/latest state and linked correction status clear.
+- Reviewed/ignored/external-or-Earn dust signals suppress repeated paging only; their detections remain visible in history and do not alter bot accounting.
 
 ---
 

@@ -354,9 +354,11 @@
 								<th>Symbol</th>
 								<th>Status label</th>
 								<th>Main reason</th>
+								<th class="text-right">PnL %</th>
 								<th class="text-right">Estimated value USDT</th>
 								<th class="text-right">Open lot qty</th>
 								<th class="text-right">Current price</th>
+								<th>Last diagnostic</th>
 								<th>Suggested action</th>
 							</tr>
 						</thead>
@@ -365,10 +367,17 @@
 								<tr class="dashboard-position-exit-row">
 									<td>{{ row.symbol|default:"-" }}</td>
 									<td><span class="badge {{ row.status_badge|default:'badge-light' }}">{{ row.status_label|default:"Review needed" }}</span></td>
-									<td>{{ row.main_reason|default:"unknown" }}</td>
+									<td>
+										{{ row.main_reason|default:"unknown" }}
+										{% if row.interpretation %}
+											<div class="small text-muted">{{ row.interpretation }}</div>
+										{% endif %}
+									</td>
+									<td class="text-right">{{ row.estimated_pnl_percent|floatformat:2|default:"-" }}</td>
 									<td class="text-right">{{ row.estimated_value_usdt|floatformat:4|default:"-" }}</td>
 									<td class="text-right">{{ row.open_lot_quantity|floatformat:8|default:"-" }}</td>
 									<td class="text-right">{{ row.current_price|floatformat:8|default:"-" }}</td>
+									<td>{{ row.evaluated_at|date:"Y-m-d H:i"|default:"-" }}</td>
 									<td>{{ row.suggested_action|default:"Review latest SELL diagnostics" }}</td>
 								</tr>
 							{% endfor %}
