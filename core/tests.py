@@ -26,8 +26,13 @@ from dashboard.dashboard_read_model import (
     _homepage_sell_diagnostics_enabled,
     _ensure_dashboard_profile_console_logging,
     _latest_sell_events_by_symbol,
+    _latest_sell_events_for_exit_status,
+    _build_buy_status_summary,
+    _build_churn_summary,
     _position_exit_suggested_action,
     get_dashboard_context,
+    get_exit_status_context,
+    get_churn_context,
 )
 from dashboard.dust_read_model import (
     _active_operational_issues,
@@ -48,7 +53,7 @@ from dashboard.dust_read_model import (
 )
 from dashboard.forms import ManualCorrectionRequestForm
 from core.models import DustSignalReview, ManualCorrection
-from core.trading_models import DustDetection, TradeOperation
+from core.trading_models import DustDetection, LotClosure, TradeOperation
 from dashboard.views import _manual_correction_quantity
 from core.telegram_diagnostics import format_dust_drift_alert
 
@@ -358,7 +363,41 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
         self.assertIn('<b>🟢 BUY status</b>', message)
-        self.assertIn('BUY state: <code>available</code>', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_buy_status_renders_reentry_cooldown_details(self, mock_health_manager, mock_send_message):
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=12,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 2,
+                'material_positions_count': 1,
+                'dust_positions_count': 1,
+                'unknown_value_positions_count': 0,
+                'max_positions': 5,
+                'latest_buy_state': 'rejected',
+                'latest_buy_reason': 'loss_reentry_cooldown_active',
+                'latest_buy_symbol': 'BTCUSDT',
+                'latest_sell_operation_id': 77,
+                'latest_sell_reason': 'stop_loss_reached',
+                'cooldown_type': 'loss',
+                'cooldown_minutes': 60,
+                'cooldown_remaining_minutes': 42,
+            },
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/buy_status')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('Re-entry blocked after loss/stop-loss cooldown', message)
+        self.assertIn('Latest BUY symbol: <code>BTCUSDT</code>', message)
+        self.assertIn('Cooldown remaining: <code>42</code>', message)
+        self.assertIn('BUY state: <code>blocked_by_cooldown</code>', message)
         self.assertIn('Dust positions: <code>non-blocking</code>', message)
 
     def test_numeric_formatting_trims_trailing_zeros(self):
@@ -984,6 +1023,18 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse('login'), response['Location'])
 
+    def test_exit_status_dashboard_requires_authentication(self):
+        response = self.client.get(reverse('dashboard_exit_status'))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response['Location'])
+
+    def test_churn_dashboard_requires_authentication(self):
+        response = self.client.get(reverse('dashboard_churn'))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response['Location'])
+
     @patch('dashboard.views.get_dashboard_context')
     def test_analytics_dashboard_renders_performance_tables(self, mock_get_dashboard_context):
         context = self.empty_dashboard_context()
@@ -1187,6 +1238,55 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'Hold: strategy thresholds not reached')
         self.assertContains(response, 'ORDIUSDT')
         self.assertContains(response, 'Review drift: Binance balance lower than lots')
+
+    @patch('dashboard.views.get_dashboard_context')
+    def test_dashboard_links_to_full_exit_status_instead_of_diagnostics_not_loaded_copy(self, mock_get_dashboard_context):
+        context = self.empty_dashboard_context()
+        mock_get_dashboard_context.return_value.context = context
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.dashboard_url)
+
+        self.assertContains(response, 'Open Exit Status')
+        self.assertNotContains(response, 'SELL diagnostics are not loaded')
+
+    @patch('dashboard.views.get_exit_status_context')
+    def test_exit_status_dashboard_renders_full_table(self, mock_get_exit_status_context):
+        context = self.empty_dashboard_context()
+        context['position_exit_status']['rows'] = [{
+            'symbol': 'BTCUSDT',
+            'status_label': 'Holding',
+            'status_badge': 'badge-info',
+            'main_reason': 'stop_loss not reached',
+            'open_lot_quantity': Decimal('0.01'),
+        }]
+        mock_get_exit_status_context.return_value.context = context
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('dashboard_exit_status'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Exit Status')
+        self.assertContains(response, 'BTCUSDT')
+
+    @patch('dashboard.views.get_churn_context')
+    def test_churn_dashboard_renders_summary(self, mock_get_churn_context):
+        mock_get_churn_context.return_value.context = {
+            'churn_summary': {
+                'reentries_under_15m_24h': 1,
+                'reentries_under_15m_48h': 2,
+                'economically_questionable_count': 1,
+                'rows': [],
+            },
+            'data_error': None,
+        }
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('dashboard_churn'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Churn / Cooldown')
+        self.assertContains(response, 'SELL→BUY under 15m')
 
     def test_demo_dashboard_is_public_and_read_only(self):
         response = self.client.get(reverse('dashboard_demo'))
@@ -2309,6 +2409,9 @@ class DashboardEndpointTests(TestCase):
         )
         self.assertEqual(summary['pnl_by_day'][0]['date'].isoformat(), '2026-05-01')
 
+    def test_lot_closure_model_does_not_map_missing_timestamp_column(self):
+        self.assertNotIn('timestamp', [field.name for field in LotClosure._meta.fields])
+
     def test_performance_kpis_calculate_realized_pnl_fees_and_deployed_capital(self):
         closure_rows = [
             {
@@ -2661,10 +2764,44 @@ class DashboardEndpointTests(TestCase):
             def filter(self, **kwargs):
                 raise DatabaseError('missing diagnostics table')
 
-        with patch('dashboard.dashboard_read_model.SellDecisionEvent.objects', FailingSellDecisionEventQuery()):
-            events = _latest_sell_events_by_symbol({'ZECUSDT': {}})
+        with patch('dashboard.dashboard_read_model.logger') as logger:
+            with patch('dashboard.dashboard_read_model.SellDecisionEvent.objects', FailingSellDecisionEventQuery()):
+                events = _latest_sell_events_by_symbol({'ZECUSDT': {}})
 
         self.assertEqual(events, {})
+        logger.warning.assert_called_once()
+        logger.exception.assert_not_called()
+
+    def test_latest_sell_events_for_exit_status_uses_bounded_recent_window_without_n_plus_one(self):
+        older = SimpleNamespace(symbol='BTCUSDT', id=1)
+        latest = SimpleNamespace(symbol='BTCUSDT', id=2)
+        eth = SimpleNamespace(symbol='ETHUSDT', id=3)
+
+        class FakeSellDecisionEventQuery:
+            def __init__(self):
+                self.filter_calls = 0
+
+            def filter(self, **kwargs):
+                self.filter_calls += 1
+                self.filter_kwargs = kwargs
+                return self
+
+            def order_by(self, *fields):
+                self.order_fields = fields
+                return self
+
+            def __getitem__(self, item):
+                self.slice = item
+                return [latest, eth, older]
+
+        query = FakeSellDecisionEventQuery()
+        with patch('dashboard.dashboard_read_model.SellDecisionEvent.objects', query):
+            events = _latest_sell_events_for_exit_status({'BTCUSDT': {}, 'ETHUSDT': {}})
+
+        self.assertEqual(query.filter_calls, 0)
+        self.assertEqual(query.order_fields, ('-created_at', '-id'))
+        self.assertEqual(query.slice, slice(None, 1000, None))
+        self.assertEqual(events, {'BTCUSDT': latest, 'ETHUSDT': eth})
 
     def test_homepage_skips_sell_diagnostics_by_default(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -2683,8 +2820,65 @@ class DashboardEndpointTests(TestCase):
         )
 
         row = summary['rows'][0]
-        self.assertEqual(row['status_label'], 'Diagnostics not loaded')
-        self.assertEqual(row['main_reason'], 'not loaded on homepage')
+        self.assertEqual(row['status_label'], 'Open Exit Status')
+        self.assertEqual(row['main_reason'], 'open full page')
+
+    def test_unknown_sell_reason_maps_to_review(self):
+        rows = _build_position_exit_status(
+            {'BTCUSDT': {'open_quantity': Decimal('1'), 'open_lot_count': 1}},
+            [SimpleNamespace(symbol='BTCUSDT', asset='BTC', quantity=Decimal('1'), current_price=Decimal('10'))],
+            {'BTCUSDT': SimpleNamespace(reason='brand_new_reason', payload={}, created_at=timezone.now())},
+        )['rows']
+
+        self.assertEqual(rows[0]['status_label'], 'Review')
+
+    def test_missing_exit_status_diagnostic_maps_to_review_when_query_succeeds(self):
+        row = _build_position_exit_status(
+            {'BTCUSDT': {'open_quantity': Decimal('1'), 'open_lot_count': 1}},
+            [SimpleNamespace(symbol='BTCUSDT', asset='BTC', quantity=Decimal('1'), current_price=Decimal('10'))],
+            {},
+            diagnostics_loaded=True,
+        )['rows'][0]
+
+        self.assertEqual(row['status_label'], 'Review')
+
+    def test_exit_status_context_keeps_open_lots_when_diagnostics_query_fails(self):
+        with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
+            portfolio_manager.all.return_value.order_by.return_value = [
+                SimpleNamespace(symbol='BTCUSDT', asset='BTC', quantity=Decimal('1'), current_price=Decimal('10'))
+            ]
+            with patch(
+                'dashboard.dashboard_read_model._open_lots_by_symbol',
+                return_value={'BTCUSDT': {'open_quantity': Decimal('1'), 'open_lot_count': 1}},
+            ):
+                with patch(
+                    'dashboard.dashboard_read_model._latest_sell_events_for_exit_status',
+                    side_effect=DatabaseError('diagnostics unavailable'),
+                ):
+                    context = get_exit_status_context().context
+
+        self.assertEqual(context['position_exit_status']['rows'][0]['symbol'], 'BTCUSDT')
+        self.assertEqual(context['position_exit_status']['rows'][0]['status_label'], 'Diagnostics unavailable')
+
+    def test_exit_status_page_returns_200_when_diagnostics_query_fails(self):
+        self.client.force_login(self.user)
+        with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
+            portfolio_manager.all.return_value.order_by.return_value = [
+                SimpleNamespace(symbol='BTCUSDT', asset='BTC', quantity=Decimal('1'), current_price=Decimal('10'))
+            ]
+            with patch(
+                'dashboard.dashboard_read_model._open_lots_by_symbol',
+                return_value={'BTCUSDT': {'open_quantity': Decimal('1'), 'open_lot_count': 1}},
+            ):
+                with patch(
+                    'dashboard.dashboard_read_model._latest_sell_events_for_exit_status',
+                    side_effect=DatabaseError('diagnostics unavailable'),
+                ):
+                    response = self.client.get(reverse('dashboard_exit_status'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'BTCUSDT')
+        self.assertContains(response, 'Diagnostics unavailable')
 
     def test_recent_operations_provide_latest_trade_without_second_query(self):
         latest = SimpleNamespace(gross_quote=Decimal('10'), net_quote=Decimal('9'))
@@ -2715,27 +2909,28 @@ class DashboardEndpointTests(TestCase):
             def filter(self, **kwargs):
                 raise DatabaseError('missing diagnostics table')
 
-        with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
-            portfolio_manager.all.return_value.order_by.return_value = []
-            with patch('dashboard.dashboard_read_model._build_bot_status', return_value={}):
-                with patch('dashboard.dashboard_read_model._build_fee_summary', return_value={}):
-                    with patch('dashboard.dashboard_read_model._build_quote_fee_summary', return_value={}):
-                        with patch('dashboard.dashboard_read_model._build_performance_kpis', return_value={}):
-                            with patch('dashboard.dashboard_read_model._build_recent_operations', return_value=[]):
-                                with patch('dashboard.dashboard_read_model._build_latest_trade_from_recent_operations', return_value=None):
-                                    with patch(
-                                        'dashboard.dashboard_read_model._open_lots_by_symbol',
-                                        return_value={'ZECUSDT': {'open_quantity': Decimal('1')}},
-                                    ):
+        with patch('dashboard.dashboard_read_model.logger'):
+            with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
+                portfolio_manager.all.return_value.order_by.return_value = []
+                with patch('dashboard.dashboard_read_model._build_bot_status', return_value={}):
+                    with patch('dashboard.dashboard_read_model._build_fee_summary', return_value={}):
+                        with patch('dashboard.dashboard_read_model._build_quote_fee_summary', return_value={}):
+                            with patch('dashboard.dashboard_read_model._build_performance_kpis', return_value={}):
+                                with patch('dashboard.dashboard_read_model._build_recent_operations', return_value=[]):
+                                    with patch('dashboard.dashboard_read_model._build_latest_trade_from_recent_operations', return_value=None):
                                         with patch(
-                                            'dashboard.dashboard_read_model.SellDecisionEvent.objects',
-                                            FailingSellDecisionEventQuery(),
+                                            'dashboard.dashboard_read_model._open_lots_by_symbol',
+                                            return_value={'ZECUSDT': {'open_quantity': Decimal('1')}},
                                         ):
                                             with patch(
-                                                'dashboard.dashboard_read_model.get_dust_overview_context',
-                                                return_value={'data_error': None},
+                                                'dashboard.dashboard_read_model.SellDecisionEvent.objects',
+                                                FailingSellDecisionEventQuery(),
                                             ):
-                                                read_model = get_dashboard_context()
+                                                with patch(
+                                                    'dashboard.dashboard_read_model.get_dust_overview_context',
+                                                    return_value={'data_error': None},
+                                                ):
+                                                    read_model = get_dashboard_context()
 
         self.assertEqual(read_model.context['position_exit_status']['rows'][0]['symbol'], 'ZECUSDT')
 
@@ -2824,6 +3019,33 @@ class DashboardEndpointTests(TestCase):
 
         kpis.assert_not_called()
 
+    def test_buy_status_summary_exposes_cooldown_reason_and_details(self):
+        summary = _build_buy_status_summary({
+            'latest_buy_state': 'rejected',
+            'latest_buy_reason': 'take_profit_reentry_cooldown_active',
+            'latest_buy_symbol': 'ETHUSDT',
+            'material_positions_count': 2,
+            'unknown_value_positions_count': 1,
+            'dust_positions_count': 3,
+            'max_positions': 5,
+            'free_usdt': '11.5',
+            'latest_sell_operation_id': 91,
+            'cooldown_remaining_minutes': 14,
+        })
+
+        self.assertEqual(summary['latest_buy_human_reason'], 'Re-entry blocked after take-profit cooldown')
+        self.assertEqual(summary['effective_positions_count'], Decimal('3'))
+        self.assertEqual(summary['remaining_buy_capacity'], Decimal('2'))
+        self.assertEqual(summary['latest_sell_operation_id'], 91)
+
+    def test_churn_summary_handles_no_data_safely(self):
+        summary = _build_churn_summary([], {})
+
+        self.assertEqual(summary['reentries_under_15m_24h'], 0)
+        self.assertEqual(summary['reentries_under_15m_48h'], 0)
+        self.assertEqual(summary['economically_questionable_count'], 0)
+        self.assertEqual(summary['rows'], [])
+
     def test_analytics_context_is_cached_for_60_seconds(self):
         from dashboard.dashboard_read_model import get_dashboard_analytics_context
         from django.core.cache import cache
@@ -2859,20 +3081,21 @@ class DashboardEndpointTests(TestCase):
 
     def test_dashboard_context_works_when_profile_enabled(self):
         with patch.dict(os.environ, {'DASHBOARD_PROFILE': 'true'}):
-            with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
-                portfolio_manager.all.return_value.order_by.return_value = []
-                with patch('dashboard.dashboard_read_model._build_bot_status', return_value={}):
-                    with patch('dashboard.dashboard_read_model._build_fee_summary', return_value={}):
-                        with patch('dashboard.dashboard_read_model._build_quote_fee_summary', return_value={}):
-                            with patch('dashboard.dashboard_read_model._build_performance_kpis', return_value={}):
-                                with patch('dashboard.dashboard_read_model._build_recent_operations', return_value=[]):
-                                    with patch('dashboard.dashboard_read_model._build_latest_trade_from_recent_operations', return_value=None):
-                                        with patch('dashboard.dashboard_read_model._open_lots_by_symbol', return_value={}):
-                                            with patch(
-                                                'dashboard.dashboard_read_model.get_dust_overview_context',
-                                                return_value={'data_error': None},
-                                            ):
-                                                read_model = get_dashboard_context()
+            with patch('dashboard.dashboard_read_model._ensure_dashboard_profile_console_logging'):
+                with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
+                    portfolio_manager.all.return_value.order_by.return_value = []
+                    with patch('dashboard.dashboard_read_model._build_bot_status', return_value={}):
+                        with patch('dashboard.dashboard_read_model._build_fee_summary', return_value={}):
+                            with patch('dashboard.dashboard_read_model._build_quote_fee_summary', return_value={}):
+                                with patch('dashboard.dashboard_read_model._build_performance_kpis', return_value={}):
+                                    with patch('dashboard.dashboard_read_model._build_recent_operations', return_value=[]):
+                                        with patch('dashboard.dashboard_read_model._build_latest_trade_from_recent_operations', return_value=None):
+                                            with patch('dashboard.dashboard_read_model._open_lots_by_symbol', return_value={}):
+                                                with patch(
+                                                    'dashboard.dashboard_read_model.get_dust_overview_context',
+                                                    return_value={'data_error': None},
+                                                ):
+                                                    read_model = get_dashboard_context()
 
         self.assertEqual(read_model.context['position_exit_status']['rows'], [])
 

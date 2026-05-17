@@ -88,6 +88,8 @@
 		<div class="mt-2 mt-md-0">
 			{% if not is_demo %}
 				<a class="btn btn-outline-primary btn-sm" href="{% url 'dashboard_analytics' %}">Analytics</a>
+				<a class="btn btn-outline-primary btn-sm" href="{% url 'dashboard_exit_status' %}">Open Exit Status</a>
+				<a class="btn btn-outline-primary btn-sm" href="{% url 'dashboard_churn' %}">Churn / Cooldown</a>
 				<a class="btn btn-outline-secondary btn-sm" href="{% url 'dust_dashboard' %}">Dust Dashboard</a>
 			{% endif %}
 		</div>
@@ -109,6 +111,39 @@
 
 	<div class="row">
 		<div class="col-lg-4 col-md-6 mb-3">
+			<div class="op-card h-100">
+				<div class="op-card-body">
+					<div class="d-flex justify-content-between align-items-start mb-2">
+						<h2 class="section-title">BUY / Cooldown</h2>
+						{% if not is_demo %}<a class="small" href="{% url 'dashboard_churn' %}">Churn / Cooldown</a>{% endif %}
+					</div>
+					<p class="mb-1">Latest: <strong>{{ buy_status_summary.latest_buy_state|default:"unavailable" }}</strong></p>
+					<p class="mb-1">Reason: <strong>{{ buy_status_summary.latest_buy_human_reason|default:"unavailable" }}</strong></p>
+					<p class="mb-1">Symbol: <strong>{{ buy_status_summary.latest_buy_symbol|default:"-" }}</strong></p>
+					<p class="text-muted small mb-0">
+						Effective {{ buy_status_summary.effective_positions_count|default:"-" }}/{{ buy_status_summary.max_positions|default:"-" }};
+						remaining {{ buy_status_summary.remaining_buy_capacity|default:"-" }};
+						dust {{ buy_status_summary.dust_positions_count|default:"-" }} non-blocking.
+					</p>
+				</div>
+			</div>
+		</div>
+
+		<div class="col-lg-4 col-md-6 mb-3">
+			<div class="op-card h-100">
+				<div class="op-card-body">
+					<div class="d-flex justify-content-between align-items-start mb-2">
+						<h2 class="section-title">Churn / Cooldown</h2>
+						{% if not is_demo %}<a class="small" href="{% url 'dashboard_churn' %}">Open</a>{% endif %}
+					</div>
+					<p class="mb-1">SELL→BUY under 15m (24h): <strong>{{ churn_summary.reentries_under_15m_24h }}</strong></p>
+					<p class="mb-1">SELL→BUY under 15m (48h): <strong>{{ churn_summary.reentries_under_15m_48h }}</strong></p>
+					<p class="text-muted small mb-0">Economically questionable: {{ churn_summary.economically_questionable_count }}.</p>
+				</div>
+			</div>
+		</div>
+
+		<div class="col-lg-4 col-md-12 mb-3">
 			<div class="op-card h-100">
 				<div class="op-card-body">
 					<div class="d-flex justify-content-between align-items-start mb-2">
@@ -323,9 +358,7 @@
 					<p class="text-muted small mb-0">
 						Only symbols with open FIFO lots appear here. Stablecoin cash balances are intentionally excluded.
 						Pure SPOT balances without open lots are not SELL candidates.
-						{% if not position_exit_status.diagnostics_loaded %}
-							SELL diagnostics are not loaded on this lightweight homepage; open <a href="{% url 'dashboard_analytics' %}">Analytics</a> for deeper review.
-						{% endif %}
+						<a href="{% url 'dashboard_exit_status' %}">Open Exit Status</a> for full persisted explanations.
 					</p>
 				</div>
 				<div class="small text-muted mt-1">
@@ -357,7 +390,7 @@
 							</tr>
 						</thead>
 						<tbody>
-							{% for row in position_exit_status.rows|slice:":8" %}
+							{% for row in position_exit_status.rows|slice:":5" %}
 								<tr class="dashboard-position-exit-row">
 									<td>{{ row.symbol|default:"-" }}</td>
 									<td><span class="badge {{ row.status_badge|default:'badge-light' }}">{{ row.status_label|default:"Review needed" }}</span></td>

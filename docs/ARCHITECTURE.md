@@ -155,9 +155,10 @@ Dust list/detail views also batch-read `bot.manual_corrections` by `source_detec
 
 The main dashboard uses a defensive best-effort active issue helper over grouped latest-run dust signals. It shows unresolved critical/warning signals only, excludes reviewed/ignored/external-or-Earn and blocking-correction groups when that state is available, and keeps informational residuals in a count/exposure summary instead of promoting them to active issues. The full audit history remains on the dedicated Dust / Residuals dashboard.
 
-For homepage latency, the overview skips SELL diagnostics by default and renders
-open-lot rows without persisted explanations; `DASHBOARD_INCLUDE_SELL_DIAGNOSTICS=true`
-re-enables the bounded recent diagnostic lookup for local/debug review. Recent
+For homepage latency, the overview skips SELL diagnostics by default and links
+to the dedicated `/dashboard/exit-status/` page. Exit Status intentionally uses
+a bounded recent global SELL-event window instead of an unbounded historical
+scan, then filters open-lot symbols in Python. Recent
 operations are fetched once and reused for the latest-trade card, and dust
 overview uses a capped latest-run candidate set without a homepage-wide
 `COUNT(*)`. Exact historical latest-per-symbol SELL lookup needs an index such
@@ -181,13 +182,23 @@ timings for the main dashboard read
 model, and optional `DASHBOARD_PROFILE_SQL=true` logs slow SQL snippets above
 `DASHBOARD_SLOW_QUERY_MS` (default `100`) without exposing credentials or DB URLs.
 
-The main dashboard position exit status section is read-only. It uses
+The main dashboard position exit status section and full Exit Status page are
+read-only. They use
 `bot.position_lots` as the inventory source, joins `bot.portfolio` only for
 display quantity/price/value, and reads the latest `bot.sell_decision_events`
 row per open-lot symbol for normalized reason explanations. Known reasons map to
 operator-facing labels, interpretations, and suggested actions; unmapped reasons
 fall back to review rather than pretending there is no diagnostic. It does not
 call Binance, execute trades, or mutate accounting state.
+If the bounded SELL diagnostic read fails, Exit Status still renders open FIFO
+lots with `Diagnostics unavailable` rather than failing the request.
+
+Latest anti-churn BUY status is read from `bot.bot_healthcheck.details` only.
+The dashboard recognizes loss, take-profit, and generic SELL re-entry cooldown
+reasons and displays optional persisted SELL/cooldown detail keys when present.
+Recent churn observability is a separate read-only model over filled
+`trade_operations` plus linked `lot_closures` realized PnL; homepage shows only
+summary counts while `/dashboard/churn/` carries the detail rows.
 
 Dust review state is a dashboard workflow concern. Reviewed, ignored, and
 external-or-Earn rows suppress repeated paging only; the underlying

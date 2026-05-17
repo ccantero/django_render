@@ -17,8 +17,10 @@ Implemented capabilities:
 - Authenticated dashboard pages
 - Main dashboard as a concise operator console: normalized Bot Health badge, Inventory Integrity, compact Analytics link card, active issues, informational residual counts, and latest activity
 - Main dashboard does not compute full-history KPI data during initial render; KPI calculations are deferred to the Analytics dashboard
-- Main dashboard uses bounded homepage read paths: recent operations are fetched in a small capped window, SELL diagnostics use a bounded recent event window per open-lot symbol, and dust overview loads only a capped recent candidate set without a homepage `COUNT(*)`
-- Main dashboard skips SELL diagnostics entirely by default for latency; `DASHBOARD_INCLUDE_SELL_DIAGNOSTICS=true` re-enables the diagnostic lookup for local/debug review
+- Main dashboard uses bounded homepage read paths: recent operations are fetched in a small capped window, SELL diagnostics are disabled by default, and dust overview loads only a capped recent candidate set without a homepage `COUNT(*)`
+- Full exit-status diagnostics live on `/dashboard/exit-status/`, which uses a bounded recent global SELL-event window and degrades to open-lot rows marked `Diagnostics unavailable` when diagnostics cannot be read
+- Main dashboard includes compact BUY/cooldown and churn summary cards sourced from latest healthcheck details and read-only recent trade history
+- Read-only `/dashboard/churn/` summarizes recent SELL→BUY re-entry gaps, under-15-minute counts, and linked preceding SELL realized PnL when available
 - Analytics dashboard at `/dashboard/analytics/` for performance analysis: KPIs, fees, PnL breakdowns, and historical tables
 - Analytics dashboard context is cached for 60 seconds to avoid recomputing read-only full-history KPI data on every request
 - Bot status card

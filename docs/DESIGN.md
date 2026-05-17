@@ -34,7 +34,8 @@ Home dashboard responsibility: concise operator console for health, urgent actio
 - Compact latest operations table, capped at four rows
 - Compact Active Operational Issues dust summary with at most five unresolved critical/warning signals
 - Informational Residuals summary with count, approximate exposure, and latest detection timestamp; info-only residuals are not promoted to active issues
-- Compact open FIFO lot exit-status table with one row per open-lot symbol, status label, main reason, PnL %, estimated value, lot quantity, current price, last diagnostic timestamp, and suggested action. Stablecoin cash balances and pure SPOT/projection balances without open lots are explicitly outside this SELL-candidate view.
+- Lightweight open FIFO lot exit-status section that links to the full Exit Status page without loading SELL diagnostics by default. Stablecoin cash balances and pure SPOT/projection balances without open lots are explicitly outside this SELL-candidate view.
+- Compact BUY / Cooldown card from latest healthcheck details and compact churn summary counts from read-only recent operation history
 - Link to the full Dust / Residuals dashboard
 - Link to Analytics
 
@@ -55,6 +56,18 @@ Analytics read-model output may be cached briefly because the page is read-only 
 - Fees by asset
 - PnL by symbol
 - PnL by day
+
+### Exit Status and Churn / Cooldown
+
+- `/dashboard/exit-status/` carries bounded recent SELL diagnostics for
+  open-lot symbols while the homepage stays compact; missing diagnostics should
+  degrade to `Review`, and a failed diagnostics read should render
+  `Diagnostics unavailable`.
+- `/dashboard/churn/` carries recent read-only SELL→BUY re-entry gaps, under
+  15-minute counts, and linked preceding SELL realized PnL when available.
+- Cooldown copy should name loss/stop-loss, take-profit, and recent-sell
+  re-entry blocks in human language; absent optional detail keys must not hide
+  the stable reason.
 
 ### Public and auth pages
 

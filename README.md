@@ -23,7 +23,8 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Compact homepage Active Operational Issues from unresolved critical/warning dust/drift signals only, plus informational residual counts
 - Dust / residual dashboard from `bot.dust_detections`
 - Read-only Telegram mobile diagnostics commands for command discovery, bot health, BUY capacity status, positions, latest SELL diagnostics, and why-not-sell explanations
-- Read-only “Why positions are not selling” dashboard table sourced from open `bot.position_lots` and latest `bot.sell_decision_events`
+- Read-only “Why positions are not selling” visibility through `/dashboard/exit-status/`; the homepage stays lightweight and links there instead of loading SELL diagnostics by default
+- Read-only `/dashboard/churn/` page for recent SELL→BUY re-entry observability and homepage churn summary counts
 - Dust signal detail page
 - Dust detections show linked manual correction status by `source_detection_id`
 - Manual review actions:
@@ -65,6 +66,7 @@ The dashboard and bot are separate projects and share only the database.
 - SELL coverage must never be inferred from `portfolio`.
 - Position exit status must be observational only: use `position_lots` for open inventory, `portfolio` only for display values, and persisted SELL diagnostics only for explanations.
 - Position exit status distinguishes strategy holds, dust/min-filter blockers, drift, metadata issues, read-only mode, and anomalous diagnostics; known reasons must render an interpretation and suggested next step rather than “Unknown.”
+- BUY cooldown visibility reads only latest `bot.bot_healthcheck.details`; supported cooldown reasons are `loss_reentry_cooldown_active`, `take_profit_reentry_cooldown_active`, and `sell_reentry_cooldown_active`.
 - The dashboard must not directly update:
   - `bot.position_lots`
   - `bot.trade_operations`
@@ -196,6 +198,8 @@ diagnostic gaps hide useful information:
   `Free USDT: diagnostic unavailable` while still reporting capacity.
 - If the latest BUY reason is absent, the command shows
   `Latest BUY reason: unavailable`; that alone does not block BUY status.
+- Active re-entry cooldown reasons render as human-readable blocked states and,
+  when present, include latest SELL/cooldown metadata from healthcheck details.
 
 Run tests:
 

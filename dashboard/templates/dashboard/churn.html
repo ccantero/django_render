@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+	<div class="d-flex justify-content-between align-items-center mb-3">
+		<div>
+			<h1 class="h3 mb-1">Churn / Cooldown</h1>
+			<p class="text-muted mb-0">Read-only recent SELL→BUY re-entry observability.</p>
+		</div>
+		<a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">Back to Overview</a>
+	</div>
+	{% if data_error %}<div class="alert alert-warning">{{ data_error }}</div>{% endif %}
+	<div class="row mb-3">
+		<div class="col-md-4"><div class="card"><div class="card-body">SELL→BUY under 15m (24h): <strong>{{ churn_summary.reentries_under_15m_24h }}</strong></div></div></div>
+		<div class="col-md-4"><div class="card"><div class="card-body">SELL→BUY under 15m (48h): <strong>{{ churn_summary.reentries_under_15m_48h }}</strong></div></div></div>
+		<div class="col-md-4"><div class="card"><div class="card-body">Economically questionable: <strong>{{ churn_summary.economically_questionable_count }}</strong></div></div></div>
+	</div>
+	<div class="card">
+		<div class="card-body">
+			{% if churn_summary.rows %}
+				<div class="table-responsive">
+					<table class="table table-sm">
+						<thead><tr><th>Symbol</th><th>Gap min</th><th>SELL</th><th>BUY</th><th>Preceding SELL realized PnL</th><th>Questionable</th></tr></thead>
+						<tbody>
+							{% for row in churn_summary.rows %}
+								<tr>
+									<td>{{ row.symbol }}</td>
+									<td>{{ row.gap_minutes|floatformat:2 }}</td>
+									<td>{{ row.sell_timestamp|date:"Y-m-d H:i" }}</td>
+									<td>{{ row.buy_timestamp|date:"Y-m-d H:i" }}</td>
+									<td>{{ row.preceding_sell_realized_pnl|floatformat:4|default:"-" }}</td>
+									<td>{{ row.economically_questionable|yesno:"yes,no" }}</td>
+								</tr>
+							{% endfor %}
+						</tbody>
+					</table>
+				</div>
+			{% else %}
+				<p class="text-muted mb-0">No SELL→BUY re-entry data in the last 48 hours.</p>
+			{% endif %}
+		</div>
+	</div>
+</div>
+{% endblock %}

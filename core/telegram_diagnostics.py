@@ -48,6 +48,11 @@ DUST_REASON_PRESENTATION = {
 	"balance_without_lot_coverage": ("Binance balance without bot lot", "Binance has SPOT inventory not represented in bot FIFO lots.", "If this should become bot-managed inventory, request CREATE_EXTERNAL_LOT."),
 	"lot_balance_drift": ("Lot / balance drift", "Open lots and Binance SPOT balance differ.", "Review drift direction. Use CREATE_EXTERNAL_LOT if Binance > lots, or CLOSE_LOTS_EXTERNAL_SELL if lots > Binance."),
 }
+BUY_COOLDOWN_REASON_PRESENTATION = {
+	"loss_reentry_cooldown_active": "Re-entry blocked after loss/stop-loss cooldown",
+	"take_profit_reentry_cooldown_active": "Re-entry blocked after take-profit cooldown",
+	"sell_reentry_cooldown_active": "Re-entry blocked after recent sell cooldown",
+}
 
 
 def diagnostic_response(text, chat_id, user_id=None):
@@ -251,10 +256,24 @@ def format_buy_status():
 		f"Free USDT: <code>{h(fmt_usdt(free_usdt) if free_usdt is not None else 'diagnostic unavailable')}</code>",
 		f"Latest BUY decision: <code>{h(latest_buy_decision or 'unavailable')}</code>",
 		f"Latest BUY reason: <code>{h(latest_buy_reason or 'unavailable')}</code>",
+		f"Latest BUY symbol: <code>{h(details.get('latest_buy_symbol') or 'unavailable')}</code>",
 		"",
 		f"BUY state: <code>{h(state_label)}</code>",
 		f"Reason: <code>{h(reason)}</code>",
 	]
+	human_reason = BUY_COOLDOWN_REASON_PRESENTATION.get(str(latest_buy_reason or "").strip().lower())
+	if human_reason:
+		lines.extend([
+			"",
+			f"Cooldown: <code>{h(human_reason)}</code>",
+			f"Latest SELL operation: <code>{h(details.get('latest_sell_operation_id'))}</code>",
+			f"Latest SELL timestamp: <code>{h(details.get('latest_sell_timestamp'))}</code>",
+			f"Latest SELL reason: <code>{h(details.get('latest_sell_reason'))}</code>",
+			f"Latest SELL realized PnL: <code>{h(details.get('latest_sell_realized_pnl'))}</code>",
+			f"Cooldown type: <code>{h(details.get('cooldown_type'))}</code>",
+			f"Cooldown minutes: <code>{h(details.get('cooldown_minutes'))}</code>",
+			f"Cooldown remaining: <code>{h(details.get('cooldown_remaining_minutes'))}</code>",
+		])
 	return "\n".join(lines)
 
 
@@ -823,6 +842,8 @@ def interpret_buy_state(
 		return "execution_error", "🔴", "latest BUY execution failed"
 	if decision == "no_candidate" or "no_candidate" in reason:
 		return "no_candidate", "⚪", "scanner did not select a candidate"
+	if reason in BUY_COOLDOWN_REASON_PRESENTATION:
+		return "blocked_by_cooldown", "🟡", BUY_COOLDOWN_REASON_PRESENTATION[reason]
 	if effective >= maximum:
 		return "blocked_by_positions", "🔴", "effective positions at max capacity"
 	if free is not None and min_required is not None and free < min_required:

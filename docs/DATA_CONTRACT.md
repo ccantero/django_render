@@ -259,6 +259,11 @@ Dashboard usage:
 - Validate that SELL executed quantity equals closed lot quantity
 - Detect incomplete closures
 
+Current physical schema note from the shared audit: the persisted closure time
+column is `closed_at`; `timestamp` is not present. Dashboard daily KPI grouping
+must continue to use linked `trade_operations.executed_at`, falling back to
+`trade_operations.created_at`, rather than relying on a closure timestamp.
+
 Conceptual fields:
 
 - closure id
@@ -1121,6 +1126,10 @@ Alerts should be informational unless the condition is clearly critical.
 ## 7.8 Position Exit Status
 
 The main dashboard may show a read-only “Why positions are not selling” view.
+The dashboard may also expose a dedicated Exit Status page when the homepage
+intentionally skips SELL diagnostics for latency. That page may use a bounded
+recent diagnostics read rather than an unbounded historical scan, and should
+state diagnostic unavailability honestly when no recent diagnostic is loaded.
 
 Primary inventory source: `bot.position_lots`.
 
@@ -1137,6 +1146,15 @@ SELL diagnostics are optional explanation metadata for this view. Consumers
 should continue rendering open inventory from `bot.position_lots` when
 `sell_decision_events` cannot be read, rather than hiding or failing the whole
 dashboard.
+
+Latest BUY anti-churn cooldown explanations may be read from
+`bot.bot_healthcheck.details` using stable reasons
+`loss_reentry_cooldown_active`,
+`take_profit_reentry_cooldown_active`, and
+`sell_reentry_cooldown_active`. Optional detail keys such as
+`latest_sell_operation_id`, `latest_sell_timestamp`, `latest_sell_reason`,
+`latest_sell_realized_pnl`, `cooldown_type`, `cooldown_minutes`, and
+`cooldown_remaining_minutes` are diagnostics only.
 
 Required dashboard columns:
 

@@ -6,6 +6,8 @@ from dashboard import views
 urlpatterns = [
     path("dashboard/", views.dashboard, name="dashboard"),
     path("dashboard/analytics/", views.dashboard_analytics, name="dashboard_analytics"),
+    path("dashboard/exit-status/", views.dashboard_exit_status, name="dashboard_exit_status"),
+    path("dashboard/churn/", views.dashboard_churn, name="dashboard_churn"),
     path("dashboard/demo/", views.dashboard_demo, name="dashboard_demo"),
     path("dashboard/dust/", views.dust_dashboard, name="dust_dashboard"),
     path("dashboard/dust/detail/", views.dust_detail, name="dust_detail"),

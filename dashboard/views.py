@@ -7,6 +7,8 @@ from django.urls import reverse
 from dashboard.dashboard_read_model import (
 	get_dashboard_analytics_context,
 	get_dashboard_context,
+	get_exit_status_context,
+	get_churn_context,
 	get_demo_dashboard_context,
 )
 from dashboard.dust_read_model import (
@@ -28,6 +30,18 @@ def dashboard(request):
 def dashboard_analytics(request):
 	read_model = get_dashboard_analytics_context()
 	return render(request, "dashboard/analytics.html", read_model.context)
+
+
+@login_required
+def dashboard_exit_status(request):
+	read_model = get_exit_status_context()
+	return render(request, "dashboard/exit_status.html", read_model.context)
+
+
+@login_required
+def dashboard_churn(request):
+	read_model = get_churn_context()
+	return render(request, "dashboard/churn.html", read_model.context)
 
 
 def dashboard_demo(request):

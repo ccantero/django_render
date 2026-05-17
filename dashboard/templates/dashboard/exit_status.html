@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+	<div class="d-flex justify-content-between align-items-center mb-3">
+		<div>
+			<h1 class="h3 mb-1">Exit Status</h1>
+			<p class="text-muted mb-0">Read-only “Why not sell” diagnostics for symbols with open FIFO lots.</p>
+		</div>
+		<a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard' %}">Back to Overview</a>
+	</div>
+	{% if data_error %}<div class="alert alert-warning">{{ data_error }}</div>{% endif %}
+	<div class="card">
+		<div class="card-body">
+			{% if position_exit_status.rows %}
+				<div class="table-responsive">
+					<table class="table table-sm">
+						<thead><tr><th>Symbol</th><th>Status</th><th>Main reason</th><th>PnL %</th><th>Open qty</th><th>Value USDT</th><th>Last diagnostic</th><th>Suggested action</th></tr></thead>
+						<tbody>
+							{% for row in position_exit_status.rows %}
+								<tr>
+									<td>{{ row.symbol }}</td>
+									<td><span class="badge {{ row.status_badge }}">{{ row.status_label }}</span></td>
+									<td>{{ row.main_reason }}{% if row.interpretation %}<div class="small text-muted">{{ row.interpretation }}</div>{% endif %}</td>
+									<td>{{ row.estimated_pnl_percent|floatformat:2|default:"-" }}</td>
+									<td>{{ row.open_lot_quantity|floatformat:8 }}</td>
+									<td>{{ row.estimated_value_usdt|floatformat:4|default:"-" }}</td>
+									<td>{{ row.evaluated_at|date:"Y-m-d H:i"|default:"-" }}</td>
+									<td>{{ row.suggested_action }}</td>
+								</tr>
+							{% endfor %}
+						</tbody>
+					</table>
+				</div>
+			{% else %}
+				<p class="text-muted mb-0">No open FIFO lots found.</p>
+			{% endif %}
+		</div>
+	</div>
+</div>
+{% endblock %}

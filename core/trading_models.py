@@ -115,13 +115,20 @@ class TradeFill(ReadOnlyTradingModel):
 
 
 class LotClosure(ReadOnlyTradingModel):
+	sell_fill_id = models.BigIntegerField()
+	lot_id = models.CharField(max_length=128)
+	symbol = models.CharField(max_length=32)
 	trade_operation_id = models.BigIntegerField()
-	closed_lot_id = models.BigIntegerField()
-	closed_quantity = models.DecimalField(max_digits=36, decimal_places=18)
+	closed_quantity = models.DecimalField(
+		max_digits=36,
+		decimal_places=18,
+		db_column="quantity_closed",
+	)
 	entry_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
 	exit_price = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
 	realized_pnl = models.DecimalField(max_digits=36, decimal_places=18, blank=True, null=True)
-	timestamp = models.DateTimeField(blank=True, null=True)
+	closed_at = models.DateTimeField(blank=True, null=True)
+	metadata = models.JSONField(blank=True, null=True)
 
 	class Meta:
 		managed = False

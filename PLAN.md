@@ -43,6 +43,9 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - Dust correction request links are disabled in the UI when the latest detection already has a linked `PENDING` or `APPLIED` correction; bot-side duplicate validation remains authoritative.
 - Main dashboard is now a concise operator console with normalized Bot Health status badges, Inventory Integrity, Performance Snapshot, latest four operations, active dust/drift issues, and informational residual counts.
 - Main dashboard includes a read-only “Why positions are not selling” table that separates dust/minNotional blockers, strategy holds, and review-needed drift from latest persisted SELL diagnostics.
+- Main dashboard keeps exit-status diagnostics disabled by default for latency and links to `/dashboard/exit-status/`, which uses a bounded recent diagnostics read.
+- Read-only churn observability exists at `/dashboard/churn/`, with homepage summary counts for recent SELL→BUY re-entry under 15 minutes.
+- `/buy_status` and dashboard BUY/cooldown cards render the three stable anti-churn re-entry cooldown reasons from latest healthcheck details.
 - Position exit status now maps known SELL reasons to operator-facing labels, interpretations, and suggested actions, including anomaly handling for invalid positive-PnL stop-loss diagnostics.
 - Telegram SELL diagnostics and dust/drift alert templates now favor compact human-readable interpretation plus next-step guidance while preserving raw diagnostic fields.
 - Analytics dashboard exists at `/dashboard/analytics/` for read-only KPI detail, fees, PnL by symbol, and PnL by day sourced from `bot.lot_closures` and `bot.trade_operations`.

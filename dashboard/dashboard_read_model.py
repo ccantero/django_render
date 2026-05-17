@@ -61,8 +61,16 @@ logger = logging.getLogger(__name__)
 RECENT_OPERATIONS_LIMIT = 20
 SELL_EVENT_MIN_WINDOW = 200
 SELL_EVENT_WINDOW_PER_SYMBOL = 20
+EXIT_STATUS_SELL_EVENT_LIMIT = 1000
 ANALYTICS_CACHE_KEY = "dashboard:analytics_context:v1"
 ANALYTICS_CACHE_SECONDS = 60
+CHURN_WINDOW_HOURS = 48
+CHURN_GAP_MINUTES = 15
+BUY_COOLDOWN_REASON_PRESENTATION = {
+	"loss_reentry_cooldown_active": "Re-entry blocked after loss/stop-loss cooldown",
+	"take_profit_reentry_cooldown_active": "Re-entry blocked after take-profit cooldown",
+	"sell_reentry_cooldown_active": "Re-entry blocked after recent sell cooldown",
+}
 
 SELL_REASON_PRESENTATION = {
 	"stop_loss_not_reached": {
@@ -136,19 +144,25 @@ class DashboardReadModel:
 
 
 def get_dashboard_context(include_performance_kpis=False):
+	started = perf_counter()
 	if _dashboard_profile_enabled():
 		_ensure_dashboard_profile_console_logging()
 		with _DashboardProfiler() as profiler:
-			return _get_dashboard_context(
+			read_model = _get_dashboard_context(
 				include_performance_kpis=include_performance_kpis,
 				profiler=profiler,
 			)
-	return _get_dashboard_context(include_performance_kpis=include_performance_kpis)
+	else:
+		read_model = _get_dashboard_context(include_performance_kpis=include_performance_kpis)
+	logger.info("dashboard homepage read model built in %.2fms", (perf_counter() - started) * 1000)
+	return read_model
 
 
 def get_dashboard_analytics_context():
+	started = perf_counter()
 	cached_context = cache.get(ANALYTICS_CACHE_KEY)
 	if cached_context is not None:
+		logger.info("dashboard analytics read model cache hit in %.2fms", (perf_counter() - started) * 1000)
 		return DashboardReadModel(
 			context=cached_context,
 			queries=_important_queries(),
@@ -157,6 +171,7 @@ def get_dashboard_analytics_context():
 
 	read_model = get_dashboard_context(include_performance_kpis=True)
 	cache.set(ANALYTICS_CACHE_KEY, read_model.context, ANALYTICS_CACHE_SECONDS)
+	logger.info("dashboard analytics read model built in %.2fms", (perf_counter() - started) * 1000)
 	return read_model
 
 
@@ -175,6 +190,8 @@ def _get_dashboard_context(include_performance_kpis=False, profiler=None):
 		"dust_summary": _empty_dust_summary(),
 		"position_exit_status": _empty_position_exit_status(),
 		"inventory_scope": _empty_inventory_scope_summary(),
+		"buy_status_summary": _empty_buy_status_summary(),
+		"churn_summary": _empty_churn_summary(),
 		"data_error": None,
 		"is_demo": False,
 	}
@@ -190,6 +207,9 @@ def _get_dashboard_context(include_performance_kpis=False, profiler=None):
 	try:
 		with _profile_section(profiler, "healthcheck"):
 			context["bot_status"] = _build_bot_status()
+			context["buy_status_summary"] = _build_buy_status_summary(
+				getattr(context["bot_status"].get("row"), "details", None) or {}
+			)
 	except DatabaseError as exc:
 		_add_data_error(context, "bot status", exc)
 
@@ -239,6 +259,7 @@ def _get_dashboard_context(include_performance_kpis=False, profiler=None):
 				portfolio_rows,
 				latest_sell_events,
 				diagnostics_loaded=diagnostics_loaded,
+				diagnostics_unavailable=False,
 			)
 			context["inventory_scope"] = _build_inventory_scope_summary(
 				portfolio_rows,
@@ -255,6 +276,12 @@ def _get_dashboard_context(include_performance_kpis=False, profiler=None):
 				_add_data_error(context, "dust detections", context["dust_summary"]["data_error"])
 	except DatabaseError as exc:
 		_add_data_error(context, "dust detections", exc)
+
+	try:
+		with _profile_section(profiler, "churn_summary"):
+			context["churn_summary"] = _build_recent_churn_summary()
+	except DatabaseError as exc:
+		_add_data_error(context, "churn summary", exc)
 
 	return DashboardReadModel(
 		context=context,
@@ -522,6 +549,60 @@ def _build_bot_status():
 		"stale_after_minutes": 15,
 		**_bot_health_badge(latest.status, latest, is_stale),
 	}
+
+
+def get_exit_status_context():
+	started = perf_counter()
+	context = {
+		"position_exit_status": _empty_position_exit_status(),
+		"inventory_scope": _empty_inventory_scope_summary(),
+		"data_error": None,
+	}
+	try:
+		portfolio_rows = list(Portfolio.objects.all().order_by("symbol"))
+		open_lots = _open_lots_by_symbol()
+		diagnostics_started = perf_counter()
+		latest_events = _latest_sell_events_for_exit_status(open_lots)
+		logger.info(
+			"dashboard exit status latest sell diagnostics built in %.2fms",
+			(perf_counter() - diagnostics_started) * 1000,
+		)
+		diagnostics_loaded = latest_events is not None
+		context["position_exit_status"] = _build_position_exit_status(
+			open_lots,
+			portfolio_rows,
+			latest_events or {},
+			diagnostics_loaded=diagnostics_loaded,
+			diagnostics_unavailable=not diagnostics_loaded,
+		)
+		context["inventory_scope"] = _build_inventory_scope_summary(
+			portfolio_rows,
+			open_lots,
+			context["position_exit_status"],
+		)
+	except DatabaseError as exc:
+		_add_data_error(context, "exit status", exc)
+		if "open_lots" in locals():
+			context["position_exit_status"] = _build_position_exit_status(
+				open_lots,
+				portfolio_rows if "portfolio_rows" in locals() else [],
+				{},
+				diagnostics_loaded=False,
+				diagnostics_unavailable=True,
+			)
+	logger.info("dashboard exit status read model built in %.2fms", (perf_counter() - started) * 1000)
+	return DashboardReadModel(context=context, queries=_important_queries(), assumptions=_assumptions())
+
+
+def get_churn_context():
+	started = perf_counter()
+	context = {"churn_summary": _empty_churn_summary(), "data_error": None}
+	try:
+		context["churn_summary"] = _build_recent_churn_summary(include_rows=True)
+	except DatabaseError as exc:
+		_add_data_error(context, "churn summary", exc)
+	logger.info("dashboard churn read model built in %.2fms", (perf_counter() - started) * 1000)
+	return DashboardReadModel(context=context, queries=_important_queries(), assumptions=_assumptions())
 
 
 def _empty_bot_status():
@@ -962,9 +1043,38 @@ def _latest_sell_events_by_symbol(open_lots):
 		)
 		for event in queryset:
 			events.setdefault(event.symbol, event)
-	except (DatabaseError, FieldError):
-		logger.exception("Unable to read sell decision diagnostics for dashboard position exit status")
+	except (DatabaseError, FieldError) as exc:
+		logger.warning(
+			"Unable to read sell decision diagnostics for dashboard position exit status: %s",
+			exc,
+		)
 		return {}
+	return events
+
+
+def _latest_sell_events_for_exit_status(open_lots):
+	symbols = list(open_lots.keys())
+	if not symbols:
+		return {}
+	events = {}
+	started = perf_counter()
+	try:
+		queryset = (
+			SellDecisionEvent.objects
+			.order_by("-created_at", "-id")[:EXIT_STATUS_SELL_EVENT_LIMIT]
+		)
+		for event in queryset:
+			if event.symbol in open_lots:
+				events.setdefault(event.symbol, event)
+	except (DatabaseError, FieldError) as exc:
+		logger.warning("Unable to read bounded sell decision diagnostics for exit status: %s", exc)
+		return None
+	finally:
+		logger.info(
+			"dashboard exit status latest sell diagnostics query elapsed_ms=%.2f limit=%s",
+			(perf_counter() - started) * 1000,
+			EXIT_STATUS_SELL_EVENT_LIMIT,
+		)
 	return events
 
 
@@ -1063,7 +1173,13 @@ class _DashboardProfileSection:
 		)
 
 
-def _build_position_exit_status(open_lots, portfolio_rows, sell_events_by_symbol, diagnostics_loaded=True):
+def _build_position_exit_status(
+	open_lots,
+	portfolio_rows,
+	sell_events_by_symbol,
+	diagnostics_loaded=True,
+	diagnostics_unavailable=False,
+):
 	portfolio_by_symbol = {row.symbol: row for row in portfolio_rows}
 	rows = []
 	material_count = 0
@@ -1083,12 +1199,20 @@ def _build_position_exit_status(open_lots, portfolio_rows, sell_events_by_symbol
 			presentation = _position_exit_presentation(reasons, _event_decimal(event, "estimated_pnl_percent"))
 		else:
 			reasons = []
-			presentation = {
-				"status_label": "Diagnostics not loaded",
-				"status_badge": "badge-secondary",
-				"interpretation": "SELL diagnostics are not loaded on the lightweight homepage.",
-				"suggested_action": "Open Analytics or a future SELL diagnostics detail view for persisted explanations.",
-			}
+			if diagnostics_unavailable:
+				presentation = {
+					"status_label": "Diagnostics unavailable",
+					"status_badge": "badge-secondary",
+					"interpretation": "Persisted SELL diagnostics could not be loaded for this view.",
+					"suggested_action": "Review again later or inspect persisted diagnostics directly.",
+				}
+			else:
+				presentation = {
+					"status_label": "Open Exit Status",
+					"status_badge": "badge-secondary",
+					"interpretation": "Full SELL explanations live on the dedicated Exit Status page.",
+					"suggested_action": "Open Exit Status.",
+				}
 
 		if estimated_value is not None and estimated_value > Decimal("0") and estimated_value < DUST_MIN_VALUE:
 			dust_count += 1
@@ -1101,7 +1225,11 @@ def _build_position_exit_status(open_lots, portfolio_rows, sell_events_by_symbol
 			"asset": _payload_value(event, "asset") or getattr(portfolio, "asset", None) or _asset_from_symbol(symbol),
 			"status_label": presentation["status_label"],
 			"status_badge": presentation["status_badge"],
-			"main_reason": _format_sell_reasons(reasons) if reasons else "not loaded on homepage",
+			"main_reason": (
+				_format_sell_reasons(reasons)
+				if reasons
+				else "diagnostics unavailable" if diagnostics_unavailable else "open full page"
+			),
 			"reasons": reasons,
 			"estimated_pnl_percent": _event_decimal(event, "estimated_pnl_percent"),
 			"interpretation": presentation["interpretation"],
@@ -1411,6 +1539,106 @@ def _empty_inventory_scope_summary():
 		"excluded_balances_count": 0,
 		"excluded_balances": [],
 	}
+
+
+def _build_buy_status_summary(details):
+	details = details if isinstance(details, dict) else {}
+	material = _to_decimal(details.get("material_positions_count"))
+	unknown = _to_decimal(details.get("unknown_value_positions_count")) or Decimal("0")
+	max_positions = _to_decimal(details.get("max_positions"))
+	effective = material + unknown if material is not None else None
+	remaining = max(max_positions - effective, Decimal("0")) if max_positions is not None and effective is not None else None
+	reason = details.get("latest_buy_reason")
+	return {
+		"latest_buy_state": details.get("latest_buy_state") or details.get("latest_buy_decision"),
+		"latest_buy_reason": reason,
+		"latest_buy_human_reason": BUY_COOLDOWN_REASON_PRESENTATION.get(reason, reason),
+		"latest_buy_symbol": details.get("latest_buy_symbol"),
+		"effective_positions_count": effective,
+		"max_positions": max_positions,
+		"remaining_buy_capacity": remaining,
+		"free_usdt": _to_decimal(details.get("free_usdt")),
+		"dust_positions_count": _to_decimal(details.get("dust_positions_count")),
+		"latest_sell_operation_id": details.get("latest_sell_operation_id"),
+		"latest_sell_timestamp": details.get("latest_sell_timestamp"),
+		"latest_sell_reason": details.get("latest_sell_reason"),
+		"latest_sell_realized_pnl": details.get("latest_sell_realized_pnl"),
+		"cooldown_type": details.get("cooldown_type"),
+		"cooldown_minutes": details.get("cooldown_minutes"),
+		"cooldown_remaining_minutes": details.get("cooldown_remaining_minutes"),
+	}
+
+
+def _empty_buy_status_summary():
+	return _build_buy_status_summary({})
+
+
+def _build_recent_churn_summary(include_rows=False):
+	cutoff = timezone.now() - timedelta(hours=CHURN_WINDOW_HOURS)
+	operations = list(
+		TradeOperation.objects
+		.filter(status="FILLED", side__in=["SELL", "BUY"], executed_at__gte=cutoff)
+		.order_by("symbol", "executed_at", "created_at", "id")
+		.values("id", "symbol", "side", "executed_at", "created_at", "gross_quote", "fee_amount_in_quote")
+	)
+	sell_ids = [row["id"] for row in operations if row["side"] == "SELL"]
+	closure_rows = (
+		LotClosure.objects.filter(trade_operation_id__in=sell_ids)
+		.values("trade_operation_id")
+		.annotate(realized_pnl=Sum("realized_pnl"))
+	) if sell_ids else []
+	realized_by_sell = {row["trade_operation_id"]: row["realized_pnl"] for row in closure_rows}
+	return _build_churn_summary(operations, realized_by_sell, include_rows=include_rows)
+
+
+def _build_churn_summary(operations, realized_by_sell, include_rows=True):
+	last_sell_by_symbol = {}
+	rows = []
+	now = timezone.now()
+	for operation in operations:
+		timestamp = operation.get("executed_at") or operation.get("created_at")
+		if timestamp is None:
+			continue
+		if operation.get("side") == "SELL":
+			last_sell_by_symbol[operation.get("symbol")] = operation
+			continue
+		if operation.get("side") != "BUY":
+			continue
+		sell = last_sell_by_symbol.get(operation.get("symbol"))
+		if not sell:
+			continue
+		sell_timestamp = sell.get("executed_at") or sell.get("created_at")
+		if sell_timestamp is None:
+			continue
+		gap_minutes = (timestamp - sell_timestamp).total_seconds() / 60
+		if gap_minutes < 0:
+			continue
+		realized_pnl = realized_by_sell.get(sell.get("id"))
+		total_fees = (sell.get("fee_amount_in_quote") or Decimal("0")) + (operation.get("fee_amount_in_quote") or Decimal("0"))
+		economically_questionable = realized_pnl is not None and realized_pnl <= total_fees
+		rows.append({
+			"symbol": operation.get("symbol"),
+			"sell_operation_id": sell.get("id"),
+			"buy_operation_id": operation.get("id"),
+			"gap_minutes": Decimal(str(gap_minutes)),
+			"sell_timestamp": sell_timestamp,
+			"buy_timestamp": timestamp,
+			"preceding_sell_realized_pnl": realized_pnl,
+			"economically_questionable": economically_questionable,
+		})
+	recent_24h = now - timedelta(hours=24)
+	under_15 = [row for row in rows if row["gap_minutes"] < Decimal(CHURN_GAP_MINUTES)]
+	return {
+		"reentries_under_15m_24h": sum(1 for row in under_15 if row["buy_timestamp"] >= recent_24h),
+		"reentries_under_15m_48h": len(under_15),
+		"economically_questionable_count": sum(1 for row in under_15 if row["economically_questionable"]),
+		"latest_gap_minutes": rows[-1]["gap_minutes"] if rows else None,
+		"rows": list(reversed(rows)) if include_rows else [],
+	}
+
+
+def _empty_churn_summary():
+	return _build_churn_summary([], {}, include_rows=False)
 
 
 def _is_material(portfolio):
