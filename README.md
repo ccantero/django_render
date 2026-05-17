@@ -19,6 +19,11 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
   - win rate, average win/loss, and profit factor
   - gross deployed capital approximation
   - PnL by symbol and day
+- Read-only Operational Trading KPIs v2 page:
+  - strategy-version summary, including historical `unversioned` rows
+  - hold-time analytics and buckets
+  - same-symbol SELL→BUY churn metrics with configurable threshold
+  - fee-efficiency metrics using normalized quote fees only
 - Drift alerts between `bot.portfolio` and `bot.position_lots`
 - Compact homepage Active Operational Issues from unresolved critical/warning dust/drift signals only, plus informational residual counts
 - Dust / residual dashboard from `bot.dust_detections`
@@ -61,6 +66,7 @@ The dashboard and bot are separate projects and share only the database.
 - `position_lots` is the accounting source of truth.
 - `portfolio` is a projection/read layer.
 - Performance KPIs are operational visibility, not audited accounting statements.
+- Operational Trading KPIs v2 are operational analytics, not audited accounting statements; identifiable manual/accounting-only corrections are excluded from trading-quality metrics.
 - Normalized fee totals use `bot.trade_operations.fee_amount_in_quote` for FILLED USDT-quote operations; fees that cannot be normalized to USDT are excluded.
 - PnL by day uses linked trade operation timestamps (`executed_at` then `created_at`), not a timestamp on `lot_closures`.
 - SELL coverage must never be inferred from `portfolio`.

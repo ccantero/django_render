@@ -52,8 +52,12 @@ from dashboard.dust_read_model import (
     update_dust_signal_review,
 )
 from dashboard.forms import ManualCorrectionRequestForm
+from dashboard.services.operational_kpis import (
+    OperationalKpiFilters,
+    _calculate_operational_kpis,
+)
 from core.models import DustSignalReview, ManualCorrection
-from core.trading_models import DustDetection, LotClosure, TradeOperation
+from core.trading_models import DustDetection, LotClosure, PositionLot, TradeOperation
 from dashboard.views import _manual_correction_quantity
 from core.telegram_diagnostics import format_dust_drift_alert
 
@@ -1035,6 +1039,12 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse('login'), response['Location'])
 
+    def test_operational_kpis_dashboard_requires_authentication(self):
+        response = self.client.get(reverse('dashboard_operational_kpis'))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response['Location'])
+
     @patch('dashboard.views.get_dashboard_context')
     def test_analytics_dashboard_renders_performance_tables(self, mock_get_dashboard_context):
         context = self.empty_dashboard_context()
@@ -1287,6 +1297,60 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Churn / Cooldown')
         self.assertContains(response, 'SELL→BUY under 15m')
+
+    @patch('dashboard.views.get_operational_kpis_context')
+    def test_operational_kpis_dashboard_renders_tables(self, mock_get_operational_kpis_context):
+        mock_get_operational_kpis_context.return_value.context = {
+            'filters': OperationalKpiFilters(churn_threshold_minutes=60),
+            'strategy_summary': [{
+                'strategy_version': 'v2',
+                'closed_trades_count': 1,
+                'eligible_filled_sell_count': 1,
+                'net_realized_pnl': Decimal('5'),
+                'win_rate': Decimal('100'),
+                'average_hold_duration': timezone.timedelta(minutes=30),
+                'churn_count': 1,
+                'churn_frequency': Decimal('100'),
+                'total_normalized_fees': Decimal('0.2'),
+                'fee_efficiency': Decimal('4'),
+            }],
+            'hold_time': {
+                'average_hold_duration': timezone.timedelta(minutes=30),
+                'median_hold_duration': timezone.timedelta(minutes=30),
+                'shortest_hold_duration': timezone.timedelta(minutes=30),
+                'longest_hold_duration': timezone.timedelta(minutes=30),
+                'closed_under_15m_count': 0,
+                'buckets': {'<15m': 0, '15m-1h': 1, '1h-4h': 0, '4h-24h': 0, '>24h': 0},
+            },
+            'churn': {
+                'eligible_filled_sell_count': 1,
+                'same_symbol_reentry_count': 1,
+                'same_symbol_reentry_frequency': Decimal('100'),
+                'stop_loss_reentry_churn_count': 0,
+                'by_strategy_version': [],
+            },
+            'fee_efficiency': {
+                'total_normalized_fees': Decimal('0.2'),
+                'gross_profit': Decimal('5'),
+                'net_realized_pnl': Decimal('4.8'),
+                'fees_over_gross_profit': Decimal('4'),
+                'fees_over_absolute_net_pnl': Decimal('4.1666666667'),
+                'average_fee_per_closed_trade': Decimal('0.2'),
+                'by_symbol': [],
+            },
+            'data_error': None,
+        }
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('dashboard_operational_kpis'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Operational Trading KPIs v2')
+        self.assertContains(response, 'Strategy Version Summary')
+        self.assertContains(response, 'Hold-Time Analytics')
+        self.assertContains(response, 'Churn Metrics')
+        self.assertContains(response, 'Fee Efficiency')
+        self.assertContains(response, '100%')
 
     def test_demo_dashboard_is_public_and_read_only(self):
         response = self.client.get(reverse('dashboard_demo'))
@@ -2412,6 +2476,10 @@ class DashboardEndpointTests(TestCase):
     def test_lot_closure_model_does_not_map_missing_timestamp_column(self):
         self.assertNotIn('timestamp', [field.name for field in LotClosure._meta.fields])
 
+    def test_operational_kpis_lot_link_models_use_lot_id_fields(self):
+        self.assertIn('lot_id', [field.name for field in LotClosure._meta.fields])
+        self.assertIn('lot_id', [field.name for field in PositionLot._meta.fields])
+
     def test_performance_kpis_calculate_realized_pnl_fees_and_deployed_capital(self):
         closure_rows = [
             {
@@ -3045,6 +3113,118 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(summary['reentries_under_15m_48h'], 0)
         self.assertEqual(summary['economically_questionable_count'], 0)
         self.assertEqual(summary['rows'], [])
+
+    def test_operational_kpis_group_unversioned_and_exclude_manual_corrections(self):
+        now = timezone.datetime(2026, 5, 17, 12, tzinfo=timezone.utc)
+        result = _calculate_operational_kpis(
+            closure_rows=[
+                {'trade_operation_id': 1, 'lot_id': 'lot-1', 'realized_pnl': Decimal('10')},
+                {'trade_operation_id': 2, 'lot_id': 'lot-2', 'realized_pnl': Decimal('-2')},
+                {'trade_operation_id': 3, 'lot_id': 'lot-3', 'realized_pnl': Decimal('99')},
+            ],
+            sell_operations={
+                1: {'id': 1, 'symbol': 'BTCUSDT', 'timestamp': now, 'strategy_version': 'v2', 'fee_amount_in_quote': Decimal('0.5'), 'manual_correction': False},
+                2: {'id': 2, 'symbol': 'ETHUSDT', 'timestamp': now, 'strategy_version': 'unversioned', 'fee_amount_in_quote': Decimal('0.25'), 'manual_correction': False},
+                3: {'id': 3, 'symbol': 'SOLUSDT', 'timestamp': now, 'strategy_version': 'v2', 'fee_amount_in_quote': Decimal('0.1'), 'manual_correction': True},
+            },
+            opened_lots={
+                'lot-1': now - timezone.timedelta(hours=2),
+                'lot-2': now - timezone.timedelta(minutes=30),
+                'lot-3': now - timezone.timedelta(minutes=10),
+            },
+            operations=[],
+            churn_threshold_minutes=60,
+        )
+
+        versions = {row['strategy_version']: row for row in result['strategy_summary']}
+        self.assertEqual(set(versions), {'unversioned', 'v2'})
+        self.assertEqual(versions['v2']['closed_trades_count'], 1)
+        self.assertEqual(versions['v2']['net_realized_pnl'], Decimal('9.5'))
+        self.assertEqual(versions['v2']['eligible_filled_sell_count'], 0)
+        self.assertIsNone(versions['v2']['churn_frequency'])
+        self.assertEqual(versions['unversioned']['closed_trades_count'], 1)
+        self.assertEqual(result['fee_efficiency']['total_normalized_fees'], Decimal('0.75'))
+
+    def test_operational_kpis_strategy_churn_uses_eligible_sell_denominator(self):
+        now = timezone.datetime(2026, 5, 17, 12, tzinfo=timezone.utc)
+        result = _calculate_operational_kpis(
+            closure_rows=[
+                {'trade_operation_id': 1, 'lot_id': 'lot-1', 'realized_pnl': Decimal('3')},
+            ],
+            sell_operations={
+                1: {'id': 1, 'symbol': 'BTCUSDT', 'timestamp': now - timezone.timedelta(hours=3), 'strategy_version': 'v2', 'fee_amount_in_quote': Decimal('0.2'), 'manual_correction': False},
+            },
+            opened_lots={'lot-1': now - timezone.timedelta(hours=4)},
+            operations=[
+                {'id': 1, 'symbol': 'BTCUSDT', 'side': 'SELL', 'timestamp': now - timezone.timedelta(hours=3), 'strategy_version': 'v2', 'manual_correction': False},
+                {'id': 2, 'symbol': 'BTCUSDT', 'side': 'BUY', 'timestamp': now - timezone.timedelta(hours=2, minutes=30), 'strategy_version': 'v2', 'manual_correction': False},
+                {'id': 3, 'symbol': 'ETHUSDT', 'side': 'SELL', 'timestamp': now - timezone.timedelta(hours=2), 'strategy_version': 'v2', 'manual_correction': False},
+            ],
+            churn_threshold_minutes=60,
+        )
+
+        strategy_row = result['strategy_summary'][0]
+        churn_row = result['churn']['by_strategy_version'][0]
+        self.assertEqual(strategy_row['closed_trades_count'], 1)
+        self.assertEqual(strategy_row['eligible_filled_sell_count'], 2)
+        self.assertEqual(strategy_row['churn_frequency'], Decimal('50'))
+        self.assertEqual(strategy_row['churn_frequency'], churn_row['same_symbol_reentry_frequency'])
+
+    def test_operational_kpis_calculate_hold_buckets_churn_and_safe_fee_ratios(self):
+        now = timezone.datetime(2026, 5, 17, 12, tzinfo=timezone.utc)
+        result = _calculate_operational_kpis(
+            closure_rows=[
+                {'trade_operation_id': 1, 'lot_id': 'lot-1', 'realized_pnl': Decimal('5')},
+                {'trade_operation_id': 2, 'lot_id': 'lot-2', 'realized_pnl': Decimal('-8')},
+            ],
+            sell_operations={
+                1: {'id': 1, 'symbol': 'BTCUSDT', 'timestamp': now - timezone.timedelta(hours=3), 'strategy_version': 'v2', 'fee_amount_in_quote': Decimal('1'), 'manual_correction': False, 'sell_reason': 'take_profit_reached'},
+                2: {'id': 2, 'symbol': 'ETHUSDT', 'timestamp': now - timezone.timedelta(hours=2), 'strategy_version': 'v2', 'fee_amount_in_quote': Decimal('1'), 'manual_correction': False, 'sell_reason': 'stop_loss_reached'},
+            },
+            opened_lots={
+                'lot-1': now - timezone.timedelta(hours=4),
+                'lot-2': now - timezone.timedelta(hours=2, minutes=10),
+            },
+            operations=[
+                {'id': 1, 'symbol': 'BTCUSDT', 'side': 'SELL', 'timestamp': now - timezone.timedelta(hours=3), 'strategy_version': 'v2', 'manual_correction': False, 'sell_reason': 'take_profit_reached'},
+                {'id': 11, 'symbol': 'BTCUSDT', 'side': 'BUY', 'timestamp': now - timezone.timedelta(hours=2, minutes=30), 'strategy_version': 'v2', 'manual_correction': False},
+                {'id': 2, 'symbol': 'ETHUSDT', 'side': 'SELL', 'timestamp': now - timezone.timedelta(hours=2), 'strategy_version': 'v2', 'manual_correction': False, 'sell_reason': 'stop_loss_reached'},
+                {'id': 12, 'symbol': 'ETHUSDT', 'side': 'BUY', 'timestamp': now - timezone.timedelta(hours=1, minutes=30), 'strategy_version': 'v2', 'manual_correction': False},
+            ],
+            churn_threshold_minutes=60,
+        )
+
+        self.assertEqual(result['hold_time']['closed_under_15m_count'], 1)
+        self.assertEqual(result['hold_time']['buckets']['<15m'], 1)
+        self.assertEqual(result['hold_time']['buckets']['1h-4h'], 1)
+        self.assertEqual(result['churn']['eligible_filled_sell_count'], 2)
+        self.assertEqual(result['churn']['same_symbol_reentry_count'], 2)
+        self.assertEqual(result['churn']['stop_loss_reentry_churn_count'], 1)
+        self.assertEqual(result['fee_efficiency']['gross_profit'], Decimal('5'))
+        self.assertEqual(result['fee_efficiency']['net_realized_pnl'], Decimal('-5'))
+        self.assertEqual(result['fee_efficiency']['fees_over_gross_profit'], Decimal('40'))
+        self.assertEqual(result['fee_efficiency']['fees_over_absolute_net_pnl'], Decimal('40'))
+
+    def test_operational_kpis_ignore_missing_timestamps_and_hide_misleading_fee_ratios(self):
+        result = _calculate_operational_kpis(
+            closure_rows=[
+                {'trade_operation_id': 1, 'lot_id': 'lot-1', 'realized_pnl': Decimal('-1')},
+            ],
+            sell_operations={
+                1: {'id': 1, 'symbol': 'BTCUSDT', 'timestamp': None, 'strategy_version': 'v2', 'fee_amount_in_quote': Decimal('0.5'), 'manual_correction': False},
+            },
+            opened_lots={'lot-1': timezone.now()},
+            operations=[
+                {'id': 1, 'symbol': 'BTCUSDT', 'side': 'SELL', 'timestamp': None, 'strategy_version': 'v2', 'manual_correction': False},
+                {'id': 2, 'symbol': 'BTCUSDT', 'side': 'BUY', 'timestamp': timezone.now(), 'strategy_version': 'v2', 'manual_correction': False},
+            ],
+            churn_threshold_minutes=60,
+        )
+
+        self.assertIsNone(result['hold_time']['average_hold_duration'])
+        self.assertEqual(result['churn']['eligible_filled_sell_count'], 0)
+        self.assertIsNone(result['fee_efficiency']['fees_over_gross_profit'])
+        self.assertEqual(result['fee_efficiency']['fees_over_absolute_net_pnl'], Decimal('33.33333333333333333333333333'))
 
     def test_analytics_context_is_cached_for_60_seconds(self):
         from dashboard.dashboard_read_model import get_dashboard_analytics_context

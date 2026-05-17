@@ -49,6 +49,7 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - Position exit status now maps known SELL reasons to operator-facing labels, interpretations, and suggested actions, including anomaly handling for invalid positive-PnL stop-loss diagnostics.
 - Telegram SELL diagnostics and dust/drift alert templates now favor compact human-readable interpretation plus next-step guidance while preserving raw diagnostic fields.
 - Analytics dashboard exists at `/dashboard/analytics/` for read-only KPI detail, fees, PnL by symbol, and PnL by day sourced from `bot.lot_closures` and `bot.trade_operations`.
+- Operational Trading KPIs v2 exists at `/dashboard/operational-kpis/` for filtered read-only strategy-version, hold-time, churn, and fee-efficiency analysis.
 - Monitoring cards exist for bot status, portfolio summary, valuation consistency, latest operation/recent trade, and drift alerts.
 - Tests cover dashboard access, manual correction permissions, form validation, model contract alignment, drift prefill behavior, and environment validation.
 - Public `/health/` liveness endpoint exists for Render keepalive/cron pings.
@@ -118,6 +119,7 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - The dashboard relies on external bot-owned tables for production data.
 - Some bot-owned models use `managed = False`; migrations must not be generated for those tables unless ownership intentionally changes.
 - Performance KPIs are operational metrics only; fee normalization excludes non-USDT/unavailable conversions, PnL by day depends on linked trade operation timestamps, and manual corrections are split only when identifiable from operation metadata.
+- Operational Trading KPIs v2 exclude identifiable manual/accounting-only corrections from trading-quality metrics, group missing strategy metadata as `unversioned`, and ignore missing timestamps for hold-time/churn calculations.
 - The dashboard is ready as a safe operator UI for controlled production usage only if the bot-side backend/CLI and `bot.manual_corrections` table are deployed.
 - Historical `dust_detections` rows remain visible after correction, so operator views should continue distinguishing active/latest signals from audit history.
 - Dust review/ignore state suppresses paging only; detections remain persisted as audit history and do not mutate accounting state.

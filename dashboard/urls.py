@@ -8,6 +8,7 @@ urlpatterns = [
     path("dashboard/analytics/", views.dashboard_analytics, name="dashboard_analytics"),
     path("dashboard/exit-status/", views.dashboard_exit_status, name="dashboard_exit_status"),
     path("dashboard/churn/", views.dashboard_churn, name="dashboard_churn"),
+    path("dashboard/operational-kpis/", views.dashboard_operational_kpis, name="dashboard_operational_kpis"),
     path("dashboard/demo/", views.dashboard_demo, name="dashboard_demo"),
     path("dashboard/dust/", views.dust_dashboard, name="dust_dashboard"),
     path("dashboard/dust/detail/", views.dust_detail, name="dust_detail"),

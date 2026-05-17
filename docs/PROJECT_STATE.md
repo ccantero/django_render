@@ -22,6 +22,8 @@ Implemented capabilities:
 - Main dashboard includes compact BUY/cooldown and churn summary cards sourced from latest healthcheck details and read-only recent trade history
 - Read-only `/dashboard/churn/` summarizes recent SELL→BUY re-entry gaps, under-15-minute counts, and linked preceding SELL realized PnL when available
 - Analytics dashboard at `/dashboard/analytics/` for performance analysis: KPIs, fees, PnL breakdowns, and historical tables
+- Operational Trading KPIs v2 page at `/dashboard/operational-kpis/` for filtered strategy-version summaries, hold-time analytics, same-symbol churn, and fee-efficiency analysis
+- Operational Trading KPIs v2 groups missing `strategy_version` rows as `unversioned`, excludes identifiable manual/accounting-only corrections from trading-quality metrics, and ignores missing timestamps for hold-time/churn calculations
 - Analytics dashboard context is cached for 60 seconds to avoid recomputing read-only full-history KPI data on every request
 - Bot status card
 - Portfolio summary

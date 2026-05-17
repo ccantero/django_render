@@ -19,6 +19,7 @@ It provides visibility, review, and request workflows over bot-owned database ta
   runtime-config fallback for max-position limits when the read model omits
   them.
 - Display read-only operational performance KPIs from realized lot closures and filled trade operations.
+- Display filtered Operational Trading KPIs v2 from read-only trade operations, lot closures, and linked lot open times.
 - Display grouped dust/residual signals with operator guidance.
 - Record manual review state.
 - Create explicit `PENDING` manual correction requests.
@@ -199,6 +200,14 @@ reasons and displays optional persisted SELL/cooldown detail keys when present.
 Recent churn observability is a separate read-only model over filled
 `trade_operations` plus linked `lot_closures` realized PnL; homepage shows only
 summary counts while `/dashboard/churn/` carries the detail rows.
+
+Operational Trading KPIs v2 live in a dedicated dashboard read model service at
+`dashboard/services/operational_kpis.py`. The page reads filled operations in a
+bulk path, linked lot closures, and linked lot opening timestamps; it does not
+call Binance or mutate bot-owned accounting tables. Missing
+`strategy_version` metadata is grouped as `unversioned`, identifiable
+manual/accounting-only corrections are excluded from trading-quality metrics,
+and missing timestamps are ignored for hold-time and churn calculations.
 
 Dust review state is a dashboard workflow concern. Reviewed, ignored, and
 external-or-Earn rows suppress repeated paging only; the underlying

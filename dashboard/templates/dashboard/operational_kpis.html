@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-3">
+	<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+		<div>
+			<h1 class="h3 mb-1">Operational Trading KPIs v2</h1>
+			<p class="text-muted mb-0">Read-only operational analytics. Not audited accounting.</p>
+		</div>
+		<a class="btn btn-outline-secondary btn-sm mt-2 mt-sm-0" href="{% url 'dashboard' %}">Back to dashboard</a>
+	</div>
+
+	<form method="get" class="card card-body mb-3">
+		<div class="form-row">
+			<div class="form-group col-md-2">
+				<label for="date_from">Date from</label>
+				<input class="form-control" type="date" id="date_from" name="date_from" value="{{ filters.date_from|date:'Y-m-d' }}">
+			</div>
+			<div class="form-group col-md-2">
+				<label for="date_to">Date to</label>
+				<input class="form-control" type="date" id="date_to" name="date_to" value="{{ filters.date_to|date:'Y-m-d' }}">
+			</div>
+			<div class="form-group col-md-3">
+				<label for="strategy_version">Strategy version</label>
+				<input class="form-control" id="strategy_version" name="strategy_version" value="{{ filters.strategy_version }}" placeholder="v2 or unversioned">
+			</div>
+			<div class="form-group col-md-3">
+				<label for="symbol">Symbol</label>
+				<input class="form-control" id="symbol" name="symbol" value="{{ filters.symbol }}" placeholder="BTCUSDT">
+			</div>
+			<div class="form-group col-md-2">
+				<label for="churn_threshold_minutes">Churn threshold</label>
+				<input class="form-control" type="number" min="1" id="churn_threshold_minutes" name="churn_threshold_minutes" value="{{ filters.churn_threshold_minutes }}">
+			</div>
+		</div>
+		<div>
+			<button class="btn btn-primary btn-sm" type="submit">Apply filters</button>
+		</div>
+	</form>
+
+	{% if data_error %}
+		<div class="alert alert-warning">{{ data_error }}</div>
+	{% endif %}
+
+	<h2 class="h5 mt-4">Strategy Version Summary</h2>
+	<div class="table-responsive">
+		<table class="table table-sm table-striped">
+			<thead>
+				<tr>
+					<th>Strategy</th><th>Closed trades / closures</th><th>Net realized PnL</th><th>Win rate</th>
+					<th>Avg hold</th><th>Eligible SELLs</th><th>Churn</th><th>Churn freq</th><th>Fees</th><th>Fee efficiency</th>
+				</tr>
+			</thead>
+			<tbody>
+				{% for row in strategy_summary %}
+					<tr>
+						<td>{{ row.strategy_version }}</td>
+						<td>{{ row.closed_trades_count }} / {{ row.closures_count }}</td>
+						<td>{{ row.net_realized_pnl }}</td>
+						<td>{% if row.win_rate != None %}{{ row.win_rate }}%{% else %}—{% endif %}</td>
+						<td>{{ row.average_hold_duration|default:"—" }}</td>
+						<td>{{ row.eligible_filled_sell_count }}</td>
+						<td>{{ row.churn_count }}</td>
+						<td>{% if row.churn_frequency != None %}{{ row.churn_frequency }}%{% else %}—{% endif %}</td>
+						<td>{{ row.total_normalized_fees }}</td>
+						<td>{% if row.fee_efficiency != None %}{{ row.fee_efficiency }}%{% else %}—{% endif %}</td>
+					</tr>
+				{% empty %}
+					<tr><td colspan="10" class="text-muted">No eligible closed trades for the selected filters.</td></tr>
+				{% endfor %}
+			</tbody>
+		</table>
+	</div>
+
+	<div class="row">
+		<div class="col-lg-6">
+			<h2 class="h5 mt-4">Hold-Time Analytics</h2>
+			<div class="card mb-3"><div class="card-body">
+				<p class="mb-1">Average: <strong>{{ hold_time.average_hold_duration|default:"—" }}</strong></p>
+				<p class="mb-1">Median: <strong>{{ hold_time.median_hold_duration|default:"—" }}</strong></p>
+				<p class="mb-1">Shortest / longest: <strong>{{ hold_time.shortest_hold_duration|default:"—" }}</strong> / <strong>{{ hold_time.longest_hold_duration|default:"—" }}</strong></p>
+				<p class="mb-0">Closed under 15m: <strong>{{ hold_time.closed_under_15m_count }}</strong></p>
+			</div></div>
+			<div class="table-responsive">
+				<table class="table table-sm">
+					<tbody>
+						{% for label, count in hold_time.buckets.items %}
+							<tr><th>{{ label }}</th><td>{{ count }}</td></tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+		</div>
+		<div class="col-lg-6">
+			<h2 class="h5 mt-4">Churn Metrics</h2>
+			<div class="card mb-3"><div class="card-body">
+				<p class="mb-1">Eligible FILLED SELLs: <strong>{{ churn.eligible_filled_sell_count }}</strong></p>
+				<p class="mb-1">Same-symbol reentries: <strong>{{ churn.same_symbol_reentry_count }}</strong></p>
+				<p class="mb-1">Same-symbol reentry frequency: <strong>{% if churn.same_symbol_reentry_frequency != None %}{{ churn.same_symbol_reentry_frequency }}%{% else %}—{% endif %}</strong></p>
+				<p class="mb-0">Stop-loss reentry churn: <strong>{{ churn.stop_loss_reentry_churn_count }}</strong></p>
+			</div></div>
+			<div class="table-responsive">
+				<table class="table table-sm">
+					<thead><tr><th>Strategy</th><th>Eligible SELLs</th><th>Reentries</th><th>Frequency</th><th>Stop-loss</th></tr></thead>
+					<tbody>
+						{% for row in churn.by_strategy_version %}
+							<tr><td>{{ row.strategy_version }}</td><td>{{ row.eligible_filled_sell_count }}</td><td>{{ row.same_symbol_reentry_count }}</td><td>{% if row.same_symbol_reentry_frequency != None %}{{ row.same_symbol_reentry_frequency }}%{% else %}—{% endif %}</td><td>{{ row.stop_loss_reentry_churn_count }}</td></tr>
+						{% empty %}
+							<tr><td colspan="5" class="text-muted">No eligible churn rows.</td></tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+
+	<h2 class="h5 mt-4">Fee Efficiency</h2>
+	<div class="row">
+		<div class="col-md-4"><div class="card mb-2"><div class="card-body">Total normalized fees<br><strong>{{ fee_efficiency.total_normalized_fees }}</strong></div></div></div>
+		<div class="col-md-4"><div class="card mb-2"><div class="card-body">Gross profit<br><strong>{{ fee_efficiency.gross_profit }}</strong></div></div></div>
+		<div class="col-md-4"><div class="card mb-2"><div class="card-body">Net realized PnL<br><strong>{{ fee_efficiency.net_realized_pnl }}</strong></div></div></div>
+	</div>
+	<div class="table-responsive">
+		<table class="table table-sm table-striped">
+			<thead><tr><th>Symbol</th><th>Closed trades</th><th>Fees</th><th>Gross profit</th><th>Net realized PnL</th><th>Fees / gross profit</th><th>Fees / |net PnL|</th></tr></thead>
+			<tbody>
+				{% for row in fee_efficiency.by_symbol %}
+					<tr><td>{{ row.symbol }}</td><td>{{ row.closed_trades_count }}</td><td>{{ row.total_normalized_fees }}</td><td>{{ row.gross_profit }}</td><td>{{ row.net_realized_pnl }}</td><td>{% if row.fees_over_gross_profit != None %}{{ row.fees_over_gross_profit }}%{% else %}—{% endif %}</td><td>{% if row.fees_over_absolute_net_pnl != None %}{{ row.fees_over_absolute_net_pnl }}%{% else %}—{% endif %}</td></tr>
+				{% empty %}
+					<tr><td colspan="7" class="text-muted">No eligible fee-efficiency rows.</td></tr>
+				{% endfor %}
+			</tbody>
+		</table>
+	</div>
+	<p class="text-muted small">Fee ratios are shown only when the denominator is positive, so negative or zero-profit periods do not produce misleading negative percentages.</p>
+</div>
+{% endblock %}

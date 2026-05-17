@@ -57,6 +57,14 @@ Analytics read-model output may be cached briefly because the page is read-only 
 - PnL by symbol
 - PnL by day
 
+### Operational Trading KPIs v2
+
+- `/dashboard/operational-kpis/` is a compact read-only analysis page for strategy-version summaries, hold-time analytics, same-symbol SELL→BUY churn, and fee efficiency.
+- Filters: date range, strategy version, symbol, and churn threshold minutes.
+- Historical rows without `strategy_version` are shown as `unversioned`.
+- Manual/accounting-only corrections are excluded from trading-quality metrics when the operation payload identifies them.
+- Strategy-level churn frequency uses same-symbol reentries divided by eligible FILLED SELLs, matching the churn table denominator; ratio values are labeled as percentages in the UI.
+
 ### Exit Status and Churn / Cooldown
 
 - `/dashboard/exit-status/` carries bounded recent SELL diagnostics for
@@ -229,6 +237,7 @@ Validated operator case:
 - Do not write rounded display values back to DB.
 - Do not recalculate trading PnL in the dashboard unless the contract defines the source fields.
 - Wave 8 Phase 1 performance KPIs use `lot_closures.realized_pnl` and `trade_operations.fee_amount_in_quote`.
+- Operational Trading KPIs v2 use the same Decimal-safe fee source, ignore missing timestamps for hold/churn metrics, and only show fee ratios when the denominator is positive.
 - PnL by day uses the linked trade operation `executed_at` timestamp, falling back to `created_at`; closures without a linked operation timestamp are excluded only from the day table.
 - Show profit factor as N/A when gross loss is zero.
 - Label gross deployed capital as approximate because it is based on FILLED BUY quote value, not audited capital efficiency.

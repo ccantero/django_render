@@ -17,6 +17,7 @@ from dashboard.dust_read_model import (
 	update_dust_signal_review,
 )
 from dashboard.forms import ManualCorrectionRequestForm
+from dashboard.services.operational_kpis import get_operational_kpis_context
 from core.models import ManualCorrection
 
 
@@ -42,6 +43,12 @@ def dashboard_exit_status(request):
 def dashboard_churn(request):
 	read_model = get_churn_context()
 	return render(request, "dashboard/churn.html", read_model.context)
+
+
+@login_required
+def dashboard_operational_kpis(request):
+	read_model = get_operational_kpis_context(request.GET)
+	return render(request, "dashboard/operational_kpis.html", read_model.context)
 
 
 def dashboard_demo(request):

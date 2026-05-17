@@ -168,6 +168,19 @@ Current diagnostic metadata:
 
 - Filled stop-loss SELL operations may include
   `raw_payload.sell_reason = "stop_loss_reached"`.
+- Filled operations may include additive strategy metadata used by read-only
+  dashboard analytics:
+  - `raw_payload.strategy_version`
+  - `raw_payload.sell_strategy`
+  - `raw_payload.partial_take_profit_enabled`
+  - `raw_payload.min_hold_enabled`
+  - `raw_payload.stop_loss_cooldown_enabled`
+  - `raw_payload.dust_cleanup_enabled`
+- For trading-quality metrics, dashboard consumers must exclude identifiable
+  manual/accounting-only rows when `raw_payload.source = "MANUAL_CORRECTION"`
+  or `raw_payload.accounting_only = true`.
+- Historical rows without `raw_payload.strategy_version` should be grouped as
+  `unversioned` rather than dropped.
 - This metadata is operational context used by the bot for optional
   symbol-specific re-entry cooldown checks; it does not change economic or FIFO
   accounting semantics.
