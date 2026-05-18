@@ -64,6 +64,9 @@ Implemented capabilities:
   warnings from the latest healthcheck, filtering the main message to
   `WARNING`/`CRITICAL` diagnostics only; the bot remains the source of those
   warnings.
+- INFO-only inventory warnings are intentionally omitted from the main Telegram
+  message; the compact dashboard BUY card exposes only a warning count while
+  the detailed payload remains bot-owned.
 - Dust signal detail page
 - Linked correction badges for dust detections using `bot.manual_corrections.source_detection_id`
 - Manual review buttons:
@@ -167,3 +170,13 @@ Any change to bot-owned tables that affects dashboard interpretation must update
 5. Harden DB grants.
 6. Add bot-owned Telegram/Pushover alerting.
 7. Plan the remaining app split for `bot_shared` and optional `bot_control`.
+8. If operator demand justifies it, add a dedicated inventory-warning drilldown
+   before exposing broader Daily Trading Audit output in Django.
+
+---
+
+## Future Daily Trading Audit
+
+Daily Trading Audit is documented as a bot-owned, read-only reporting surface.
+Django may later display that output, but it should not own audit computation or
+reconstruct audit truth from Binance calls or direct accounting mutations.

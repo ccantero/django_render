@@ -81,6 +81,9 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 10. Add clearer labels for Binance Small Amount Exchange / manual dust conversion cases currently represented by broader reasons such as `earn_or_external_transfer`.
 11. Add dashboard action to mark a request as rejected only if the shared contract allows dashboard-side rejection.
 12. Consider paginating or date-filtering performance KPI history if `bot.lot_closures` grows large.
+13. Consider a dedicated drilldown for persisted reconciliation inventory warnings.
+14. Evaluate whether inventory warnings should link directly to drift detail pages.
+15. Add a future Daily Trading Audit dashboard view only after the bot-side report format stabilizes.
 
 ## P2 Architecture / Tech Debt
 
@@ -126,3 +129,4 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - The dashboard is ready as a safe operator UI for controlled production usage only if the bot-side backend/CLI and `bot.manual_corrections` table are deployed.
 - Historical `dust_detections` rows remain visible after correction, so operator views should continue distinguishing active/latest signals from audit history.
 - Dust review/ignore state suppresses paging only; detections remain persisted as audit history and do not mutate accounting state.
+- Keep Django `docs/DATA_CONTRACT.md` synchronized from the bot project’s canonical contract rather than evolving it independently.

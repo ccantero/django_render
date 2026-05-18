@@ -219,6 +219,18 @@ diagnostic gaps hide useful information:
   shown only when they contain `WARNING`/`CRITICAL` diagnostics; `/buy_status`
   does not reconstruct those warnings from accounting tables.
 
+These inventory warnings are intentionally read-only display diagnostics: the
+dashboard and Telegram commands render bot-persisted reconciliation output,
+avoid rebuilding accounting state, and never call Binance while formatting the
+message.
+
+### Daily Trading Audit
+
+Daily Trading Audit is currently a bot-owned reporting surface. Django should
+consume or display it only after the bot-side output is stable and documented in
+the shared data contract; the dashboard should not become the owner of audit
+computation.
+
 Run tests:
 
 ```bash

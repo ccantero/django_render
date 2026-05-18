@@ -204,6 +204,11 @@ Recent churn observability is a separate read-only model over filled
 `trade_operations` plus linked `lot_closures` realized PnL; homepage shows only
 summary counts while `/dashboard/churn/` carries the detail rows.
 
+The same boundary applies to future Daily Trading Audit consumption: Django may
+render bot-produced read-only report output after that format is stabilized in
+the shared contract, but it should not recompute audit truth or become the owner
+of the bot-side report.
+
 Operational Trading KPIs v2 live in a dedicated dashboard read model service at
 `dashboard/services/operational_kpis.py`. The page reads filled operations in a
 bulk path, linked lot closures, and linked lot opening timestamps; it does not
@@ -272,3 +277,13 @@ Shared database contract + managed=False models
 ```
 
 An API may be reconsidered later for mobile clients, third-party consumers, or if the dashboard must be isolated from the database schema. It is not required for push notifications; bot-side Telegram/Pushover alerts are preferred.
+
+---
+
+## 10. Shared Contract Sync Policy
+
+The bot project’s `docs/DATA_CONTRACT.md` is the canonical shared contract.
+This Django repository should keep its local copy synchronized whenever
+bot-owned table semantics, healthcheck payloads, diagnostic payloads, or
+read-model interpretation changes. Dashboard-only notes may be additive in
+other docs, but they should not redefine bot-owned semantics independently.

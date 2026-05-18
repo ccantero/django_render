@@ -2,6 +2,12 @@
 
 This document defines the shared database contract between the **Binance Python Bot** and external consumers such as a **Django Dashboard**.
 
+This file is the canonical contract for the bot/dashboard boundary. If a
+dashboard repository keeps a local copy for implementation convenience, that
+copy should be synchronized from this contract rather than evolving
+independently; dashboard-only implementation notes may be additive, but they
+must not redefine bot-owned table semantics here.
+
 The bot and dashboard are separate projects. They do not share application code. They only share the database.
 
 The dashboard must treat this document as the source of truth for interpreting bot-owned data.
@@ -109,6 +115,36 @@ Small differences between `portfolio` and `position_lots` may exist because of:
 
 The dashboard should surface drift as an alert, not silently hide it.
 
+`EXCLUDED_SYMBOLS` and `EXCLUDED_BASE_ASSETS` are BUY-selection policy only.
+They must not hide existing open lots from portfolio projection,
+reconciliation, SELL coverage, or diagnostics. A historic open `USDCUSDT` lot
+remains part of accounting even if future BUYs for `USDCUSDT` are blocked.
+
+### Healthcheck inventory reconciliation details
+
+`bot.bot_healthcheck.details.reconciliation` may include additive inventory
+integrity fields such as:
+
+- `missing_portfolio_rows_count`
+- `material_missing_portfolio_rows_count`
+- `unknown_valuation_missing_portfolio_rows_count`
+- `portfolio_rows_without_open_lots_count`
+- `quantity_drift_count`
+- `inventory_warnings[]`
+
+Each `inventory_warnings[]` item identifies `symbol`, `reason`, `severity`,
+`lot_qty`, `portfolio_qty`, `estimated_notional_usdt`, and
+`valuation_status`. Material open lots without a portfolio row must not be
+reported as healthy reconciliation. If valuation is unavailable, the warning
+still reports the missing projection with `valuation_status = "unknown"` and
+increments `unknown_valuation_missing_portfolio_rows_count` rather than
+pretending the notional is known. Open lots must remain visible even when
+exchange metadata is missing. A safe fallback `current_price = 1.0` is valid
+only for the explicit cash-like USDT-pair set:
+`USDCUSDT`, `FDUSDUSDT`, `TUSDUSDT`, `BUSDUSDT`, `DAIUSDT`, `USDPUSDT`.
+Dashboard/mobile `/buy_status` consumers may render these warnings directly
+instead of issuing duplicate accounting queries.
+
 ---
 
 ## 3. Core Tables and Semantics
@@ -168,22 +204,32 @@ Current diagnostic metadata:
 
 - Filled stop-loss SELL operations may include
   `raw_payload.sell_reason = "stop_loss_reached"`.
-- Filled operations may include additive strategy metadata used by read-only
-  dashboard analytics:
-  - `raw_payload.strategy_version`
-  - `raw_payload.sell_strategy`
-  - `raw_payload.partial_take_profit_enabled`
-  - `raw_payload.min_hold_enabled`
-  - `raw_payload.stop_loss_cooldown_enabled`
-  - `raw_payload.dust_cleanup_enabled`
-- For trading-quality metrics, dashboard consumers must exclude identifiable
-  manual/accounting-only rows when `raw_payload.source = "MANUAL_CORRECTION"`
-  or `raw_payload.accounting_only = true`.
-- Historical rows without `raw_payload.strategy_version` should be grouped as
-  `unversioned` rather than dropped.
 - This metadata is operational context used by the bot for optional
   symbol-specific re-entry cooldown checks; it does not change economic or FIFO
   accounting semantics.
+- Operator tooling may read `trade_operations` together with
+  `lot_closures`, `sell_decision_events`, and optional latest
+  `bot_healthcheck.details` BUY context to explain SELL → re-BUY behavior.
+  That is a read-only diagnostic use case; it does not promote
+  `trade_operations` or `portfolio` into FIFO accounting truth.
+- Daily operator audit tooling may also combine those same read models to
+  summarize executed operations, SELL diagnostics, churn candidates, latest BUY
+  state, normalized fees, realized FIFO PnL, and manual/accounting corrections
+  for a UTC window. This remains read-only diagnostic usage only.
+- Nearby `sell_decision_events` lookup is currently a best-effort diagnostic
+  fallback using a `+/- 5 minute` window around the SELL timestamp. Future
+  versions should prefer direct operation/run_id linkage if available; no
+  schema change is part of the current contract.
+- Future bot-generated FILLED operations may also include additive strategy
+  metadata in `raw_payload`: `strategy_version`, `sell_strategy`,
+  `partial_take_profit_enabled`, `min_hold_enabled`,
+  `stop_loss_cooldown_enabled`, and `dust_cleanup_enabled`.
+- Historical rows without `strategy_version` remain valid and must be grouped
+  as `unversioned` for era comparison rather than rewritten.
+- Explicit manual/accounting rows marked by
+  `raw_payload.source = "MANUAL_CORRECTION"` or `raw_payload.accounting_only`
+  are not bot-strategy trades and should be excluded from trading-quality KPI
+  views.
 
 Conceptual fields:
 
@@ -427,12 +473,21 @@ buy_order_filled
 binance_api_error
 execution_error
 validation_rejected
+loss_reentry_cooldown_active
+take_profit_reentry_cooldown_active
+sell_reentry_cooldown_active
 ```
 
 Consumer note: `effective_positions_at_max_capacity` is the explicit persisted
 capacity reason for `blocked_by_positions`. The generic `validation_rejected`
 reason still exists for other validation failures and should not be interpreted
 as a synonym for max-position capacity exhaustion.
+
+The three `*_reentry_cooldown_active` reasons are additive BUY diagnostic
+states. They indicate that the bot rejected a BUY candidate before Binance
+submission because the latest filled SELL for the symbol is still inside the
+configured symbol-level cooldown. They are observability semantics only and do
+not change the accounting source-of-truth model.
 
 Dashboard Telegram diagnostics may expose `/buy_status` from these persisted
 healthcheck details. The diagnostic is read-only; consumers should use these
@@ -485,6 +540,16 @@ Dashboard usage:
 - Show the latest SELL diagnostic for a symbol.
 - Explain the latest rejected or skipped SELL event to mobile operators.
 - Inspect validation details without executing trades or mutating accounting.
+- Treat this as recent diagnostic visibility only; older rows may be archived
+  or compacted by bot-owned retention.
+
+Retention contract:
+
+- The bot owns retention for this table.
+- Default hot retention window is currently 7 days.
+- Old rows may move to `bot.sell_decision_events_archive` when available.
+- Consumers must not treat the hot table as indefinite diagnostic history.
+- Retention never changes accounting truth tables.
 
 Current Telegram diagnostics read these conceptual fields when available:
 
@@ -1174,6 +1239,8 @@ Primary inventory source: `bot.position_lots`.
 Display/projection source: `bot.portfolio`.
 
 Explanation source: latest persisted `bot.sell_decision_events` row per symbol.
+The view is intentionally recent-state oriented; archived/compacted historical
+diagnostics are outside the hot exit-status read path.
 
 This view is scoped to bot-managed open FIFO lots only. Cash-like balances such
 as stablecoins and pure SPOT/projection balances without open lots should not be
@@ -1420,6 +1487,29 @@ If dashboard interpretation could change, DATA_CONTRACT.md must change in the sa
 - Dashboard should display uncertainty rather than force false precision.
 - Normalized fee cards should use `trade_operations.fee_amount_in_quote` when available instead of attempting external price conversion.
 - Long-term accumulation assets mixed with trading inventory may distort trading metrics and exposure calculations if not explicitly modeled.
+- Hold-time KPIs require the lot open timestamp to be joined from the lot side;
+  `lot_closures` alone does not carry a full strategy-era label for old rows.
+
+### Operational Trading KPIs v2 semantics
+
+These metrics are read-only operational analytics, not audited accounting:
+
+- average/median hold duration use linked SELL closures and lot open timestamps
+- hold-duration buckets are `<15m`, `15m-1h`, `1h-4h`, `4h-24h`, and `>24h`
+- churn candidate means a filled SELL followed by the next same-symbol filled
+  BUY within a configured threshold such as 30m, 60m, or 4h
+- churn frequency is `same_symbol_reentry_count / eligible_sell_count`, where
+  eligible sells are FILLED non-manual SELL operations with valid
+  `executed_at`
+- operations missing timestamps are ignored for churn and hold-time analytics
+- stop-loss re-entry churn uses SELL metadata where
+  `sell_reason = "stop_loss_reached"`
+- fee efficiency uses only normalized `fee_amount_in_quote`; unknown/non-normalized
+  fees remain a limitation rather than being converted
+- operator-facing fee-efficiency ratios use gross profit or absolute net PnL,
+  avoiding negative ratios when net realized PnL is below zero
+- strategy-era segmentation currently means `strategy_version` only; deployment
+  periods and manual era labels are future additions
 
 ---
 

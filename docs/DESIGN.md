@@ -176,6 +176,14 @@ valuation state rather than rebuilding diagnostics inside Django. The BUY /
 Cooldown card may show only the compact warning count so the homepage remains
 lightweight.
 
+### Daily Trading Audit
+
+If Django later exposes Daily Trading Audit output, it should be designed as a
+review page rather than a second accounting engine. The page should present the
+bot-produced summary in operator terms such as actions, non-actions,
+starting/ending USDT, realized PnL and fees, churn/re-entry candidates, and
+inventory warnings.
+
 ---
 
 ## Operator Guidance
