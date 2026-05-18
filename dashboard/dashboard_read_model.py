@@ -24,6 +24,7 @@ from core.trading_models import (
 	SellDecisionEvent,
 	TradeOperation,
 )
+from dashboard.services.telegram_buy_status_formatter import count_relevant_inventory_warnings
 
 
 DRIFT_TOLERANCE = Decimal("0.00000001")
@@ -1549,6 +1550,8 @@ def _build_buy_status_summary(details):
 	effective = material + unknown if material is not None else None
 	remaining = max(max_positions - effective, Decimal("0")) if max_positions is not None and effective is not None else None
 	reason = details.get("latest_buy_reason")
+	reconciliation = details.get("reconciliation")
+	inventory_warnings = reconciliation.get("inventory_warnings") if isinstance(reconciliation, dict) else []
 	return {
 		"latest_buy_state": details.get("latest_buy_state") or details.get("latest_buy_decision"),
 		"latest_buy_reason": reason,
@@ -1566,6 +1569,7 @@ def _build_buy_status_summary(details):
 		"cooldown_type": details.get("cooldown_type"),
 		"cooldown_minutes": details.get("cooldown_minutes"),
 		"cooldown_remaining_minutes": details.get("cooldown_remaining_minutes"),
+		"inventory_warnings_count": count_relevant_inventory_warnings(inventory_warnings),
 	}
 
 

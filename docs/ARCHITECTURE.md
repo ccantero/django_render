@@ -197,6 +197,9 @@ lots with `Diagnostics unavailable` rather than failing the request.
 Latest anti-churn BUY status is read from `bot.bot_healthcheck.details` only.
 The dashboard recognizes loss, take-profit, and generic SELL re-entry cooldown
 reasons and displays optional persisted SELL/cooldown detail keys when present.
+Persisted reconciliation `inventory_warnings` are read from the same latest
+healthcheck details payload for `/buy_status` and compact dashboard summaries;
+the dashboard does not reconstruct those diagnostics from accounting tables.
 Recent churn observability is a separate read-only model over filled
 `trade_operations` plus linked `lot_closures` realized PnL; homepage shows only
 summary counts while `/dashboard/churn/` carries the detail rows.

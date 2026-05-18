@@ -60,6 +60,10 @@ Implemented capabilities:
   status sections; material rows are approximately valued from read-only
   `bot.portfolio`, sorted descending, and missing projection prices remain
   visibly unavailable instead of becoming zero.
+- `/buy_status` also surfaces compact persisted reconciliation inventory
+  warnings from the latest healthcheck, filtering the main message to
+  `WARNING`/`CRITICAL` diagnostics only; the bot remains the source of those
+  warnings.
 - Dust signal detail page
 - Linked correction badges for dust detections using `bot.manual_corrections.source_detection_id`
 - Manual review buttons:

@@ -168,6 +168,14 @@ classification or max-position config cannot be read. Inline keyboard buttons,
 if added later, must be navigation or refresh controls only and must never
 trigger trading.
 
+When the latest bot healthcheck carries persisted reconciliation
+`inventory_warnings`, `/buy_status` may add a compact operator-facing section
+for `WARNING`/`CRITICAL` items only. The section should be capped for mobile
+readability, humanize known reasons, and use the bot-provided notional or
+valuation state rather than rebuilding diagnostics inside Django. The BUY /
+Cooldown card may show only the compact warning count so the homepage remains
+lightweight.
+
 ---
 
 ## Operator Guidance

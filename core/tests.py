@@ -426,6 +426,196 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_buy_status_renders_material_inventory_warnings_from_healthcheck_details(
+        self,
+        mock_health_manager,
+        mock_portfolio_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = []
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=18,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 1,
+                'material_positions_count': 1,
+                'dust_positions_count': 0,
+                'unknown_value_positions_count': 0,
+                'max_positions': 8,
+                'reconciliation': {
+                    'inventory_warnings': [
+                        {
+                            'symbol': 'USDCUSDT',
+                            'reason': 'open_lots_without_portfolio_row',
+                            'severity': 'WARNING',
+                            'estimated_notional_usdt': '15',
+                        },
+                    ],
+                },
+            },
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            self.post_telegram_message('/buy_status')
+
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('<b>Inventory warnings</b>', message)
+        self.assertIn('- USDCUSDT: open lots without portfolio row (~15 USDT)', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_buy_status_omits_inventory_warning_section_without_relevant_warnings(
+        self,
+        mock_health_manager,
+        mock_portfolio_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = []
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=19,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 1,
+                'material_positions_count': 1,
+                'dust_positions_count': 0,
+                'unknown_value_positions_count': 0,
+                'max_positions': 8,
+                'reconciliation': {'inventory_warnings': []},
+            },
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            self.post_telegram_message('/buy_status')
+
+        message = mock_send_message.call_args[0][0]
+        self.assertNotIn('<b>Inventory warnings</b>', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_buy_status_omits_info_inventory_warnings_from_main_message(
+        self,
+        mock_health_manager,
+        mock_portfolio_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = []
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=20,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 1,
+                'material_positions_count': 1,
+                'dust_positions_count': 0,
+                'unknown_value_positions_count': 0,
+                'max_positions': 8,
+                'reconciliation': {
+                    'inventory_warnings': [
+                        {'symbol': 'DUSTUSDT', 'reason': 'portfolio_row_without_open_lots', 'severity': 'INFO'},
+                    ],
+                },
+            },
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            self.post_telegram_message('/buy_status')
+
+        message = mock_send_message.call_args[0][0]
+        self.assertNotIn('<b>Inventory warnings</b>', message)
+        self.assertNotIn('DUSTUSDT', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_buy_status_renders_unknown_inventory_valuation_and_escapes_dynamic_values(
+        self,
+        mock_health_manager,
+        mock_portfolio_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = []
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=21,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 1,
+                'material_positions_count': 1,
+                'dust_positions_count': 0,
+                'unknown_value_positions_count': 0,
+                'max_positions': 8,
+                'reconciliation': {
+                    'inventory_warnings': [
+                        {
+                            'symbol': '<LEGACY&USDT>',
+                            'reason': '<custom_reason>',
+                            'severity': 'CRITICAL',
+                            'estimated_notional_usdt': None,
+                            'valuation_status': 'unknown',
+                        },
+                    ],
+                },
+            },
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            self.post_telegram_message('/buy_status')
+
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('&lt;LEGACY&amp;USDT&gt;', message)
+        self.assertIn('&lt;custom reason&gt;', message)
+        self.assertIn('(valuation unknown)', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_buy_status_limits_inventory_warning_rows_for_mobile_readability(
+        self,
+        mock_health_manager,
+        mock_portfolio_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = []
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=22,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 1,
+                'material_positions_count': 1,
+                'dust_positions_count': 0,
+                'unknown_value_positions_count': 0,
+                'max_positions': 8,
+                'reconciliation': {
+                    'inventory_warnings': [
+                        {'symbol': f'SYM{i}', 'reason': 'portfolio_lot_quantity_drift', 'severity': 'WARNING'}
+                        for i in range(4)
+                    ],
+                },
+            },
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            self.post_telegram_message('/buy_status')
+
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('- SYM0: portfolio vs lots quantity drift', message)
+        self.assertIn('- SYM2: portfolio vs lots quantity drift', message)
+        self.assertNotIn('- SYM3: portfolio vs lots quantity drift', message)
+        self.assertIn('- +1 more', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
     @patch('core.telegram_diagnostics.Portfolio.objects')
     def test_buy_status_renders_mobile_exposure_summary_with_material_values_sorted_desc(
@@ -3360,6 +3550,19 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(summary['effective_positions_count'], Decimal('3'))
         self.assertEqual(summary['remaining_buy_capacity'], Decimal('2'))
         self.assertEqual(summary['latest_sell_operation_id'], 91)
+
+    def test_buy_status_summary_exposes_relevant_inventory_warning_count(self):
+        summary = _build_buy_status_summary({
+            'reconciliation': {
+                'inventory_warnings': [
+                    {'severity': 'INFO'},
+                    {'severity': 'WARNING'},
+                    {'severity': 'CRITICAL'},
+                ],
+            },
+        })
+
+        self.assertEqual(summary['inventory_warnings_count'], 2)
 
     def test_churn_summary_handles_no_data_safely(self):
         summary = _build_churn_summary([], {})

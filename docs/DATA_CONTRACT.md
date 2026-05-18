@@ -375,6 +375,13 @@ classification and BUY diagnostic fields:
 - `latest_buy_symbol`
 - `latest_buy_error_class`
 - `latest_buy_error_code`
+- `reconciliation`, which may include additive persisted inventory diagnostics:
+  - `missing_portfolio_rows_count`
+  - `material_missing_portfolio_rows_count`
+  - `unknown_valuation_missing_portfolio_rows_count`
+  - `portfolio_rows_without_open_lots_count`
+  - `quantity_drift_count`
+  - `inventory_warnings[]`
 
 These fields are healthcheck JSON details only. They do not add or modify
 database columns, and they do not change the accounting source-of-truth model.
@@ -434,6 +441,13 @@ Consumers may enrich display-only exposure labels by reading `bot.portfolio`
 as a projection, but that enrichment must remain approximate, must not replace
 `position_lots` as accounting truth, and must not treat missing/null/non-positive
 projection prices as zero.
+
+`reconciliation.inventory_warnings[]` is also bot-owned persisted diagnostic
+state. Warning items may include `symbol`, `reason`, `severity`, `lot_qty`,
+`portfolio_qty`, `estimated_notional_usdt`, and `valuation_status`. Consumers
+may surface these persisted warnings, but must not query `bot.position_lots` or
+`bot.portfolio` to reconstruct them, call Binance to refill them, or mutate
+bot-owned tables while rendering them.
 
 Suggested dashboard status logic:
 
@@ -1079,6 +1093,9 @@ Consumer rules:
 - Binance execution errors must be shown separately from capacity gating.
 - Diagnostics are read-only and must not execute trades, call Binance, or
   mutate accounting state.
+- Inventory warnings exposed in `/buy_status` must come from the latest
+  persisted `details.reconciliation.inventory_warnings` payload; Django should
+  not rebuild reconciliation from accounting queries inside the command path.
 - Healthcheck persistence is best-effort. Failure to write diagnostics must
   not block trading, and consumers must tolerate the latest row being older
   than the latest attempted cycle if persistence fails.

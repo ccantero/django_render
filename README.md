@@ -215,6 +215,9 @@ diagnostic gaps hide useful information:
   `Latest BUY reason: unavailable`; that alone does not block BUY status.
 - Active re-entry cooldown reasons render as human-readable blocked states and,
   when present, include latest SELL/cooldown metadata from healthcheck details.
+- Persisted reconciliation `inventory_warnings` from the latest healthcheck are
+  shown only when they contain `WARNING`/`CRITICAL` diagnostics; `/buy_status`
+  does not reconstruct those warnings from accounting tables.
 
 Run tests:
 

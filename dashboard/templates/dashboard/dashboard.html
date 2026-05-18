@@ -126,6 +126,7 @@
 						remaining {{ buy_status_summary.remaining_buy_capacity|default:"-" }};
 						dust {{ buy_status_summary.dust_positions_count|default:"-" }} non-blocking.
 					</p>
+					<p class="text-muted small mb-0">Inventory warnings: {{ buy_status_summary.inventory_warnings_count|default:"0" }}</p>
 				</div>
 			</div>
 		</div>

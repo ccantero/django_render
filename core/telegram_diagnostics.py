@@ -19,6 +19,7 @@ from core.trading_models import (
 )
 from dashboard.services.telegram_buy_status_formatter import (
 	build_buy_status_exposure,
+	build_inventory_warning_lines,
 	render_buy_status_message,
 )
 
@@ -295,6 +296,11 @@ def format_buy_status():
 		latest_buy_error_code=details.get("latest_buy_error_code"),
 		unknown_value_symbols=classification["unknown_symbols"],
 		cooldown_lines=cooldown_lines,
+		inventory_warning_lines=build_inventory_warning_lines(
+			((details.get("reconciliation") or {}).get("inventory_warnings"))
+			if isinstance(details.get("reconciliation"), dict)
+			else []
+		),
 	)
 
 

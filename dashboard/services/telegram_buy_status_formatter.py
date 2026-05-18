@@ -42,6 +42,7 @@ def render_buy_status_message(
 	latest_buy_error_code=None,
 	unknown_value_symbols=None,
 	cooldown_lines=None,
+	inventory_warning_lines=None,
 ):
 	lines = [
 		f"<b>{escape(str(emoji))} BUY status</b>",
@@ -97,6 +98,13 @@ def render_buy_status_message(
 			f"- Valuation unavailable: <code>{_fmt_symbol_list(unknown_symbols)}</code>",
 		])
 
+	if inventory_warning_lines:
+		lines.extend([
+			"",
+			"<b>Inventory warnings</b>",
+			*inventory_warning_lines,
+		])
+
 	lines.extend([
 		"",
 		"<b>Latest BUY</b>",
@@ -116,6 +124,50 @@ def render_buy_status_message(
 	if cooldown_lines:
 		lines.extend([""] + cooldown_lines)
 	return "\n".join(lines)
+
+
+def build_inventory_warning_lines(warnings, limit=3):
+	relevant = [
+		warning for warning in list(warnings or [])
+		if isinstance(warning, dict)
+		and str(warning.get("severity") or "").strip().upper() in {"WARNING", "CRITICAL"}
+	]
+	lines = [_format_inventory_warning(warning) for warning in relevant[:limit]]
+	if len(relevant) > limit:
+		lines.append(f"- +{len(relevant) - limit} more")
+	return lines
+
+
+def count_relevant_inventory_warnings(warnings):
+	return sum(
+		1 for warning in list(warnings or [])
+		if isinstance(warning, dict)
+		and str(warning.get("severity") or "").strip().upper() in {"WARNING", "CRITICAL"}
+	)
+
+
+def _format_inventory_warning(warning):
+	symbol = escape(str(warning.get("symbol") or "unknown"))
+	reason = _humanize_inventory_warning_reason(warning.get("reason"))
+	suffix = ""
+	notional = _to_decimal(warning.get("estimated_notional_usdt"))
+	if notional is not None:
+		suffix = f" (~{_fmt_usdt_value(notional)} USDT)"
+	elif str(warning.get("valuation_status") or "").strip().lower() == "unknown":
+		suffix = " (valuation unknown)"
+	return f"- {symbol}: {reason}{suffix}"
+
+
+def _humanize_inventory_warning_reason(reason):
+	reason = str(reason or "unknown").strip()
+	mapped = {
+		"open_lots_without_portfolio_row": "open lots without portfolio row",
+		"portfolio_row_without_open_lots": "portfolio row without open lots",
+		"portfolio_lot_quantity_drift": "portfolio vs lots quantity drift",
+	}
+	if reason in mapped:
+		return mapped[reason]
+	return escape(reason.replace("_", " "))
 
 
 def _valued_rows(symbols, rows_by_symbol):
