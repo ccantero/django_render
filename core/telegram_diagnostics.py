@@ -248,7 +248,7 @@ def format_buy_status():
 	try:
 		portfolio_rows = list(Portfolio.objects.filter(symbol__in=exposure_symbols)) if exposure_symbols else []
 	except DatabaseError:
-		logger.warning("Could not read portfolio rows for Telegram BUY status exposure")
+		logger.debug("Could not read portfolio rows for Telegram BUY status exposure")
 		portfolio_rows = []
 	exposure = build_buy_status_exposure(
 		classification["material_symbols"],

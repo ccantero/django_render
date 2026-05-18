@@ -201,13 +201,16 @@ class TelegramDiagnosticsCommandTests(TestCase):
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.TradeOperation.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
     def test_buy_status_returns_capacity_with_runtime_max_positions_fallback(
         self,
         mock_health_manager,
+        mock_portfolio_manager,
         mock_trade_manager,
         mock_send_message,
     ):
+        mock_portfolio_manager.filter.return_value = []
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=9,
             status='healthy',
@@ -246,13 +249,16 @@ class TelegramDiagnosticsCommandTests(TestCase):
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.TradeOperation.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
     def test_buy_status_keeps_capacity_when_optional_fields_are_missing(
         self,
         mock_health_manager,
+        mock_portfolio_manager,
         mock_trade_manager,
         mock_send_message,
     ):
+        mock_portfolio_manager.filter.return_value = []
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=10,
             status='healthy',
@@ -309,8 +315,15 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
-    def test_buy_status_displays_blocked_when_effective_positions_reach_max(self, mock_health_manager, mock_send_message):
+    def test_buy_status_displays_blocked_when_effective_positions_reach_max(
+        self,
+        mock_health_manager,
+        mock_portfolio_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = []
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=10,
             status='healthy',
@@ -337,8 +350,15 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
-    def test_buy_status_treats_dust_as_non_blocking_when_raw_positions_exceed_max(self, mock_health_manager, mock_send_message):
+    def test_buy_status_treats_dust_as_non_blocking_when_raw_positions_exceed_max(
+        self,
+        mock_health_manager,
+        mock_portfolio_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = []
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=11,
             status='healthy',
@@ -364,8 +384,15 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
-    def test_buy_status_renders_reentry_cooldown_details(self, mock_health_manager, mock_send_message):
+    def test_buy_status_renders_reentry_cooldown_details(
+        self,
+        mock_health_manager,
+        mock_portfolio_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = []
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=12,
             status='healthy',
@@ -928,13 +955,16 @@ class TelegramDiagnosticsCommandTests(TestCase):
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.TradeOperation.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
     def test_buy_status_command_does_not_write_bot_owned_tables(
         self,
         mock_health_manager,
+        mock_portfolio_manager,
         mock_trade_manager,
         mock_send_message,
     ):
+        mock_portfolio_manager.filter.return_value = []
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=12,
             status='healthy',
@@ -962,6 +992,40 @@ class TelegramDiagnosticsCommandTests(TestCase):
             manager.update_or_create.assert_not_called()
             manager.filter.return_value.update.assert_not_called()
         mock_send_message.assert_called_once()
+
+    @patch('core.telegram_diagnostics.logger')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_buy_status_portfolio_fallback_logs_at_debug_level(
+        self,
+        mock_health_manager,
+        mock_portfolio_manager,
+        mock_logger,
+    ):
+        from django.db import DatabaseError
+        from core.telegram_diagnostics import format_buy_status
+
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=18,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 1,
+                'material_positions_count': 1,
+                'dust_positions_count': 0,
+                'unknown_value_positions_count': 0,
+                'material_symbols': ['BTCUSDT'],
+                'dust_symbols': [],
+                'unknown_value_symbols': [],
+                'max_positions': 8,
+            },
+        )
+        mock_portfolio_manager.filter.side_effect = DatabaseError('missing portfolio')
+
+        format_buy_status()
+
+        mock_logger.debug.assert_called_once_with('Could not read portfolio rows for Telegram BUY status exposure')
+        mock_logger.warning.assert_not_called()
 
 
 class DashboardEndpointTests(TestCase):
