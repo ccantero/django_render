@@ -194,10 +194,19 @@ Suggested action: Review in dashboard...
 `/buy_status` treats BUY capacity conservatively without letting optional
 diagnostic gaps hide useful information:
 
+- The Telegram message is grouped for mobile review into Capacity, Positions,
+  Material exposure, Dust exposure, Latest BUY, and Status sections.
 - `Effective positions` means `material + unknown`; unknown-value positions count
   against capacity until the bot can value them.
 - Dust positions are shown explicitly as `non-blocking` and do not consume BUY
   capacity.
+- Material and dust exposure are approximate display values enriched from
+  read-only `bot.portfolio`; `bot.position_lots` remains the accounting source of
+  truth.
+- Material exposure is sorted by approximate USDT value, capped to eight rows,
+  and dust symbols are only listed compactly when there are five or fewer.
+- Missing/non-positive projection prices are not treated as zero: the command
+  shows valuation as unavailable or partially unavailable instead.
 - If persisted healthcheck details do not include `max_positions`, the dashboard
   falls back to runtime config/env aliases such as `MAX_POSITIONS`.
 - If free USDT cannot be read, the command shows

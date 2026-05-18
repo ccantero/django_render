@@ -17,6 +17,10 @@ from core.trading_models import (
 	SellDecisionEvent,
 	TradeOperation,
 )
+from dashboard.services.telegram_buy_status_formatter import (
+	build_buy_status_exposure,
+	render_buy_status_message,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -181,26 +185,24 @@ def format_help():
 def format_buy_status():
 	latest = BotHealthcheck.objects.order_by("-created_at", "-id").first()
 	if latest is None:
-		return "\n".join([
-			"<b>⚪ BUY status</b>",
-			"",
-			"Raw/material/dust/unknown: <code>N/A/N/A/N/A/N/A</code>",
-			"Effective positions: <code>N/A/N/A</code>",
-			"Remaining capacity: <code>N/A</code>",
-			"Max positions: <code>N/A</code>",
-			"",
-			"Material: <code>none</code>",
-			"Dust: <code>none</code>",
-			"Dust positions: <code>non-blocking</code>",
-			"Unknown: <code>none</code>",
-			"",
-			"Free USDT: <code>diagnostic unavailable</code>",
-			"Latest BUY decision: <code>unavailable</code>",
-			"Latest BUY reason: <code>unavailable</code>",
-			"",
-			"BUY state: <code>diagnostic_unavailable</code>",
-			"Reason: <code>latest healthcheck missing</code>",
-		])
+		return render_buy_status_message(
+			emoji="⚪",
+			raw_count=None,
+			material_count=None,
+			dust_count=None,
+			unknown_count=None,
+			effective_positions=None,
+			max_positions=None,
+			remaining_capacity=None,
+			free_usdt=None,
+			latest_buy_state="unavailable",
+			latest_buy_reason="unavailable",
+			latest_buy_symbol="unavailable",
+			read_only=False,
+			exposure=build_buy_status_exposure([], [], []),
+			status_lines=["⚪ Diagnostic unavailable: latest healthcheck missing"],
+			unknown_value_symbols=[],
+		)
 
 	details = latest.details or {}
 	classification = _buy_classification_from_details(details)
@@ -225,46 +227,45 @@ def format_buy_status():
 	if latest_buy_reason is None:
 		latest_buy_reason = latest_buy_rejection_reason()
 	effective_positions = _effective_positions(material_count, unknown_count)
-	remaining_capacity = _remaining_capacity(max_positions, effective_positions)
+	remaining_capacity = details.get("remaining_buy_capacity")
+	if remaining_capacity is None:
+		remaining_capacity = _remaining_capacity(max_positions, effective_positions)
+	read_only = _resolve_read_only(details)
 	state_label, emoji, reason = interpret_buy_state(
 		raw_count=raw_count,
 		material_count=material_count,
 		max_positions=max_positions,
 		free_usdt=free_usdt,
 		unknown_count=unknown_count,
-		read_only=_resolve_read_only(details),
+		read_only=read_only,
 		min_required_buy_amount=_resolve_min_required_buy_amount(details),
 		latest_buy_decision=latest_buy_decision,
 		latest_buy_reason=latest_buy_reason,
 		latest_buy_error=_latest_buy_error(details),
 	)
 
-	lines = [
-		f"<b>{emoji} BUY status</b>",
-		"",
-		"Raw/material/dust/unknown: "
-		f"<code>{h('/'.join(fmt_count(value) for value in [raw_count, material_count, dust_count, unknown_count]))}</code>",
-		f"Effective positions: <code>{h(fmt_count(effective_positions))}/{h(fmt_count(max_positions))}</code>",
-		f"Remaining capacity: <code>{h(fmt_count(remaining_capacity))}</code>",
-		f"Max positions: <code>{h(fmt_count(max_positions))}</code>",
-		"",
-		f"Material: <code>{h(fmt_symbol_list(classification['material_symbols']))}</code>",
-		f"Dust: <code>{h(fmt_symbol_list(classification['dust_symbols']))}</code>",
-		"Dust positions: <code>non-blocking</code>",
-		f"Unknown: <code>{h(fmt_symbol_list(classification['unknown_symbols']))}</code>",
-		"",
-		f"Free USDT: <code>{h(fmt_usdt(free_usdt) if free_usdt is not None else 'diagnostic unavailable')}</code>",
-		f"Latest BUY decision: <code>{h(latest_buy_decision or 'unavailable')}</code>",
-		f"Latest BUY reason: <code>{h(latest_buy_reason or 'unavailable')}</code>",
-		f"Latest BUY symbol: <code>{h(details.get('latest_buy_symbol') or 'unavailable')}</code>",
-		"",
-		f"BUY state: <code>{h(state_label)}</code>",
-		f"Reason: <code>{h(reason)}</code>",
-	]
+	exposure_symbols = list(dict.fromkeys(classification["material_symbols"] + classification["dust_symbols"]))
+	try:
+		portfolio_rows = list(Portfolio.objects.filter(symbol__in=exposure_symbols)) if exposure_symbols else []
+	except DatabaseError:
+		logger.warning("Could not read portfolio rows for Telegram BUY status exposure")
+		portfolio_rows = []
+	exposure = build_buy_status_exposure(
+		classification["material_symbols"],
+		classification["dust_symbols"],
+		portfolio_rows,
+	)
+	status_lines = _buy_status_lines(
+		remaining_capacity=remaining_capacity,
+		latest_buy_state=latest_buy_decision,
+		latest_buy_reason=latest_buy_reason,
+		read_only=read_only,
+		state_label=state_label,
+	)
 	human_reason = BUY_COOLDOWN_REASON_PRESENTATION.get(str(latest_buy_reason or "").strip().lower())
+	cooldown_lines = []
 	if human_reason:
-		lines.extend([
-			"",
+		cooldown_lines.extend([
 			f"Cooldown: <code>{h(human_reason)}</code>",
 			f"Latest SELL operation: <code>{h(details.get('latest_sell_operation_id'))}</code>",
 			f"Latest SELL timestamp: <code>{h(details.get('latest_sell_timestamp'))}</code>",
@@ -274,7 +275,27 @@ def format_buy_status():
 			f"Cooldown minutes: <code>{h(details.get('cooldown_minutes'))}</code>",
 			f"Cooldown remaining: <code>{h(details.get('cooldown_remaining_minutes'))}</code>",
 		])
-	return "\n".join(lines)
+	return render_buy_status_message(
+		emoji=emoji,
+		raw_count=raw_count,
+		material_count=material_count,
+		dust_count=dust_count,
+		unknown_count=unknown_count,
+		effective_positions=effective_positions,
+		max_positions=max_positions,
+		remaining_capacity=remaining_capacity,
+		free_usdt=free_usdt,
+		latest_buy_state=latest_buy_decision,
+		latest_buy_reason=latest_buy_reason,
+		latest_buy_symbol=details.get("latest_buy_symbol"),
+		read_only=read_only,
+		exposure=exposure,
+		status_lines=status_lines,
+		latest_buy_error_class=details.get("latest_buy_error_class"),
+		latest_buy_error_code=details.get("latest_buy_error_code"),
+		unknown_value_symbols=classification["unknown_symbols"],
+		cooldown_lines=cooldown_lines,
+	)
 
 
 def format_position(symbol):
@@ -836,6 +857,10 @@ def interpret_buy_state(
 		return "diagnostic_unavailable", "⚪", "position classification unavailable"
 	if read_only:
 		return "blocked_by_read_only", "🔴", "READ_ONLY=true"
+	if decision == "blocked_by_positions":
+		return "blocked_by_positions", "🔴", "effective positions at max capacity"
+	if decision == "blocked_by_usdt" or reason == "free_usdt_below_buy_amount":
+		return "blocked_by_usdt", "🟡", "free USDT below configured buy amount"
 	if decision in {"execution_error", "planned_failed", "submitted_failed"} or (
 		decision in {"planned", "submitted"} and latest_buy_error
 	):
@@ -849,6 +874,42 @@ def interpret_buy_state(
 	if free is not None and min_required is not None and free < min_required:
 		return "blocked_by_usdt", "🔴", "free USDT below configured buy amount"
 	return "available", "🟢", "capacity available"
+
+
+def _buy_status_lines(
+	*,
+	remaining_capacity,
+	latest_buy_state,
+	latest_buy_reason,
+	read_only,
+	state_label,
+):
+	lines = []
+	remaining = to_decimal(remaining_capacity)
+	decision = str(latest_buy_state or "").strip().lower()
+	reason = str(latest_buy_reason or "").strip().lower()
+
+	if remaining is None:
+		lines.append("⚪ Capacity diagnostic unavailable")
+	elif remaining > 0:
+		lines.append("✅ Capacity available")
+	else:
+		lines.append("⛔ No remaining BUY slots")
+
+	if read_only:
+		lines.append("⛔ Bot is in read-only mode")
+	if decision == "blocked_by_usdt" or reason == "free_usdt_below_buy_amount":
+		lines.append("⚠️ Insufficient free USDT for next BUY")
+	if decision == "blocked_by_positions" or state_label == "blocked_by_positions":
+		if "⛔ No remaining BUY slots" not in lines:
+			lines.append("⛔ No remaining BUY slots")
+	if decision == "no_candidate" or reason == "no_candidate":
+		lines.append("ℹ️ Scanner did not select a BUY candidate")
+	if decision == "execution_error" or reason == "binance_api_error":
+		lines.append("⚠️ Latest BUY execution error")
+	if state_label == "diagnostic_unavailable":
+		lines.append("⚪ Diagnostic unavailable")
+	return lines
 
 
 def latest_buy_rejection_reason():

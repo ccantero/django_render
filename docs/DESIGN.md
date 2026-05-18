@@ -156,10 +156,17 @@ making them look like large incidents. `/buy_status` is conservative
 about exposure rather than pessimistic about missing optional fields: effective
 positions are `material + unknown`, dust is explicitly non-blocking, missing free
 USDT renders as `diagnostic unavailable`, and a missing latest BUY reason renders
-as `unavailable` without blocking capacity. It uses `diagnostic_unavailable` only
-when required inputs such as position classification or max-position config
-cannot be read. Inline keyboard buttons, if added later, must be navigation or
-refresh controls only and must never trigger trading.
+as `unavailable` without blocking capacity. Its mobile summary separates
+Capacity, Positions, Material exposure, Dust exposure, Latest BUY, and Status;
+sorts material exposure by approximate USDT value; caps material rows at eight;
+lists dust symbols only when there are five or fewer; and keeps missing or
+non-positive projection prices visibly unavailable rather than silently turning
+them into zero. Capacity and latest BUY blockers remain separate so “slots
+available” can coexist with “insufficient free USDT.” It uses
+`diagnostic_unavailable` only when required inputs such as position
+classification or max-position config cannot be read. Inline keyboard buttons,
+if added later, must be navigation or refresh controls only and must never
+trigger trading.
 
 ---
 

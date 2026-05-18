@@ -430,6 +430,10 @@ as a synonym for max-position capacity exhaustion.
 Dashboard Telegram diagnostics may expose `/buy_status` from these persisted
 healthcheck details. The diagnostic is read-only; consumers should use these
 bot-owned fields instead of inferring BUY state from missing guessed values.
+Consumers may enrich display-only exposure labels by reading `bot.portfolio`
+as a projection, but that enrichment must remain approximate, must not replace
+`position_lots` as accounting truth, and must not treat missing/null/non-positive
+projection prices as zero.
 
 Suggested dashboard status logic:
 
@@ -1068,6 +1072,10 @@ Consumer rules:
   `blocked_by_usdt`, or `blocked_by_read_only`.
 - Dust-only inventory should be shown as non-blocking for `max_positions` when
   material-position classification says `material=0` and `unknown=0`.
+- A dashboard may show approximate material/dust USDT exposure from
+  `bot.portfolio` for operator readability, but incomplete projection pricing
+  should render as unavailable/partially unavailable rather than changing BUY
+  capacity interpretation.
 - Binance execution errors must be shown separately from capacity gating.
 - Diagnostics are read-only and must not execute trades, call Binance, or
   mutate accounting state.

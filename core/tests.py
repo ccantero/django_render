@@ -233,18 +233,15 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
         self.assertIn('<b>🟢 BUY status</b>', message)
-        self.assertIn('Raw/material/dust/unknown: <code>17/5/12/0</code>', message)
-        self.assertIn('Effective positions: <code>5/10</code>', message)
-        self.assertIn('Remaining capacity: <code>5</code>', message)
-        self.assertIn('Max positions: <code>10</code>', message)
-        self.assertIn('Material: <code>BTCUSDT</code>', message)
-        self.assertIn('Dust: <code>SAGAUSDT, ETHUSDT</code>', message)
-        self.assertIn('Dust positions: <code>non-blocking</code>', message)
-        self.assertIn('Unknown: <code>none</code>', message)
+        self.assertIn('Raw: <code>17</code>', message)
+        self.assertIn('Effective positions: <code>5 / 10</code>', message)
+        self.assertIn('Remaining slots: <code>5</code>', message)
+        self.assertIn('Material: <code>5</code>', message)
+        self.assertIn('Dust: <code>12</code>', message)
+        self.assertIn('Dust positions are non-blocking', message)
         self.assertIn('Free USDT: <code>123.45 USDT</code>', message)
-        self.assertIn('Latest BUY reason: <code>capacity available</code>', message)
-        self.assertIn('BUY state: <code>available</code>', message)
         self.assertIn('Reason: <code>capacity available</code>', message)
+        self.assertIn('✅ Capacity available', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -278,12 +275,11 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
-        self.assertIn('Effective positions: <code>5/10</code>', message)
-        self.assertIn('Remaining capacity: <code>5</code>', message)
+        self.assertIn('Effective positions: <code>5 / 10</code>', message)
+        self.assertIn('Remaining slots: <code>5</code>', message)
         self.assertIn('Free USDT: <code>diagnostic unavailable</code>', message)
-        self.assertIn('Latest BUY reason: <code>unavailable</code>', message)
-        self.assertIn('BUY state: <code>available</code>', message)
-        self.assertIn('Reason: <code>capacity available</code>', message)
+        self.assertIn('Reason: <code>unavailable</code>', message)
+        self.assertIn('✅ Capacity available', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -309,8 +305,7 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
         self.assertIn('<b>⚪ BUY status</b>', message)
-        self.assertIn('BUY state: <code>diagnostic_unavailable</code>', message)
-        self.assertIn('Reason: <code>latest healthcheck missing</code>', message)
+        self.assertIn('⚪ Diagnostic unavailable: latest healthcheck missing', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -338,8 +333,7 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
         self.assertIn('<b>🔴 BUY status</b>', message)
-        self.assertIn('BUY state: <code>blocked_by_positions</code>', message)
-        self.assertIn('effective positions at max capacity', message)
+        self.assertIn('⛔ No remaining BUY slots', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -399,10 +393,207 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
         self.assertIn('Re-entry blocked after loss/stop-loss cooldown', message)
-        self.assertIn('Latest BUY symbol: <code>BTCUSDT</code>', message)
+        self.assertIn('Candidate: <code>BTCUSDT</code>', message)
         self.assertIn('Cooldown remaining: <code>42</code>', message)
-        self.assertIn('BUY state: <code>blocked_by_cooldown</code>', message)
-        self.assertIn('Dust positions: <code>non-blocking</code>', message)
+        self.assertIn('Dust positions are non-blocking', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_buy_status_renders_mobile_exposure_summary_with_material_values_sorted_desc(
+        self,
+        mock_portfolio_manager,
+        mock_health_manager,
+        mock_send_message,
+    ):
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=13,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 4,
+                'material_positions_count': 3,
+                'dust_positions_count': 1,
+                'unknown_value_positions_count': 0,
+                'material_symbols': ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
+                'dust_symbols': ['XRPUSDT'],
+                'max_positions': 8,
+                'remaining_buy_capacity': 5,
+                'free_usdt': Decimal('0.020000000000000000'),
+            },
+        )
+        mock_portfolio_manager.filter.return_value = [
+            SimpleNamespace(symbol='BTCUSDT', quantity=Decimal('1'), current_price=Decimal('1.24')),
+            SimpleNamespace(symbol='ETHUSDT', quantity=Decimal('2'), current_price=Decimal('5.41')),
+            SimpleNamespace(symbol='SOLUSDT', quantity=Decimal('1'), current_price=Decimal('3.91')),
+            SimpleNamespace(symbol='XRPUSDT', quantity=Decimal('2'), current_price=Decimal('0.56')),
+        ]
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/buy_status')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('<b>🟢 BUY status</b>', message)
+        self.assertIn('<b>Capacity</b>', message)
+        self.assertIn('Effective positions: <code>3 / 8</code>', message)
+        self.assertIn('Remaining slots: <code>5</code>', message)
+        self.assertIn('Free USDT: <code>0.02 USDT</code>', message)
+        self.assertIn('<b>Positions</b>', message)
+        self.assertIn('Raw: <code>4</code>', message)
+        self.assertIn('<b>Material exposure (~15.97 USDT)</b>', message)
+        self.assertLess(message.index('ETHUSDT ~ 10.82 USDT'), message.index('SOLUSDT ~ 3.91 USDT'))
+        self.assertLess(message.index('SOLUSDT ~ 3.91 USDT'), message.index('BTCUSDT ~ 1.24 USDT'))
+        self.assertIn('<b>Dust exposure</b>', message)
+        self.assertIn('Estimated dust exposure: <code>~1.12 USDT</code>', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_buy_status_compacts_dust_lists_and_marks_partial_unavailable(
+        self,
+        mock_portfolio_manager,
+        mock_health_manager,
+        mock_send_message,
+    ):
+        dust_symbols = [f'DUST{i}USDT' for i in range(6)]
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=14,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 6,
+                'material_positions_count': 0,
+                'dust_positions_count': 6,
+                'unknown_value_positions_count': 0,
+                'material_symbols': [],
+                'dust_symbols': dust_symbols,
+                'max_positions': 8,
+            },
+        )
+        mock_portfolio_manager.filter.return_value = [
+            SimpleNamespace(symbol=symbol, quantity=Decimal('1'), current_price=Decimal('0.1'))
+            for symbol in dust_symbols[:-1]
+        ] + [
+            SimpleNamespace(symbol=dust_symbols[-1], quantity=Decimal('1'), current_price=None),
+        ]
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            self.post_telegram_message('/buy_status')
+
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('Dust positions: <code>6</code>', message)
+        self.assertIn('Estimated dust exposure: <code>partially unavailable</code>', message)
+        self.assertNotIn('DUST0USDT, DUST1USDT, DUST2USDT, DUST3USDT, DUST4USDT, DUST5USDT', message)
+        self.assertIn('Unknown value', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_buy_status_lists_small_dust_sets_compactly_and_escapes_dynamic_values(
+        self,
+        mock_portfolio_manager,
+        mock_health_manager,
+        mock_send_message,
+    ):
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=15,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 2,
+                'material_positions_count': 0,
+                'dust_positions_count': 2,
+                'unknown_value_positions_count': 0,
+                'material_symbols': [],
+                'dust_symbols': ['<XRPUSDT>', 'NEAR&USDT'],
+                'max_positions': 8,
+                'latest_buy_state': 'no_candidate',
+                'latest_buy_reason': '<scanner&empty>',
+                'latest_buy_symbol': '<BTCUSDT>',
+            },
+        )
+        mock_portfolio_manager.filter.return_value = [
+            SimpleNamespace(symbol='<XRPUSDT>', quantity=Decimal('1'), current_price=Decimal('0.1')),
+            SimpleNamespace(symbol='NEAR&USDT', quantity=Decimal('1'), current_price=Decimal('0.2')),
+        ]
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            self.post_telegram_message('/buy_status')
+
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('Symbols: <code>&lt;XRPUSDT&gt;, NEAR&amp;USDT</code>', message)
+        self.assertIn('Reason: <code>&lt;scanner&amp;empty&gt;</code>', message)
+        self.assertIn('Candidate: <code>&lt;BTCUSDT&gt;</code>', message)
+        self.assertIn('Scanner did not select a BUY candidate', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_buy_status_separates_capacity_from_latest_buy_blockers(
+        self,
+        mock_portfolio_manager,
+        mock_health_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = []
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=16,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 5,
+                'material_positions_count': 5,
+                'dust_positions_count': 0,
+                'unknown_value_positions_count': 0,
+                'max_positions': 8,
+                'remaining_buy_capacity': 3,
+                'latest_buy_state': 'blocked_by_usdt',
+                'latest_buy_reason': 'free_usdt_below_buy_amount',
+            },
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            self.post_telegram_message('/buy_status')
+
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('✅ Capacity available', message)
+        self.assertIn('⚠️ Insufficient free USDT for next BUY', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_buy_status_reports_no_slots_when_blocked_by_positions(
+        self,
+        mock_portfolio_manager,
+        mock_health_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = []
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=17,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 8,
+                'material_positions_count': 8,
+                'dust_positions_count': 0,
+                'unknown_value_positions_count': 0,
+                'max_positions': 8,
+                'latest_buy_state': 'blocked_by_positions',
+            },
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            self.post_telegram_message('/buy_status')
+
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('⛔ No remaining BUY slots', message)
 
     def test_numeric_formatting_trims_trailing_zeros(self):
         from core.telegram_diagnostics import fmt_drift, fmt_price, fmt_qty

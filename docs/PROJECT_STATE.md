@@ -55,6 +55,11 @@ Implemented capabilities:
   dust as non-blocking, falls back to runtime max-position config when the latest
   healthcheck omits it, and keeps optional diagnostic gaps from collapsing the
   whole BUY-capacity answer.
+- `/buy_status` now renders a mobile-first operational summary with separate
+  capacity, position-count, material-exposure, dust-exposure, latest-BUY, and
+  status sections; material rows are approximately valued from read-only
+  `bot.portfolio`, sorted descending, and missing projection prices remain
+  visibly unavailable instead of becoming zero.
 - Dust signal detail page
 - Linked correction badges for dust detections using `bot.manual_corrections.source_detection_id`
 - Manual review buttons:
