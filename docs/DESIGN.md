@@ -176,6 +176,12 @@ valuation state rather than rebuilding diagnostics inside Django. The BUY /
 Cooldown card may show only the compact warning count so the homepage remains
 lightweight.
 
+Inventory warning UX should distinguish accounting drift, stale projection,
+dust-only residuals, and material inventory mismatches. When bot payloads expose
+enough source metadata, Django and Telegram should show compact hints such as
+lots/Spot reconciled, portfolio projection may be stale, or inventory warning
+count, without turning those hints into dashboard-side correction logic.
+
 ### Daily Trading Audit
 
 If Django later exposes Daily Trading Audit output, it should be designed as a
@@ -194,6 +200,9 @@ Guidance should favor safety:
 - Use “Unclassified signal / needs review” as fallback.
 - Use approximate values only for prioritization.
 - Display “Do not correct from DB directly. Use manual correction workflow.”
+- For inventory mismatch work, direct operators to the bot-side analyzer,
+  manual correction CLI, and portfolio sync script rather than adding Django
+  mutation tools.
 
 Recommended labels:
 

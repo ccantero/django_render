@@ -31,6 +31,7 @@ It provides visibility, review, and request workflows over bot-owned database ta
 - No FIFO accounting mutation.
 - No direct correction of lots.
 - No direct mutation of bot accounting tables.
+- No inventory remediation scripts executed from Django.
 - No alert routing as a dependency for the bot.
 
 ---
@@ -133,6 +134,8 @@ No Celery, Redis, or asynchronous worker service is currently wired in this proj
 
 - `bot.position_lots` is the accounting source of truth.
 - `bot.portfolio` is a projection/read layer.
+- Binance Spot is live operational truth for current exchange balances, but it
+  is not stored or mutated by Django.
 - `bot.trade_operations` is the economic operation layer.
 - `bot.trade_fills` is the raw execution/audit layer.
 - `bot.lot_closures` is the FIFO closure audit layer.
@@ -208,6 +211,13 @@ The same boundary applies to future Daily Trading Audit consumption: Django may
 render bot-produced read-only report output after that format is stabilized in
 the shared contract, but it should not recompute audit truth or become the owner
 of the bot-side report.
+
+For inventory mismatch investigations, Django documentation may reference the
+bot-side scripts below, but the dashboard should not execute or replace them:
+
+- `src/scripts/analyze_symbol_inventory_gap.py`
+- `src/scripts/manual_correction.py`
+- `src/scripts/sync_portfolio_from_api.py`
 
 Operational Trading KPIs v2 live in a dedicated dashboard read model service at
 `dashboard/services/operational_kpis.py`. The page reads filled operations in a

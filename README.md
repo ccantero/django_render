@@ -114,6 +114,31 @@ python src/scripts/manual_correction.py apply --id <id> --confirm
 
 The dashboard does not execute Binance orders and does not apply accounting corrections.
 
+### Inventory Mismatch Runbook
+
+For inventory mismatches, use the bot project tooling before proposing new
+dashboard behavior. Django remains a read/review/request UI and must not fix
+inventory directly.
+
+Bot-side investigation and remediation scripts:
+
+```bash
+python src/scripts/analyze_symbol_inventory_gap.py BTCUSDT
+python src/scripts/manual_correction.py create ...
+python src/scripts/manual_correction.py apply --id <ID>
+python src/scripts/manual_correction.py apply --id <ID> --confirm
+PYTHONPATH=src python src/scripts/sync_portfolio_from_api.py
+```
+
+Interpretation rules:
+
+- `position_lots` is accounting truth.
+- Binance Spot is live operational truth.
+- `portfolio` is a projection/read model and may be stale or rebuilt from
+  open lots/projection logic.
+- If lots and Spot match but `portfolio` differs, treat it as projection/cache
+  mismatch evidence, not permission for Django to mutate accounting tables.
+
 ### Validated Correction Path
 
 The dashboard request path has been validated for `CLOSE_LOTS_EXTERNAL_SELL`,

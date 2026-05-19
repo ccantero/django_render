@@ -6,6 +6,10 @@ Maintain a Django dashboard that observes and operates around Binance bot databa
 
 Current governance goal: enforce the non-optional Codex workflow of planner, implementer, tester, and documentator for all future tasks.
 
+Current documentation goal: keep the inventory mismatch runbook visible from
+the Django docs while preserving the bot-owned remediation boundary and keeping
+the Django data contract synchronized with the bot project copy.
+
 ## Priority Model
 
 - P0: safety, correctness, and production access controls.
@@ -84,6 +88,11 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 13. Consider a dedicated drilldown for persisted reconciliation inventory warnings.
 14. Evaluate whether inventory warnings should link directly to drift detail pages.
 15. Add a future Daily Trading Audit dashboard view only after the bot-side report format stabilizes.
+16. Add dashboard hints or links for the inventory mismatch runbook without
+    giving Django mutation authority.
+17. Request bot-side source/projection metadata in healthcheck or `/buy_status`
+    payloads when needed so Django can explain stale projection vs accounting
+    drift more clearly.
 
 ## P2 Architecture / Tech Debt
 
@@ -130,3 +139,7 @@ Current governance goal: enforce the non-optional Codex workflow of planner, imp
 - Historical `dust_detections` rows remain visible after correction, so operator views should continue distinguishing active/latest signals from audit history.
 - Dust review/ignore state suppresses paging only; detections remain persisted as audit history and do not mutate accounting state.
 - Keep Django `docs/DATA_CONTRACT.md` synchronized from the bot project’s canonical contract rather than evolving it independently.
+- Existing bot-side inventory tools to reference, not duplicate in Django:
+  `src/scripts/analyze_symbol_inventory_gap.py`,
+  `src/scripts/manual_correction.py`, and
+  `src/scripts/sync_portfolio_from_api.py`.

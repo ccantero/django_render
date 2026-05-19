@@ -85,6 +85,16 @@ Implemented capabilities:
 - Optional Telegram diagnostics allowlists through `TELEGRAM_ALLOWED_CHAT_IDS` and `TELEGRAM_ALLOWED_USER_IDS`
 - Public Django app liveness endpoint at `/health/` for external keepalive checks
 
+2026-05-19 inventory mismatch follow-up:
+
+- A BTC inventory mismatch was corrected in the bot project using existing
+  bot-side tooling, not Django application code.
+- Final operational state reported by the runbook: BTC Spot and open lots match,
+  `/buy_status` shows BTC as small dust exposure around `1.15 USDT`, and the
+  remaining work is projection semantics plus UX transparency.
+- Documentation now points operators toward existing bot scripts for analysis,
+  manual correction, and portfolio projection refresh.
+
 Validated operational correction path:
 
 - On 2026-05-08, an ASIACOIN / `币安人生USDT` dust-closure case validated the dashboard-created manual correction request flow.

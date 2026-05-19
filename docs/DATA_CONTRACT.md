@@ -8,6 +8,11 @@ copy should be synchronized from this contract rather than evolving
 independently; dashboard-only implementation notes may be additive, but they
 must not redefine bot-owned table semantics here.
 
+Current operational policy: the dashboard copy at
+`/home/cristhian/Dev/django_render/docs/DATA_CONTRACT.md` must stay synchronized
+with this bot contract whenever semantics change. If one copy changes, verify
+the other in the same task.
+
 The bot and dashboard are separate projects. They do not share application code. They only share the database.
 
 The dashboard must treat this document as the source of truth for interpreting bot-owned data.
@@ -94,9 +99,15 @@ Compatibility note: bot-owned table schemas are external contracts. Dashboard mo
 
 `portfolio` is a projection / read layer.
 
+Binance Spot is live operational truth for current exchange balances. The
+dashboard may read bot-persisted SPOT evidence when the contract exposes it, but
+it must not call Binance or treat `portfolio` as pure Binance Spot truth.
+
 This distinction is critical.
 
 A row in `portfolio` may look like the current position, but the authoritative tradable inventory is in `position_lots`.
+The portfolio row may be stale or rebuilt from Spot, open lots, or fallback
+projection logic depending on the bot-side refresh path.
 
 ### Critical Rule
 
@@ -119,6 +130,20 @@ The dashboard should surface drift as an alert, not silently hide it.
 They must not hide existing open lots from portfolio projection,
 reconciliation, SELL coverage, or diagnostics. A historic open `USDCUSDT` lot
 remains part of accounting even if future BUYs for `USDCUSDT` are blocked.
+
+Current physical schema names used by bot and dashboard diagnostics:
+
+- use `trade_operations.executed_base_qty`
+- use `lot_closures.trade_operation_id`
+- use `lot_closures.quantity_closed`
+- use `lot_closures.closed_at`
+
+Legacy or incorrect names must not be used for current shared queries:
+
+- do not use `executed_qty` as a `trade_operations` column
+- do not use `sell_operation_id`
+- do not use `closed_quantity` as a physical `lot_closures` column
+- do not use `lot_closures.timestamp`
 
 ### Healthcheck inventory reconciliation details
 
@@ -322,6 +347,8 @@ Current physical schema note from the shared audit: the persisted closure time
 column is `closed_at`; `timestamp` is not present. Dashboard daily KPI grouping
 must continue to use linked `trade_operations.executed_at`, falling back to
 `trade_operations.created_at`, rather than relying on a closure timestamp.
+The physical closure quantity column is `quantity_closed`, and the physical
+operation link is `trade_operation_id`.
 
 Conceptual fields:
 
@@ -1166,6 +1193,44 @@ Consumer rules:
   than the latest attempted cycle if persistence fails.
 - A richer dedicated BUY decision table is optional future work only if this
   healthcheck surface later proves insufficient.
+
+---
+
+## 7.5.1 Operator Inventory Analyzer Contract
+
+`src/scripts/analyze_symbol_inventory_gap.py SYMBOL` is a read-only operator
+diagnostic surface. It distinguishes lot-vs-SPOT drift, stale portfolio
+projection, SELL closure mismatch, and dust-only drift from existing persisted
+evidence.
+
+The analyzer reads:
+
+- `bot.position_lots`
+- `bot.portfolio`
+- `bot.trade_operations`
+- `bot.lot_closures`
+- `bot.dust_detections`
+
+It must not call Binance, execute orders, use Django, create manual
+corrections, mutate database rows, or treat `portfolio` as accounting truth.
+When `Open lot qty == Latest spot qty`, current persisted SPOT evidence matches
+FIFO lots. When `Portfolio qty != Open lot qty`, consumers should treat that as
+projection mismatch evidence rather than automatic permission to mutate lots.
+When the report says no SELL closure gaps were found, FIFO closure quantity
+matches SELL execution quantity for the analyzer's checked SELL rows.
+
+Related bot-side operator scripts:
+
+- `src/scripts/manual_correction.py` is the audited accounting correction
+  workflow. It creates reviewed pending corrections, previews apply behavior,
+  and persists only when run with `--confirm`.
+- `src/scripts/sync_portfolio_from_api.py` refreshes or rebuilds
+  `bot.portfolio` projection data. It does not fix `position_lots`, and logs
+  such as `portfolio_symbol_projected_from_lots` or
+  `portfolio_quantity_rebuilt_from_lots` should be interpreted as projection
+  refresh behavior, not proof that `portfolio` is pure Binance Spot truth.
+- Django may document and link to these scripts for operators, but must not run
+  them, replace them, or mutate bot-owned accounting tables directly.
 
 ---
 
