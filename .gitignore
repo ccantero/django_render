@@ -17,15 +17,6 @@ htmlcov/
 # Editor settings
 .vscode/
 
-# Local Codex/agent runtime artifacts
-.agents/
-.codex/
-.codex/logs/
-.codex/sessions/
-.codex/tmp/
-.codex/cache/
-AGENTS.md
-
 # Django
 db.sqlite3
 staticfiles/
@@ -48,3 +39,7 @@ core/migrations/*
 run_server.sh
 populate_database.py
 createsuperuser.py
+
+# AuxDocs
+auxdocs/*
+bkpdocs.sh

@@ -325,3 +325,12 @@ Dashboard observes/reviews state
 ```
 
 Do not introduce an API between bot and dashboard only for iPhone notifications.
+
+## Development Workflow
+
+This repository uses a mandatory Codex governance workflow.
+
+Read:
+- AGENTS.md
+- .codex/skills/
+- .codex/subagents/
