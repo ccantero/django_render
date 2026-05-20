@@ -1,3 +1,12 @@
+---
+doc_id: design
+doc_version: 1.0.0
+schema_version: unknown
+runtime_min_version: unknown
+last_verified_at: 2026-05-20
+source_repo: django_render
+---
+
 # Django Dashboard — Design Notes
 
 ## Design Principle
@@ -5,6 +14,13 @@
 The dashboard is an operator console, not a trading engine.
 
 It should make the system observable, understandable, and auditable without hiding uncertainty or mutating accounting state directly.
+
+The system should favor observability, schema transparency, reproducible
+diagnostics, and explicit version visibility over implicit operator knowledge.
+
+Operators and AI tooling should be able to determine runtime version, schema
+version, documentation freshness, contract freshness, and projection freshness
+without manually inspecting repository history.
 
 ---
 

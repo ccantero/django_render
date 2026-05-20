@@ -1,3 +1,12 @@
+---
+doc_id: architecture
+doc_version: 1.0.0
+schema_version: unknown
+runtime_min_version: unknown
+last_verified_at: 2026-05-20
+source_repo: django_render
+---
+
 # Django Dashboard — Architecture
 
 ## 1. Purpose
@@ -297,3 +306,27 @@ This Django repository should keep its local copy synchronized whenever
 bot-owned table semantics, healthcheck payloads, diagnostic payloads, or
 read-model interpretation changes. Dashboard-only notes may be additive in
 other docs, but they should not redefine bot-owned semantics independently.
+
+## 11. Documentation and Schema Governance
+
+Documentation governance is an operational concern for this project.
+
+Major markdown contracts should include:
+
+- `doc_id`
+- `doc_version`
+- `schema_version`
+- `last_verified_at`
+
+When runtime logging or operational alerts are changed, logs should expose
+version context such as:
+
+- `app_version`
+- `schema_version`
+- `strategy_version`
+- `docs_version`
+- `run_id`
+
+Future generated DB visibility artifacts should live under `docs/db/` and may
+include `DER.md`, `schema_snapshot.sql`, and `schema_columns.csv`. These
+artifacts are observational only and must not replace the shared data contract.

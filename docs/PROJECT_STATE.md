@@ -1,3 +1,12 @@
+---
+doc_id: project-state
+doc_version: 1.0.0
+schema_version: unknown
+runtime_min_version: unknown
+last_verified_at: 2026-05-20
+source_repo: django_render
+---
+
 # Django Dashboard — Project State
 
 ## Current State
@@ -138,6 +147,31 @@ Bot CLI/service -> applies or rejects request
 `docs/DATA_CONTRACT.md` is shared with the bot project and should remain identical in both repositories unless intentionally versioned.
 
 Any change to bot-owned tables that affects dashboard interpretation must update `docs/DATA_CONTRACT.md` in the same change set.
+
+## Governance State
+
+Codex governance workflow is treated as versioned repository infrastructure.
+
+Versioned workflow assets include:
+
+```text
+AGENTS.md
+.codex/skills/
+.codex/subagents/
+```
+
+Operational documentation work currently planned but not implemented in
+application behavior:
+
+- documentation version headers across major docs
+- runtime/schema version logging
+- automated DER generation
+- docs freshness validation
+- schema drift detection tooling
+
+Current KPIs are operational only. Future analytics planning includes time-based
+exits, portfolio-level management, churn quality analysis, exposure efficiency,
+and capital deployment metrics.
 
 ---
 

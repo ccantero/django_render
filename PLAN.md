@@ -1,3 +1,12 @@
+---
+doc_id: project-plan
+doc_version: 1.0.0
+schema_version: unknown
+runtime_min_version: unknown
+last_verified_at: 2026-05-20
+source_repo: django_render
+---
+
 # Project Plan
 
 ## Current Goal
@@ -16,6 +25,42 @@ the Django data contract synchronized with the bot project copy.
 - P1: operator workflows and dashboard visibility needed for day-to-day use.
 - P2: maintainability, scale, and architecture cleanup.
 - P3: UX polish and convenience improvements.
+
+## Governance / Documentation Wave
+
+Priority: P1 maintainability and operability.
+
+Planned goals:
+
+1. Add documentation versioning across major markdown contracts.
+2. Add standardized runtime/version logging when logging surfaces change.
+3. Add automated schema/DER snapshot generation.
+4. Add stale documentation detection tooling.
+5. Add operational changelog governance.
+6. Add database schema evolution visibility.
+
+Planned generated visibility artifacts:
+
+```text
+docs/db/DER.md
+docs/db/schema_snapshot.sql
+docs/db/schema_columns.csv
+docs/db/schema_diff_<YYYYMMDD>.md
+```
+
+Planned freshness tooling should detect runtime newer than docs, schema changes
+without contract updates, stale generated DER files, and unsynchronized
+dashboard/bot data contracts.
+
+Additional pending visibility work:
+
+- Improve portfolio projection drift and stale projection transparency.
+- Request bot-side source/projection metadata where needed.
+- Consider bot-owned Binance Spot export tooling for operator debugging and
+  reconciliation analysis.
+- Continue future analytics planning for strategy-version KPIs, churn quality,
+  exposure efficiency, capital deployment, stop-loss/take-profit effectiveness,
+  re-entry quality, and realized PnL by holding time.
 
 ## Completed Work
 

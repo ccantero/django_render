@@ -1,3 +1,12 @@
+---
+doc_id: readme
+doc_version: 1.0.0
+schema_version: unknown
+runtime_min_version: unknown
+last_verified_at: 2026-05-20
+source_repo: django_render
+---
+
 # Binance Bot Django Dashboard
 
 Django dashboard for observing and operating the Binance Python Bot through a shared database contract.
@@ -300,6 +309,33 @@ The endpoint returns `{"status":"ok"}` when the Django web process is reachable.
 ## Codex Workflow
 
 All Codex tasks must follow `AGENTS.md`: planner, implementer, tester, documentator. Missing steps are hard failures.
+
+The workflow assets below are versioned intentionally and are part of the
+development quality system:
+
+```text
+AGENTS.md
+.codex/skills/
+.codex/subagents/
+```
+
+## Documentation Governance
+
+Major documentation files should expose lightweight version metadata:
+
+- `doc_version`
+- `schema_version`
+- `last_verified_at`
+
+Operational/runtime logs should expose version context when changed:
+
+- `app_version`
+- `schema_version`
+- `strategy_version`
+
+Future operational tooling should generate DER diagrams, schema snapshots,
+schema diffs, and column/type exports to reduce ambiguity between runtime DB
+state and markdown contracts.
 
 ---
 

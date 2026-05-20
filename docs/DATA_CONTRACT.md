@@ -1,3 +1,12 @@
+---
+doc_id: data-contract
+doc_version: 1.0.0
+schema_version: unknown
+runtime_min_version: unknown
+last_verified_at: 2026-05-20
+source_repo: binanceBot
+---
+
 # DATA_CONTRACT.md — Binance Bot Shared Database Contract (v2)
 
 This document defines the shared database contract between the **Binance Python Bot** and external consumers such as a **Django Dashboard**.
@@ -16,6 +25,41 @@ the other in the same task.
 The bot and dashboard are separate projects. They do not share application code. They only share the database.
 
 The dashboard must treat this document as the source of truth for interpreting bot-owned data.
+
+---
+
+## Contract Governance
+
+This contract must expose lightweight version metadata:
+
+- `doc_version`
+- `schema_version`
+- `runtime_min_version`
+- `last_verified_at`
+
+When database schema or contract semantics change:
+
+1. Update this `docs/DATA_CONTRACT.md`.
+2. Verify and synchronize the dashboard contract copy at
+   `/home/cristhian/Dev/django_render/docs/DATA_CONTRACT.md`.
+3. Regenerate schema/DER artifacts when database access or migrations make that
+   possible.
+4. Update `docs/CHANGELOG.md` with the verified contract/schema change.
+5. Verify runtime/docs/schema version alignment or record a blocking follow-up.
+
+Planned generated visibility artifacts:
+
+```text
+docs/db/DER.md
+docs/db/schema_snapshot.sql
+docs/db/schema_columns.csv
+docs/db/schema_indexes.csv
+docs/db/schema_constraints.csv
+docs/db/schema_diff_<YYYYMMDD>.md
+```
+
+These artifacts are generated observational outputs. They do not replace this
+shared contract and must not be hand-written as generated facts.
 
 ---
 
