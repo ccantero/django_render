@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.0.0
+doc_version: 1.1.0
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-20
+last_verified_at: 2026-05-21
 source_repo: django_render
 ---
 
@@ -29,6 +29,9 @@ It provides visibility, review, and request workflows over bot-owned database ta
   them.
 - Display read-only operational performance KPIs from realized lot closures and filled trade operations.
 - Display filtered Operational Trading KPIs v2 from read-only trade operations, lot closures, and linked lot open times.
+- Display future trapped-capital, holding-efficiency, and dry-run exit
+  diagnostics only after the bot or shared data contract exposes stable
+  read-only outputs for them.
 - Display grouped dust/residual signals with operator guidance.
 - Record manual review state.
 - Create explicit `PENDING` manual correction requests.
@@ -220,6 +223,12 @@ The same boundary applies to future Daily Trading Audit consumption: Django may
 render bot-produced read-only report output after that format is stabilized in
 the shared contract, but it should not recompute audit truth or become the owner
 of the bot-side report.
+
+The same architecture constraint applies to proposed trapped-capital,
+capital-days, holding-efficiency, and time-based exit dry-run views. Django
+should consume analytics outputs owned by the bot or explicitly defined in the
+shared contract; it should not reconstruct accounting truth from ad hoc joins or
+projection-only data.
 
 For inventory mismatch investigations, Django documentation may reference the
 bot-side scripts below, but the dashboard should not execute or replace them:

@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.0.0
+doc_version: 1.1.0
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-20
+last_verified_at: 2026-05-21
 source_repo: django_render
 ---
 
@@ -80,6 +80,17 @@ Analytics read-model output may be cached briefly because the page is read-only 
 - Historical rows without `strategy_version` are shown as `unversioned`.
 - Manual/accounting-only corrections are excluded from trading-quality metrics when the operation payload identifies them.
 - Strategy-level churn frequency uses same-symbol reentries divided by eligible FILLED SELLs, matching the churn table denominator; ratio values are labeled as percentages in the UI.
+
+### Future Capital and Exit Observability
+
+- Trapped-capital and capital-days concepts should help operators identify
+  inventory that consumes opportunity or stays open longer than intended.
+- Holding-efficiency views should stay operational and comparative, not audited
+  accounting statements.
+- Time-based exit dry-run visibility should show what the bot would have done
+  under stable strategy rules without executing trades from Django.
+- These views should consume bot-owned reports or shared-contract fields and
+  avoid deriving new truth from portfolio projections alone.
 
 ### Exit Status and Churn / Cooldown
 

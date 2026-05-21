@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.0.0
+doc_version: 1.1.0
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-20
+last_verified_at: 2026-05-21
 source_repo: django_render
 ---
 
@@ -59,8 +59,11 @@ Additional pending visibility work:
 - Consider bot-owned Binance Spot export tooling for operator debugging and
   reconciliation analysis.
 - Continue future analytics planning for strategy-version KPIs, churn quality,
-  exposure efficiency, capital deployment, stop-loss/take-profit effectiveness,
-  re-entry quality, and realized PnL by holding time.
+  trapped capital, capital-days / holding-efficiency metrics, exposure
+  efficiency, capital deployment, stop-loss/take-profit effectiveness, re-entry
+  quality, and realized PnL by holding time.
+- Plan time-based exit dry-run observability only as a read-only diagnostic
+  surface backed by bot-owned or shared-contract outputs.
 
 ## Completed Work
 
@@ -138,6 +141,10 @@ Additional pending visibility work:
 17. Request bot-side source/projection metadata in healthcheck or `/buy_status`
     payloads when needed so Django can explain stale projection vs accounting
     drift more clearly.
+18. Add trapped-capital and holding-efficiency widgets after their source data
+    and labels are stabilized in the shared contract or bot-produced reports.
+19. Add time-based exit dry-run visibility only after the bot owns the dry-run
+    decision output and Django can render it without executing exits.
 
 ## P2 Architecture / Tech Debt
 

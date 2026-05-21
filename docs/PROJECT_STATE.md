@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.0.0
+doc_version: 1.1.0
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-20
+last_verified_at: 2026-05-21
 source_repo: django_render
 ---
 
@@ -12,6 +12,9 @@ source_repo: django_render
 ## Current State
 
 The Django dashboard is operational as a DB consumer for the Binance Python Bot.
+The current product focus is shifting from infrastructure stabilization toward
+capital-efficiency and exit-quality observability, while preserving the
+dashboard's read/review/request boundary.
 
 Detected Django apps:
 
@@ -169,9 +172,10 @@ application behavior:
 - docs freshness validation
 - schema drift detection tooling
 
-Current KPIs are operational only. Future analytics planning includes time-based
-exits, portfolio-level management, churn quality analysis, exposure efficiency,
-and capital deployment metrics.
+Current KPIs are operational only. Future analytics planning includes
+time-based exits, portfolio-level management, churn quality analysis, trapped
+capital, capital-days / holding efficiency, exposure efficiency, and capital
+deployment metrics.
 
 ---
 
@@ -197,6 +201,9 @@ and capital deployment metrics.
 - Normalized Fees (USDT) and performance KPI cards depend on `fee_amount_in_quote`; non-USDT/unavailable conversions remain excluded by design.
 - Performance KPI history currently reads available lot closures and should be revisited with pagination/date filters if closure volume becomes large.
 - Gross deployed capital is an approximation based on FILLED BUY quote value and must not be presented as audited capital efficiency.
+- Trapped-capital and holding-efficiency analytics are not currently implemented
+  dashboard behavior; they require stable bot-owned or shared-contract source
+  data before Django should display them.
 - Alerting is not implemented in dashboard and should likely be bot-owned.
 - More filters/pagination may be needed as dust detections grow.
 - `/health/` only confirms that the Django web process is reachable; it is not a bot/database health check.

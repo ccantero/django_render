@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.0.0
+doc_version: 1.1.0
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-20
+last_verified_at: 2026-05-21
 source_repo: django_render
 ---
 
@@ -76,6 +76,7 @@ The dashboard and bot are separate projects and share only the database.
 - `portfolio` is a projection/read layer.
 - Performance KPIs are operational visibility, not audited accounting statements.
 - Operational Trading KPIs v2 are operational analytics, not audited accounting statements; identifiable manual/accounting-only corrections are excluded from trading-quality metrics.
+- Planned trapped-capital, holding-efficiency, and dry-run exit diagnostics should consume bot-produced or shared-contract analytics outputs instead of reconstructing accounting truth in Django.
 - Normalized fee totals use `bot.trade_operations.fee_amount_in_quote` for FILLED USDT-quote operations; fees that cannot be normalized to USDT are excluded.
 - PnL by day uses linked trade operation timestamps (`executed_at` then `created_at`), not a timestamp on `lot_closures`.
 - SELL coverage must never be inferred from `portfolio`.
@@ -264,6 +265,11 @@ Daily Trading Audit is currently a bot-owned reporting surface. Django should
 consume or display it only after the bot-side output is stable and documented in
 the shared data contract; the dashboard should not become the owner of audit
 computation.
+
+Future trapped-capital, holding-efficiency, and time-based exit dry-run modules
+belong in the same read-only reporting pattern: Django may display stable
+bot-owned or contract-defined outputs, but should not infer new accounting truth
+from portfolio projections or ad hoc historical reconstruction.
 
 Run tests:
 
