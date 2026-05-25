@@ -1,13 +1,38 @@
 ---
 doc_id: changelog
-doc_version: 1.1.0
+doc_version: 1.1.1
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-21
+last_verified_at: 2026-05-25
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-05-25 - Codex Hook Symlink Execution Fix
+
+Type: operations
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+
+Summary:
+- Fixed the Git pre-commit hook path resolution when `.git/hooks/pre-commit`
+  is installed as a symlink to `.codex/hooks/pre-commit.sh`.
+- Added self-check coverage for invoking the hook through the installed Git
+  hook symlink.
+
+Operator impact:
+- Commits no longer fail before validation with a missing `.git/lib/common.sh`
+  error.
+- Protected workflow infrastructure changes still require manual review and
+  `ALLOW_WORKFLOW_INFRA_CHANGE=1` when committing.
+
+Validation:
+- Reproduced the original missing helper-library failure before implementation.
+- Ran hook syntax checks, `.codex/hooks/self-check.sh`, and the installed Git
+  pre-commit hook after the fix.
 
 ## 2026-05-21 - Capital Efficiency Documentation Merge
 
