@@ -1,6 +1,6 @@
 ---
 doc_id: architecture
-doc_version: 1.1.1
+doc_version: 1.1.2
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-05-25
@@ -219,6 +219,9 @@ remaining minutes come from the latest healthcheck payload. Django must not
 reconstruct cooldown eligibility from trades, lots, or portfolio rows, and
 missing bot metadata must degrade to conservative labels such as `unknown` or
 `not provided` rather than invented explanations.
+For display compatibility, legacy `cooldown_type = sell` and bot-side
+`cooldown_type = generic_sell` both render as the same recent-sell cooldown
+label.
 Persisted reconciliation `inventory_warnings` are read from the same latest
 healthcheck details payload for `/buy_status` and compact dashboard summaries;
 the dashboard does not reconstruct those diagnostics from accounting tables.

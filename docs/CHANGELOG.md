@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.2
+doc_version: 1.1.3
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-05-25
@@ -28,6 +28,9 @@ Summary:
   type, classification source, elapsed minutes, and remaining minutes.
 - Preserved legacy payload compatibility for `latest_sell_timestamp`,
   `cooldown_type = sell`, and `cooldown_type = generic_sell`.
+- Normalized legacy `cooldown_type = sell` and bot-side
+  `cooldown_type = generic_sell` to the same operator label, `recent sell`,
+  so old and new payloads render compatibly.
 
 Operator impact:
 - BUY cooldown pages no longer show ambiguous `N/A` when the bot persisted
@@ -39,7 +42,10 @@ Validation:
 - Added failing tests first for full metadata, partial/null metadata, legacy
   payload compatibility, classification rendering, and dashboard fallback
   behavior.
-- Ran `.venv/bin/pytest core/tests.py`.
+- Added final review tests for `generic_sell` compatibility and stable
+  realized-PnL formatting across null, zero, positive, negative, Decimal-string,
+  scientific-notation, and invalid values.
+- Ran `.venv/bin/python -m pytest core/tests.py`.
 - Verified `docs/DATA_CONTRACT.md` is synchronized with
   `/home/cristhian/Dev/binanceBot/docs/DATA_CONTRACT.md`.
 

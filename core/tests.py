@@ -56,6 +56,7 @@ from dashboard.services.operational_kpis import (
     OperationalKpiFilters,
     _calculate_operational_kpis,
 )
+from dashboard.services.telegram_buy_status_formatter import build_cooldown_diagnostics
 from core.models import DustSignalReview, ManualCorrection
 from core.trading_models import DustDetection, LotClosure, PositionLot, TradeOperation
 from dashboard.views import _manual_correction_quantity
@@ -562,8 +563,31 @@ class TelegramDiagnosticsCommandTests(TestCase):
         message = mock_send_message.call_args[0][0]
         self.assertIn('Latest SELL timestamp: <code>2026-05-25T11:11:00Z</code>', message)
         self.assertIn('Latest SELL operation: <code>unknown</code>', message)
-        self.assertIn('Cooldown type: <code>generic sell</code>', message)
+        self.assertIn('Cooldown type: <code>recent sell</code>', message)
         self.assertIn('Cooldown remaining: <code>4 min</code>', message)
+
+    def test_cooldown_diagnostics_format_realized_pnl_edge_cases(self):
+        cases = [
+            (None, None, 'unknown'),
+            ('0', Decimal('0'), '0 USDT'),
+            ('-1.234', Decimal('-1.234'), '-1.23 USDT'),
+            ('2.345', Decimal('2.345'), '2.35 USDT'),
+            ('1.2300', Decimal('1.2300'), '1.23 USDT'),
+            ('1E+3', Decimal('1E+3'), '1000 USDT'),
+            ('not-a-number', None, 'unknown'),
+        ]
+        for raw_value, parsed_value, label in cases:
+            with self.subTest(raw_value=raw_value):
+                diagnostics = build_cooldown_diagnostics({
+                    'latest_buy_reason': 'sell_reentry_cooldown_active',
+                    'latest_sell_operation_id': 77,
+                    'latest_sell_realized_pnl': raw_value,
+                    'cooldown_type': 'generic_sell',
+                })
+
+                self.assertEqual(diagnostics['latest_sell_realized_pnl'], parsed_value)
+                self.assertEqual(diagnostics['latest_sell_realized_pnl_label'], label)
+                self.assertEqual(diagnostics['cooldown_type_label'], 'recent sell')
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')

@@ -6,7 +6,7 @@ COOLDOWN_TYPE_LABELS = {
 	"loss": "loss",
 	"take_profit": "take profit",
 	"sell": "recent sell",
-	"generic_sell": "generic sell",
+	"generic_sell": "recent sell",
 }
 COOLDOWN_CLASSIFICATION_SOURCE_LABELS = {
 	"explicit_sell_reason": "explicit sell reason",
