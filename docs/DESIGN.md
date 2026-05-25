@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.0
+doc_version: 1.1.1
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-21
+last_verified_at: 2026-05-25
 source_repo: django_render
 ---
 
@@ -103,6 +103,12 @@ Analytics read-model output may be cached briefly because the page is read-only 
 - Cooldown copy should name loss/stop-loss, take-profit, and recent-sell
   re-entry blocks in human language; absent optional detail keys must not hide
   the stable reason.
+- BUY cooldown diagnostics should prefer bot-persisted healthcheck metadata
+  over placeholders. When context exists, nullable SELL reasons render as
+  `not provided`, missing context renders as `unknown`, negative realized PnL
+  classifications explicitly say the cooldown was triggered from negative
+  realized PnL, and legacy `sell` / `generic_sell` cooldown types stay
+  readable. Django must not infer cooldown decisions independently.
 
 ### Public and auth pages
 

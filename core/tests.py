@@ -421,8 +421,149 @@ class TelegramDiagnosticsCommandTests(TestCase):
         message = mock_send_message.call_args[0][0]
         self.assertIn('Re-entry blocked after loss/stop-loss cooldown', message)
         self.assertIn('Candidate: <code>BTCUSDT</code>', message)
-        self.assertIn('Cooldown remaining: <code>42</code>', message)
+        self.assertIn('Cooldown remaining: <code>42 min</code>', message)
         self.assertIn('Dust positions are non-blocking', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_buy_status_renders_extended_reentry_cooldown_diagnostics(
+        self,
+        mock_health_manager,
+        mock_portfolio_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = []
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=22,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 2,
+                'material_positions_count': 1,
+                'dust_positions_count': 1,
+                'unknown_value_positions_count': 0,
+                'max_positions': 5,
+                'latest_buy_state': 'rejected',
+                'latest_buy_reason': 'loss_reentry_cooldown_active',
+                'latest_buy_symbol': 'BTCUSDT',
+                'latest_sell_operation_id': 77,
+                'latest_sell_symbol': 'BTCUSDT',
+                'latest_sell_executed_at': '2026-05-25T12:34:56Z',
+                'latest_sell_reason': 'stop_loss_reached',
+                'latest_sell_reason_source': 'raw_payload',
+                'latest_sell_realized_pnl': '-3.125',
+                'cooldown_type': 'loss',
+                'cooldown_minutes': 60,
+                'cooldown_elapsed_minutes': 18,
+                'cooldown_remaining_minutes': 42,
+                'cooldown_classification_source': 'explicit_sell_reason',
+            },
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/buy_status')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('Latest SELL operation: <code>77</code>', message)
+        self.assertIn('Latest SELL symbol: <code>BTCUSDT</code>', message)
+        self.assertIn('Latest SELL timestamp: <code>2026-05-25T12:34:56Z</code>', message)
+        self.assertIn('Latest SELL reason: <code>stop_loss_reached</code>', message)
+        self.assertIn('Reason source: <code>raw_payload</code>', message)
+        self.assertIn('Latest SELL realized PnL: <code>-3.13 USDT</code>', message)
+        self.assertIn('Cooldown type: <code>loss</code>', message)
+        self.assertIn('Classification source: <code>explicit sell reason</code>', message)
+        self.assertIn('Cooldown elapsed: <code>18 min</code>', message)
+        self.assertIn('Cooldown remaining: <code>42 min</code>', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_buy_status_renders_partial_cooldown_metadata_without_ambiguous_na(
+        self,
+        mock_health_manager,
+        mock_portfolio_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = []
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=23,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 1,
+                'material_positions_count': 1,
+                'dust_positions_count': 0,
+                'unknown_value_positions_count': 0,
+                'max_positions': 5,
+                'latest_buy_state': 'rejected',
+                'latest_buy_reason': 'loss_reentry_cooldown_active',
+                'latest_buy_symbol': 'ETHUSDT',
+                'latest_sell_operation_id': 88,
+                'latest_sell_executed_at': '2026-05-25T13:00:00Z',
+                'latest_sell_reason': None,
+                'latest_sell_realized_pnl': '-0.01',
+                'cooldown_type': 'sell',
+                'cooldown_minutes': 30,
+                'cooldown_elapsed_minutes': 7,
+                'cooldown_remaining_minutes': 23,
+                'cooldown_classification_source': 'realized_pnl',
+            },
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/buy_status')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertNotIn('Latest SELL reason: <code>N/A</code>', message)
+        self.assertIn('Latest SELL reason: <code>not provided</code>', message)
+        self.assertIn('Cooldown triggered from negative realized PnL', message)
+        self.assertIn('Cooldown type: <code>recent sell</code>', message)
+        self.assertIn('Classification source: <code>realized PnL</code>', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_buy_status_keeps_legacy_cooldown_payload_compatible(
+        self,
+        mock_health_manager,
+        mock_portfolio_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = []
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=24,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 1,
+                'material_positions_count': 1,
+                'dust_positions_count': 0,
+                'unknown_value_positions_count': 0,
+                'max_positions': 5,
+                'latest_buy_state': 'rejected',
+                'latest_buy_reason': 'sell_reentry_cooldown_active',
+                'latest_buy_symbol': 'SOLUSDT',
+                'latest_sell_timestamp': '2026-05-25T11:11:00Z',
+                'cooldown_type': 'generic_sell',
+                'cooldown_remaining_minutes': 4,
+            },
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/buy_status')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('Latest SELL timestamp: <code>2026-05-25T11:11:00Z</code>', message)
+        self.assertIn('Latest SELL operation: <code>unknown</code>', message)
+        self.assertIn('Cooldown type: <code>generic sell</code>', message)
+        self.assertIn('Cooldown remaining: <code>4 min</code>', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -3550,6 +3691,70 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(summary['effective_positions_count'], Decimal('3'))
         self.assertEqual(summary['remaining_buy_capacity'], Decimal('2'))
         self.assertEqual(summary['latest_sell_operation_id'], 91)
+
+    def test_buy_status_summary_exposes_extended_cooldown_diagnostics(self):
+        summary = _build_buy_status_summary({
+            'latest_buy_state': 'rejected',
+            'latest_buy_reason': 'loss_reentry_cooldown_active',
+            'latest_buy_symbol': 'ETHUSDT',
+            'material_positions_count': 1,
+            'unknown_value_positions_count': 0,
+            'max_positions': 5,
+            'latest_sell_operation_id': 91,
+            'latest_sell_symbol': 'ETHUSDT',
+            'latest_sell_executed_at': '2026-05-25T12:34:56Z',
+            'latest_sell_reason': None,
+            'latest_sell_reason_source': 'unavailable',
+            'latest_sell_realized_pnl': '-1.234',
+            'cooldown_type': 'sell',
+            'cooldown_minutes': 60,
+            'cooldown_elapsed_minutes': 12,
+            'cooldown_remaining_minutes': 48,
+            'cooldown_classification_source': 'realized_pnl',
+        })
+
+        self.assertEqual(summary['latest_sell_timestamp'], '2026-05-25T12:34:56Z')
+        self.assertEqual(summary['latest_sell_symbol'], 'ETHUSDT')
+        self.assertEqual(summary['latest_sell_reason_label'], 'not provided')
+        self.assertEqual(summary['latest_sell_realized_pnl'], Decimal('-1.234'))
+        self.assertEqual(summary['cooldown_type_label'], 'recent sell')
+        self.assertEqual(summary['cooldown_elapsed_minutes'], Decimal('12'))
+        self.assertEqual(summary['cooldown_classification_source_label'], 'realized PnL')
+        self.assertIn('negative realized PnL', summary['cooldown_explanation'])
+
+    def test_homepage_renders_cooldown_diagnostics_from_summary(self):
+        self.client.force_login(self.user)
+        context = self.empty_dashboard_context()
+        context['buy_status_summary'] = _build_buy_status_summary({
+            'latest_buy_state': 'rejected',
+            'latest_buy_reason': 'loss_reentry_cooldown_active',
+            'latest_buy_symbol': 'ETHUSDT',
+            'material_positions_count': 1,
+            'unknown_value_positions_count': 0,
+            'max_positions': 5,
+            'latest_sell_operation_id': 91,
+            'latest_sell_symbol': 'ETHUSDT',
+            'latest_sell_executed_at': '2026-05-25T12:34:56Z',
+            'latest_sell_reason': None,
+            'latest_sell_realized_pnl': '-1.234',
+            'cooldown_type': 'sell',
+            'cooldown_elapsed_minutes': 12,
+            'cooldown_remaining_minutes': 48,
+            'cooldown_classification_source': 'realized_pnl',
+        })
+
+        with patch('dashboard.views.get_dashboard_context') as mock_context:
+            mock_context.return_value.context = context
+            response = self.client.get(reverse('dashboard'))
+
+        self.assertContains(response, 'Cooldown type')
+        self.assertContains(response, 'recent sell')
+        self.assertContains(response, 'Classification')
+        self.assertContains(response, 'realized PnL')
+        self.assertContains(response, 'Latest SELL')
+        self.assertContains(response, '91')
+        self.assertContains(response, '2026-05-25T12:34:56Z')
+        self.assertContains(response, 'not provided')
 
     def test_buy_status_summary_exposes_relevant_inventory_warning_count(self):
         summary = _build_buy_status_summary({

@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.0
+doc_version: 1.1.1
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-21
+last_verified_at: 2026-05-25
 source_repo: django_render
 ---
 
@@ -212,6 +212,13 @@ lots with `Diagnostics unavailable` rather than failing the request.
 Latest anti-churn BUY status is read from `bot.bot_healthcheck.details` only.
 The dashboard recognizes loss, take-profit, and generic SELL re-entry cooldown
 reasons and displays optional persisted SELL/cooldown detail keys when present.
+Extended cooldown diagnostics are rendered as observability only: latest SELL
+operation id, symbol, executed timestamp, nullable reason, reason source,
+realized PnL, cooldown type, classification source, elapsed minutes, and
+remaining minutes come from the latest healthcheck payload. Django must not
+reconstruct cooldown eligibility from trades, lots, or portfolio rows, and
+missing bot metadata must degrade to conservative labels such as `unknown` or
+`not provided` rather than invented explanations.
 Persisted reconciliation `inventory_warnings` are read from the same latest
 healthcheck details payload for `/buy_status` and compact dashboard summaries;
 the dashboard does not reconstruct those diagnostics from accounting tables.

@@ -2,6 +2,25 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from html import escape
 
 
+COOLDOWN_TYPE_LABELS = {
+	"loss": "loss",
+	"take_profit": "take profit",
+	"sell": "recent sell",
+	"generic_sell": "generic sell",
+}
+COOLDOWN_CLASSIFICATION_SOURCE_LABELS = {
+	"explicit_sell_reason": "explicit sell reason",
+	"realized_pnl": "realized PnL",
+	"generic_sell": "generic sell",
+}
+SELL_REASON_SOURCE_LABELS = {
+	"raw_payload": "raw_payload",
+	"nearby_sell_decision_event": "nearby sell decision event",
+	"realized_pnl_fallback": "realized PnL fallback",
+	"unavailable": "unavailable",
+}
+
+
 def build_buy_status_exposure(material_symbols, dust_symbols, portfolio_rows):
 	material_symbols = list(material_symbols or [])
 	dust_symbols = list(dust_symbols or [])
@@ -146,6 +165,94 @@ def count_relevant_inventory_warnings(warnings):
 	)
 
 
+def build_cooldown_diagnostics(details, human_reason=None):
+	details = details if isinstance(details, dict) else {}
+	latest_sell_timestamp = details.get("latest_sell_executed_at") or details.get("latest_sell_timestamp")
+	realized_pnl = _to_decimal(details.get("latest_sell_realized_pnl"))
+	classification_source = _normalized_text(details.get("cooldown_classification_source"))
+	cooldown_type = _normalized_text(details.get("cooldown_type"))
+	reason = details.get("latest_sell_reason")
+	has_context = any(
+		value not in (None, "")
+		for value in [
+			details.get("latest_sell_operation_id"),
+			details.get("latest_sell_symbol"),
+			latest_sell_timestamp,
+			reason,
+			details.get("latest_sell_reason_source"),
+			details.get("latest_sell_realized_pnl"),
+			cooldown_type,
+			details.get("cooldown_minutes"),
+			details.get("cooldown_elapsed_minutes"),
+			details.get("cooldown_remaining_minutes"),
+			classification_source,
+		]
+	)
+	cooldown_explanation = None
+	if (
+		reason in (None, "")
+		and realized_pnl is not None
+		and realized_pnl < 0
+		and classification_source == "realized_pnl"
+	):
+		cooldown_explanation = "Cooldown triggered from negative realized PnL"
+
+	return {
+		"human_reason": human_reason,
+		"has_context": has_context,
+		"latest_sell_operation_id": details.get("latest_sell_operation_id"),
+		"latest_sell_operation_label": _context_label(details.get("latest_sell_operation_id"), has_context),
+		"latest_sell_symbol": details.get("latest_sell_symbol"),
+		"latest_sell_symbol_label": _context_label(details.get("latest_sell_symbol"), has_context),
+		"latest_sell_timestamp": latest_sell_timestamp,
+		"latest_sell_timestamp_label": _context_label(latest_sell_timestamp, has_context),
+		"latest_sell_reason": reason,
+		"latest_sell_reason_label": _nullable_reason_label(reason, has_context),
+		"latest_sell_reason_source": details.get("latest_sell_reason_source"),
+		"latest_sell_reason_source_label": _source_label(details.get("latest_sell_reason_source")),
+		"latest_sell_realized_pnl": realized_pnl,
+		"latest_sell_realized_pnl_label": _fmt_usdt(realized_pnl) if realized_pnl is not None else _context_label(None, has_context),
+		"cooldown_type": cooldown_type,
+		"cooldown_type_label": COOLDOWN_TYPE_LABELS.get(cooldown_type, _context_label(cooldown_type, has_context)),
+		"cooldown_minutes": _to_decimal(details.get("cooldown_minutes")),
+		"cooldown_minutes_label": _fmt_minutes(details.get("cooldown_minutes")),
+		"cooldown_elapsed_minutes": _to_decimal(details.get("cooldown_elapsed_minutes")),
+		"cooldown_elapsed_minutes_label": _fmt_minutes(details.get("cooldown_elapsed_minutes")),
+		"cooldown_remaining_minutes": _to_decimal(details.get("cooldown_remaining_minutes")),
+		"cooldown_remaining_minutes_label": _fmt_minutes(details.get("cooldown_remaining_minutes")),
+		"cooldown_classification_source": classification_source,
+		"cooldown_classification_source_label": COOLDOWN_CLASSIFICATION_SOURCE_LABELS.get(
+			classification_source,
+			_context_label(classification_source, has_context),
+		),
+		"cooldown_explanation": cooldown_explanation,
+	}
+
+
+def build_cooldown_lines(diagnostics):
+	if not diagnostics:
+		return []
+	lines = []
+	if diagnostics.get("human_reason"):
+		lines.append(f"Cooldown: <code>{escape(str(diagnostics['human_reason']))}</code>")
+	if diagnostics.get("cooldown_explanation"):
+		lines.append(f"- {escape(str(diagnostics['cooldown_explanation']))}")
+	lines.extend([
+		f"Latest SELL operation: <code>{escape(str(diagnostics['latest_sell_operation_label']))}</code>",
+		f"Latest SELL symbol: <code>{escape(str(diagnostics['latest_sell_symbol_label']))}</code>",
+		f"Latest SELL timestamp: <code>{escape(str(diagnostics['latest_sell_timestamp_label']))}</code>",
+		f"Latest SELL reason: <code>{escape(str(diagnostics['latest_sell_reason_label']))}</code>",
+		f"Reason source: <code>{escape(str(diagnostics['latest_sell_reason_source_label']))}</code>",
+		f"Latest SELL realized PnL: <code>{escape(str(diagnostics['latest_sell_realized_pnl_label']))}</code>",
+		f"Cooldown type: <code>{escape(str(diagnostics['cooldown_type_label']))}</code>",
+		f"Classification source: <code>{escape(str(diagnostics['cooldown_classification_source_label']))}</code>",
+		f"Cooldown minutes: <code>{escape(str(diagnostics['cooldown_minutes_label']))}</code>",
+		f"Cooldown elapsed: <code>{escape(str(diagnostics['cooldown_elapsed_minutes_label']))}</code>",
+		f"Cooldown remaining: <code>{escape(str(diagnostics['cooldown_remaining_minutes_label']))}</code>",
+	])
+	return lines
+
+
 def _format_inventory_warning(warning):
 	symbol = escape(str(warning.get("symbol") or "unknown"))
 	reason = _humanize_inventory_warning_reason(warning.get("reason"))
@@ -211,6 +318,13 @@ def _fmt_symbol_list(values):
 	return ", ".join(values) if values else "none"
 
 
+def _fmt_minutes(value):
+	value = _to_decimal(value)
+	if value is None:
+		return "unknown"
+	return f"{_fmt_count(value)} min"
+
+
 def _fmt_count(value):
 	value = _to_decimal(value)
 	if value is None:
@@ -243,3 +357,28 @@ def _to_decimal(value):
 		return value if isinstance(value, Decimal) else Decimal(str(value))
 	except (InvalidOperation, TypeError, ValueError):
 		return None
+
+
+def _normalized_text(value):
+	if value in (None, ""):
+		return None
+	return str(value).strip()
+
+
+def _context_label(value, has_context):
+	if value in (None, ""):
+		return "unknown" if has_context else "unavailable"
+	return value
+
+
+def _nullable_reason_label(value, has_context):
+	if value in (None, ""):
+		return "not provided" if has_context else "unavailable"
+	return value
+
+
+def _source_label(value):
+	value = _normalized_text(value)
+	if value is None:
+		return "unknown"
+	return SELL_REASON_SOURCE_LABELS.get(value, value.replace("_", " "))

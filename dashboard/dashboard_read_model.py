@@ -24,7 +24,10 @@ from core.trading_models import (
 	SellDecisionEvent,
 	TradeOperation,
 )
-from dashboard.services.telegram_buy_status_formatter import count_relevant_inventory_warnings
+from dashboard.services.telegram_buy_status_formatter import (
+	build_cooldown_diagnostics,
+	count_relevant_inventory_warnings,
+)
 
 
 DRIFT_TOLERANCE = Decimal("0.00000001")
@@ -1552,24 +1555,20 @@ def _build_buy_status_summary(details):
 	reason = details.get("latest_buy_reason")
 	reconciliation = details.get("reconciliation")
 	inventory_warnings = reconciliation.get("inventory_warnings") if isinstance(reconciliation, dict) else []
+	human_reason = BUY_COOLDOWN_REASON_PRESENTATION.get(reason, reason)
+	cooldown = build_cooldown_diagnostics(details, human_reason)
 	return {
 		"latest_buy_state": details.get("latest_buy_state") or details.get("latest_buy_decision"),
 		"latest_buy_reason": reason,
-		"latest_buy_human_reason": BUY_COOLDOWN_REASON_PRESENTATION.get(reason, reason),
+		"latest_buy_human_reason": human_reason,
 		"latest_buy_symbol": details.get("latest_buy_symbol"),
 		"effective_positions_count": effective,
 		"max_positions": max_positions,
 		"remaining_buy_capacity": remaining,
 		"free_usdt": _to_decimal(details.get("free_usdt")),
 		"dust_positions_count": _to_decimal(details.get("dust_positions_count")),
-		"latest_sell_operation_id": details.get("latest_sell_operation_id"),
-		"latest_sell_timestamp": details.get("latest_sell_timestamp"),
-		"latest_sell_reason": details.get("latest_sell_reason"),
-		"latest_sell_realized_pnl": details.get("latest_sell_realized_pnl"),
-		"cooldown_type": details.get("cooldown_type"),
-		"cooldown_minutes": details.get("cooldown_minutes"),
-		"cooldown_remaining_minutes": details.get("cooldown_remaining_minutes"),
 		"inventory_warnings_count": count_relevant_inventory_warnings(inventory_warnings),
+		**cooldown,
 	}
 
 

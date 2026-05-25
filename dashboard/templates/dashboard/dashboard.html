@@ -126,6 +126,29 @@
 						remaining {{ buy_status_summary.remaining_buy_capacity|default:"-" }};
 						dust {{ buy_status_summary.dust_positions_count|default:"-" }} non-blocking.
 					</p>
+					{% if buy_status_summary.cooldown_type or buy_status_summary.cooldown_classification_source or buy_status_summary.latest_sell_operation_id or buy_status_summary.latest_sell_timestamp %}
+						<div class="mt-2 pt-2 border-top">
+							<p class="mb-1">Cooldown type: <strong>{{ buy_status_summary.cooldown_type_label|default:"unknown" }}</strong></p>
+							<p class="mb-1">Classification: <strong>{{ buy_status_summary.cooldown_classification_source_label|default:"unknown" }}</strong></p>
+							{% if buy_status_summary.cooldown_explanation %}
+								<p class="text-muted small mb-1">{{ buy_status_summary.cooldown_explanation }}</p>
+							{% endif %}
+							<p class="mb-1">
+								Latest SELL:
+								<strong>{{ buy_status_summary.latest_sell_operation_label|default:"unknown" }}</strong>
+								{% if buy_status_summary.latest_sell_symbol_label %} | {{ buy_status_summary.latest_sell_symbol_label }}{% endif %}
+							</p>
+							<p class="text-muted small mb-1">
+								{{ buy_status_summary.latest_sell_timestamp_label|default:"unknown" }};
+								reason {{ buy_status_summary.latest_sell_reason_label|default:"unknown" }};
+								PnL {{ buy_status_summary.latest_sell_realized_pnl_label|default:"unknown" }}
+							</p>
+							<p class="text-muted small mb-0">
+								Elapsed {{ buy_status_summary.cooldown_elapsed_minutes_label|default:"unknown" }};
+								remaining {{ buy_status_summary.cooldown_remaining_minutes_label|default:"unknown" }}.
+							</p>
+						</div>
+					{% endif %}
 					<p class="text-muted small mb-0">Inventory warnings: {{ buy_status_summary.inventory_warnings_count|default:"0" }}</p>
 				</div>
 			</div>

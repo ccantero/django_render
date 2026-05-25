@@ -19,6 +19,8 @@ from core.trading_models import (
 )
 from dashboard.services.telegram_buy_status_formatter import (
 	build_buy_status_exposure,
+	build_cooldown_diagnostics,
+	build_cooldown_lines,
 	build_inventory_warning_lines,
 	render_buy_status_message,
 )
@@ -266,16 +268,7 @@ def format_buy_status():
 	human_reason = BUY_COOLDOWN_REASON_PRESENTATION.get(str(latest_buy_reason or "").strip().lower())
 	cooldown_lines = []
 	if human_reason:
-		cooldown_lines.extend([
-			f"Cooldown: <code>{h(human_reason)}</code>",
-			f"Latest SELL operation: <code>{h(details.get('latest_sell_operation_id'))}</code>",
-			f"Latest SELL timestamp: <code>{h(details.get('latest_sell_timestamp'))}</code>",
-			f"Latest SELL reason: <code>{h(details.get('latest_sell_reason'))}</code>",
-			f"Latest SELL realized PnL: <code>{h(details.get('latest_sell_realized_pnl'))}</code>",
-			f"Cooldown type: <code>{h(details.get('cooldown_type'))}</code>",
-			f"Cooldown minutes: <code>{h(details.get('cooldown_minutes'))}</code>",
-			f"Cooldown remaining: <code>{h(details.get('cooldown_remaining_minutes'))}</code>",
-		])
+		cooldown_lines = build_cooldown_lines(build_cooldown_diagnostics(details, human_reason))
 	return render_buy_status_message(
 		emoji=emoji,
 		raw_count=raw_count,

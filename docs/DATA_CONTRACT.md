@@ -1,9 +1,9 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.0
+doc_version: 1.0.5
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-20
+last_verified_at: 2026-05-25
 source_repo: binanceBot
 ---
 
@@ -17,10 +17,12 @@ copy should be synchronized from this contract rather than evolving
 independently; dashboard-only implementation notes may be additive, but they
 must not redefine bot-owned table semantics here.
 
-Current operational policy: the dashboard copy at
-`/home/cristhian/Dev/django_render/docs/DATA_CONTRACT.md` must stay synchronized
-with this bot contract whenever semantics change. If one copy changes, verify
-the other in the same task.
+Current operational policy: if a paired dashboard repository keeps its own
+copy of this contract, set `DASHBOARD_DATA_CONTRACT` to that file path during
+workflow validation. The dashboard copy must stay synchronized with this bot
+contract whenever semantics change. If one copy changes, verify the other in
+the same task or record a blocking follow-up when the paired repository is not
+available.
 
 The bot and dashboard are separate projects. They do not share application code. They only share the database.
 
@@ -40,8 +42,8 @@ This contract must expose lightweight version metadata:
 When database schema or contract semantics change:
 
 1. Update this `docs/DATA_CONTRACT.md`.
-2. Verify and synchronize the dashboard contract copy at
-   `/home/cristhian/Dev/django_render/docs/DATA_CONTRACT.md`.
+2. Verify and synchronize the dashboard contract copy identified by
+   `DASHBOARD_DATA_CONTRACT`, when a paired copy is available.
 3. Regenerate schema/DER artifacts when database access or migrations make that
    possible.
 4. Update `docs/CHANGELOG.md` with the verified contract/schema change.
@@ -293,6 +295,14 @@ Current diagnostic metadata:
   metadata in `raw_payload`: `strategy_version`, `sell_strategy`,
   `partial_take_profit_enabled`, `min_hold_enabled`,
   `stop_loss_cooldown_enabled`, and `dust_cleanup_enabled`.
+- When `SELL_INCLUDE_SPOT_DUST=true`, bot-generated FILLED SELL operations
+  include additive dust-cleanup diagnostics in `raw_payload` even when no
+  residual quantity was appended. These fields are observability-only and do
+  not change economic quantity, FIFO closures, or lot accounting semantics.
+- Live time-based exit SELL operations may include
+  `raw_payload.sell_reason = "time_based_exit_candidate"`. This is runtime
+  policy metadata only; the economic SELL and FIFO closures still use the
+  normal full-exit path and `position_lots` remains accounting truth.
 - Historical rows without `strategy_version` remain valid and must be grouped
   as `unversioned` for era comparison rather than rewritten.
 - Explicit manual/accounting rows marked by
@@ -492,6 +502,20 @@ classification and BUY diagnostic fields:
 - `latest_buy_symbol`
 - `latest_buy_error_class`
 - `latest_buy_error_code`
+- cooldown diagnostics when `latest_buy_reason` is
+  `loss_reentry_cooldown_active`, `take_profit_reentry_cooldown_active`, or
+  `sell_reentry_cooldown_active`:
+  - `latest_sell_operation_id`
+  - `latest_sell_symbol`
+  - `latest_sell_executed_at`
+  - `latest_sell_reason`
+  - `latest_sell_reason_source`
+  - `latest_sell_realized_pnl`
+  - `cooldown_type`
+  - `cooldown_minutes`
+  - `cooldown_elapsed_minutes`
+  - `cooldown_remaining_minutes`
+  - `cooldown_classification_source`
 - `reconciliation`, which may include additive persisted inventory diagnostics:
   - `missing_portfolio_rows_count`
   - `material_missing_portfolio_rows_count`
@@ -559,6 +583,18 @@ states. They indicate that the bot rejected a BUY candidate before Binance
 submission because the latest filled SELL for the symbol is still inside the
 configured symbol-level cooldown. They are observability semantics only and do
 not change the accounting source-of-truth model.
+
+When one of those cooldown reasons is written, the bot should also persist the
+SELL context used for the decision in the same healthcheck `details` payload
+when that context exists. `latest_sell_reason` is nullable. Its source is
+reported through `latest_sell_reason_source`, currently one of `raw_payload`,
+`nearby_sell_decision_event`, `realized_pnl_fallback`, or `unavailable`.
+`cooldown_type` is one of `loss`, `take_profit`, or `generic_sell`.
+`cooldown_classification_source` is one of `explicit_sell_reason`,
+`realized_pnl`, or `generic_sell`. These fields are additive diagnostics only:
+consumers should render null values as unavailable context instead of inventing
+a reason, and the bot must not block on cooldown when no valid latest filled
+SELL timestamp exists.
 
 Dashboard Telegram diagnostics may expose `/buy_status` from these persisted
 healthcheck details. The diagnostic is read-only; consumers should use these
@@ -660,6 +696,19 @@ bot emits them:
 - `projected_remaining_quantity_rounded`
 - `projected_remaining_notional`
 - `promoted_quantity_fraction`
+- `time_based_exit_enabled`
+- `time_based_exit_dry_run`
+- `time_based_exit_min_hours`
+- `time_based_exit_min_pnl_pct`
+- `time_based_exit_max_pnl_pct`
+- `time_based_exit_material_only`
+- `time_based_exit_age_hours`
+- `time_based_exit_open_lot_quantity`
+- `time_based_exit_estimated_value_usdt`
+- `time_based_exit_unrealized_pnl_pct`
+- `time_based_exit_dust_min_notional_usdt`
+- `time_based_exit_candidate`
+- `time_based_exit_rejection_reason`
 - `evaluated_at`
 
 `sell_decision_metadata` is additive observability data. Current strategy
@@ -676,6 +725,15 @@ the projected remainder quantity/notional values, and
 `promoted_quantity_fraction=1.0`. These keys explain the final SELL decision;
 they do not change FIFO truth, and consumers must still derive open inventory
 from `position_lots`.
+
+When the runtime time-based exit policy observes a matching position,
+`sell_decision_events.reason` is `time_based_exit_candidate`. With
+`time_based_exit_dry_run=true`, this is diagnostics only and no SELL should be
+inferred. Multiple matching candidates can be recorded during one dry-run SELL
+evaluation cycle. If dry-run is disabled and the policy is enabled, a matching
+candidate can proceed as a normal full-exit SELL through existing validation;
+the live path remains at most one actual SELL per cycle. Consumers must still
+treat `position_lots` and `lot_closures` as the accounting record.
 
 The dashboard treats these fields as explanation metadata only. Open inventory
 still comes from `bot.position_lots`; `portfolio` remains display/projection
@@ -700,6 +758,8 @@ Normalized SELL evaluation reason values:
 - `stop_loss_not_reached`
 - `take_profit_reached`
 - `stop_loss_reached`
+- `time_based_exit_candidate`
+- `time_based_exit_dry_run`
 - `no_open_lots`
 - `insufficient_binance_balance`
 - `quantity_below_step_size`
@@ -792,7 +852,9 @@ Meaning:
 - Portfolio is refreshed as a projection.
 
 Optional opt-in SELL-side SPOT dust cleanup can make the Binance SELL execution
-quantity larger than the FIFO closure quantity. In that case:
+quantity larger than the FIFO closure quantity. When the feature is enabled,
+the bot persists dust-cleanup diagnostics even if the final Binance SELL
+quantity remains the original lot-backed quantity. In every case:
 
 - a normal lot-backed SELL signal must already exist
 - only same-asset SPOT-free residual quantity may be appended
@@ -807,9 +869,33 @@ Current metadata keys:
 
 - `spot_dust_included`
 - `lot_backed_quantity`
+- `dust_cleanup_enabled`
+- `dust_cleanup_attempted`
+- `dust_cleanup_applied`
+- `dust_cleanup_reason`
+- `binance_free_quantity`
+- `residual_candidate_quantity`
+- `residual_candidate_value_usdt`
+- `normalized_sell_quantity`
+- `projected_remaining_quantity`
+- `step_size`
+- `min_qty`
+- `min_notional`
 - `extra_spot_dust_quantity`
 - `extra_spot_dust_estimated_value_usdt`
 - `dust_cleanup_policy = "append_same_asset_spot_dust_to_normal_sell"`
+
+Stable `dust_cleanup_reason` values may include:
+
+- `spot_dust_appended`
+- `residual_below_step_size`
+- `residual_below_min_qty`
+- `residual_below_min_notional`
+- `normalized_quantity_unchanged`
+- `no_extra_spot_residual`
+- `binance_balance_unavailable`
+- `exchange_filter_missing`
+- `spot_dust_above_max_usdt`
 
 Concrete example:
 
@@ -1366,9 +1452,12 @@ Latest BUY anti-churn cooldown explanations may be read from
 `loss_reentry_cooldown_active`,
 `take_profit_reentry_cooldown_active`, and
 `sell_reentry_cooldown_active`. Optional detail keys such as
-`latest_sell_operation_id`, `latest_sell_timestamp`, `latest_sell_reason`,
-`latest_sell_realized_pnl`, `cooldown_type`, `cooldown_minutes`, and
-`cooldown_remaining_minutes` are diagnostics only.
+`latest_sell_operation_id`, `latest_sell_symbol`,
+`latest_sell_executed_at`, `latest_sell_timestamp`, `latest_sell_reason`,
+`latest_sell_reason_source`, `latest_sell_realized_pnl`, `cooldown_type`,
+`cooldown_minutes`, `cooldown_elapsed_minutes`,
+`cooldown_remaining_minutes`, and `cooldown_classification_source` are
+diagnostics only.
 
 Required dashboard columns:
 

@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.1
+doc_version: 1.1.2
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-05-25
@@ -8,6 +8,40 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-05-25 - BUY Re-entry Cooldown Diagnostics Rendering
+
+Type: contract
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/ARCHITECTURE.md
+- docs/CHANGELOG.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Updated Telegram `/buy_status` and the dashboard BUY/Cooldown card to render
+  extended bot-persisted cooldown diagnostics from latest healthcheck details.
+- Added null-safe and Decimal-safe display for latest SELL operation, symbol,
+  executed timestamp, nullable reason, reason source, realized PnL, cooldown
+  type, classification source, elapsed minutes, and remaining minutes.
+- Preserved legacy payload compatibility for `latest_sell_timestamp`,
+  `cooldown_type = sell`, and `cooldown_type = generic_sell`.
+
+Operator impact:
+- BUY cooldown pages no longer show ambiguous `N/A` when the bot persisted
+  usable cooldown context.
+- Django remains a read-only observer and does not infer cooldowns or write to
+  bot-owned trading tables.
+
+Validation:
+- Added failing tests first for full metadata, partial/null metadata, legacy
+  payload compatibility, classification rendering, and dashboard fallback
+  behavior.
+- Ran `.venv/bin/pytest core/tests.py`.
+- Verified `docs/DATA_CONTRACT.md` is synchronized with
+  `/home/cristhian/Dev/binanceBot/docs/DATA_CONTRACT.md`.
 
 ## 2026-05-25 - Codex Hook Symlink Execution Fix
 

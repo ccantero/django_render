@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.0
+doc_version: 1.1.1
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-21
+last_verified_at: 2026-05-25
 source_repo: django_render
 ---
 
@@ -76,6 +76,12 @@ Implemented capabilities:
   warnings from the latest healthcheck, filtering the main message to
   `WARNING`/`CRITICAL` diagnostics only; the bot remains the source of those
   warnings.
+- `/buy_status` and the dashboard BUY/Cooldown card render extended persisted
+  BUY re-entry cooldown diagnostics from latest healthcheck details, including
+  latest SELL operation, symbol, executed timestamp, nullable reason, reason
+  source, realized PnL, cooldown type, classification source, elapsed minutes,
+  and remaining minutes. Django remains a read-only observer and does not infer
+  cooldowns when bot-owned metadata is absent.
 - INFO-only inventory warnings are intentionally omitted from the main Telegram
   message; the compact dashboard BUY card exposes only a warning count while
   the detailed payload remains bot-owned.
