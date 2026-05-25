@@ -39,6 +39,27 @@ No step can be skipped, reordered, merged, or treated as optional. If any step i
 - Prefer generated facts over guessed facts for schema and DER documentation.
 - When documentation versions, schema versions, or runtime log versions disagree, report the mismatch instead of assuming the local docs are current.
 
+## Protected Workflow Infrastructure
+
+Files under `.codex/hooks/`, `.codex/lib/`, `.codex/templates/`, and `AGENTS.md` are protected workflow infrastructure.
+
+Codex must not modify them unless the user explicitly asks for workflow-infrastructure changes.
+
+Any change to these files requires:
+
+1. explicit user approval,
+2. a separate plan,
+3. a diff summary,
+4. manual review before commit.
+
+Rules:
+
+- Do not modify protected workflow infrastructure during normal feature, bugfix, docs, or refactor tasks.
+- If protected workflow infrastructure changes are requested, keep them isolated from unrelated application changes.
+- The final report must clearly list every protected file changed.
+- Pre-commit must block protected workflow infrastructure changes unless `ALLOW_WORKFLOW_INFRA_CHANGE=1` is set.
+- Using `ALLOW_WORKFLOW_INFRA_CHANGE=1` is allowed only after manual review.
+
 ## Documentation Governance
 
 Every meaningful task must classify its documentation impact:
