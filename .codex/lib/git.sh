@@ -66,7 +66,3 @@ meaningful_changes_exist() {
   fi
   return 1
 }
-
-native_codex_hooks_available() {
-  [[ -f "${REPO_ROOT}/.codex/config.toml" || -f "${REPO_ROOT}/.codex/hooks.toml" || -f "${REPO_ROOT}/.codex/hooks.json" ]]
-}

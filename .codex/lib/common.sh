@@ -8,7 +8,7 @@ else
   REPO_ROOT="$(cd "${CODEX_DIR}/.." >/dev/null && pwd -P)"
 fi
 
-DEFAULT_EVIDENCE_FILE="${REPO_ROOT}/.codex/hooks/workflow-evidence.md"
+DEFAULT_EVIDENCE_FILE="${REPO_ROOT}/.codex/workflow-evidence.md"
 EVIDENCE_FILE="${CODEX_WORKFLOW_EVIDENCE:-${DEFAULT_EVIDENCE_FILE}}"
 
 CORE_DOCS=(

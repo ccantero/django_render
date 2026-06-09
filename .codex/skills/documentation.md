@@ -2,7 +2,7 @@
 
 ## When To Use
 
-Use this skill after the tester role for every task. Documentation review is mandatory even when no documentation change appears necessary.
+Use this skill in the Documentator phase for every task. Documentation review is mandatory even when no documentation change appears necessary.
 
 ## Steps
 

@@ -1,21 +1,12 @@
-planner: pending
-planner_evidence: <required>
-implementer: pending
-implementer_evidence: <required>
-tester: pending
-tester_evidence: <required>
-documentator: pending
-documentator_evidence: <required>
-
+phases_completed: <planner, implementer, tester, documentator>
 impact: <none|docs_only|behavior|contract|schema|logging|operations>
-tests_created: <required, or not_applicable: reason>
-failing_test_proof: <required, or not_applicable: reason>
 tests_executed: <required>
-code_changes: <required>
-docs_updated: <required>
-docs_reviewed: <required list>
-changelog: <updated, or not_applicable: reason>
-logging_observability: <required>
-schema_der: <updated, or not_applicable: reason, or follow_up: reason>
-data_contract_sync: <verified: path, not_applicable: reason, or follow_up: reason>
 pending_issues: <required>
+
+# Conditional evidence:
+# behavior impact: tests_created, failing_test_proof
+# docs/workflow impact: docs_reviewed, docs_updated, changelog
+# schema impact: schema_der
+# contract impact: data_contract_sync
+# KPI/observability/logging impact: logging_observability,
+# kpi_registry_reviewed, kpi_registry_updated, kpi_registry_sync_checked

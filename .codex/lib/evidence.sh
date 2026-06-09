@@ -24,35 +24,10 @@ require_evidence_marker() {
   fi
 }
 
-line_number_for_marker() {
-  local marker="$1"
-  if ! evidence_exists; then
-    printf '0\n'
-    return
-  fi
-  grep -En "${marker}" "${EVIDENCE_FILE}" | head -n 1 | cut -d: -f1 || printf '0\n'
-}
-
-require_workflow_order() {
-  local planner implementer tester documentator
-  planner="$(line_number_for_marker '^planner:[[:space:]]*completed$')"
-  implementer="$(line_number_for_marker '^implementer:[[:space:]]*completed$')"
-  tester="$(line_number_for_marker '^tester:[[:space:]]*completed$')"
-  documentator="$(line_number_for_marker '^documentator:[[:space:]]*completed$')"
-
-  if [[ "${planner}" == "0" || "${implementer}" == "0" || "${tester}" == "0" || "${documentator}" == "0" ]]; then
-    fail "workflow evidence must include planner, implementer, tester, and documentator completed markers"
-    return
-  fi
-
-  if (( planner >= implementer || implementer >= tester || tester >= documentator )); then
-    fail "workflow evidence markers are not in required order: planner -> implementer -> tester -> documentator"
-  fi
-}
-
 non_placeholder_value() {
   local key="$1"
   local value
+  evidence_exists || return 1
   value="$(grep -E "^${key}:" "${EVIDENCE_FILE}" | head -n 1 | cut -d: -f2- | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' || true)"
   [[ -n "${value}" ]] || return 1
   [[ "${value}" != "pending" ]] || return 1
@@ -72,12 +47,22 @@ require_non_placeholder_value() {
   fi
 }
 
-require_role_evidence() {
-  local role
-  for role in planner implementer tester documentator; do
-    require_evidence_marker "^${role}:[[:space:]]*completed$" "${role} completed marker"
-    require_non_placeholder_value "${role}_evidence" "${role} evidence"
-  done
+require_common_evidence() {
+  require_evidence_marker '^phases_completed:[[:space:]]*planner,[[:space:]]*implementer,[[:space:]]*tester,[[:space:]]*documentator$' "single-agent phase completion"
+  require_evidence_marker '^impact:[[:space:]]*(none|docs_only|behavior|contract|schema|logging|operations)(,[[:space:]]*(docs_only|behavior|contract|schema|logging|operations))*$' "impact classification"
+  require_non_placeholder_value "tests_executed" "tests executed record"
+  require_non_placeholder_value "pending_issues" "pending issues result"
+}
+
+warn_common_evidence() {
+  if ! evidence_exists; then
+    warn "low-risk staged changes without workflow evidence: ${EVIDENCE_FILE}"
+    return 0
+  fi
+  evidence_has '^phases_completed:[[:space:]]*planner,[[:space:]]*implementer,[[:space:]]*tester,[[:space:]]*documentator$' || warn "workflow evidence is missing single-agent phase completion"
+  evidence_has '^impact:[[:space:]]*(none|docs_only|behavior|contract|schema|logging|operations)(,[[:space:]]*(docs_only|behavior|contract|schema|logging|operations))*$' || warn "workflow evidence is missing impact classification"
+  non_placeholder_value "tests_executed" || warn "workflow evidence is missing tests_executed"
+  non_placeholder_value "pending_issues" || warn "workflow evidence is missing pending_issues"
 }
 
 require_behavior_tests_when_needed() {
@@ -89,5 +74,46 @@ require_behavior_tests_when_needed() {
     if ! non_placeholder_value "failing_test_proof" || evidence_has '^failing_test_proof:[[:space:]]*not_applicable:'; then
       fail "workflow evidence must record failing_test_proof for behavior changes"
     fi
+  fi
+}
+
+require_docs_evidence_when_needed() {
+  local mode="${1:-all}"
+  if docs_governance_changes_exist "${mode}" || evidence_has '^impact:.*docs_only'; then
+    require_non_placeholder_value "docs_reviewed" "docs reviewed record"
+    require_non_placeholder_value "docs_updated" "docs updated record"
+    require_evidence_marker '^changelog:[[:space:]]*(updated|not_applicable:.+)' "changelog handling"
+  fi
+}
+
+require_contract_sync_when_needed() {
+  local mode="${1:-all}"
+  if has_changed_path_matching "${mode}" '^docs/DATA_CONTRACT\.md$' || evidence_has '^impact:.*contract'; then
+    require_evidence_marker '^data_contract_sync:[[:space:]]*(verified:.+|not_applicable:.+|follow_up:.+)' "data contract sync handling"
+  fi
+}
+
+require_logging_observability_when_needed() {
+  local mode="${1:-all}"
+  if logging_changes_exist "${mode}" || kpi_observability_changes_exist "${mode}" || evidence_has '^impact:.*logging'; then
+    require_non_placeholder_value "logging_observability" "logging/observability result"
+  fi
+}
+
+warn_secondary_evidence_when_needed() {
+  local mode="${1:-all}"
+  if docs_governance_changes_exist "${mode}" || evidence_has '^impact:.*docs_only'; then
+    non_placeholder_value "docs_reviewed" || warn "medium-risk docs/workflow change is missing docs_reviewed evidence"
+    non_placeholder_value "docs_updated" || warn "medium-risk docs/workflow change is missing docs_updated evidence"
+    evidence_has '^changelog:[[:space:]]*(updated|not_applicable:.+)' || warn "medium-risk docs/workflow change is missing changelog handling evidence"
+  fi
+  if schema_changes_exist "${mode}" && ! docs_db_changed "${mode}" && ! evidence_has '^schema_der:[[:space:]]*(updated|not_applicable:.+|follow_up:.+)'; then
+    warn "medium-risk schema-like change is missing schema_der evidence"
+  fi
+  if has_changed_path_matching "${mode}" '^docs/DATA_CONTRACT\.md$' || evidence_has '^impact:.*contract'; then
+    evidence_has '^data_contract_sync:[[:space:]]*(verified:.+|not_applicable:.+|follow_up:.+)' || warn "medium-risk contract-like change is missing data_contract_sync evidence"
+  fi
+  if logging_changes_exist "${mode}" || kpi_observability_changes_exist "${mode}" || evidence_has '^impact:.*logging'; then
+    non_placeholder_value "logging_observability" || warn "medium-risk logging/observability-like change is missing logging_observability evidence"
   fi
 }

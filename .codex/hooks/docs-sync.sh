@@ -27,6 +27,7 @@ validate_touched_doc_headers "${mode}"
 require_docs_review_when_needed "${mode}"
 require_changelog_when_needed "${mode}"
 require_schema_der_when_needed "${mode}"
+require_kpi_registry_when_needed "${mode}"
 
 if has_changed_path_matching "${mode}" '^docs/DATA_CONTRACT\.md$'; then
   if [[ -z "${DASHBOARD_DATA_CONTRACT:-}" ]]; then
@@ -45,6 +46,26 @@ if has_changed_path_matching "${mode}" '^docs/DATA_CONTRACT\.md$'; then
   elif ! evidence_has '^data_contract_sync:[[:space:]]*(not_applicable:.+|follow_up:.+)'; then
     warn "DASHBOARD_DATA_CONTRACT does not point to a file: ${DASHBOARD_DATA_CONTRACT}"
     warn "record a data_contract_sync follow-up before final reporting"
+  fi
+fi
+
+if has_changed_path_matching "${mode}" '^docs/KPI_REGISTRY\.md$'; then
+  if [[ -z "${DASHBOARD_KPI_REGISTRY:-}" ]]; then
+    warn "DASHBOARD_KPI_REGISTRY is not set; paired dashboard KPI registry validation was not run"
+    if ! evidence_has '^kpi_registry_sync_checked:[[:space:]]*(not-available|no|yes)'; then
+      warn "record kpi_registry_sync_checked evidence before final reporting"
+    fi
+  elif [[ -f "${DASHBOARD_KPI_REGISTRY}" ]]; then
+    if cmp -s "${REPO_ROOT}/docs/KPI_REGISTRY.md" "${DASHBOARD_KPI_REGISTRY}"; then
+      info "paired dashboard KPI_REGISTRY.md is synchronized"
+    elif evidence_has '^kpi_registry_sync_checked:[[:space:]]*(no|not-available)'; then
+      warn "paired dashboard KPI_REGISTRY.md differs; workflow evidence records sync handling"
+    else
+      fail "docs/KPI_REGISTRY.md changed but paired dashboard registry differs: ${DASHBOARD_KPI_REGISTRY}"
+    fi
+  elif ! evidence_has '^kpi_registry_sync_checked:[[:space:]]*(no|not-available)'; then
+    warn "DASHBOARD_KPI_REGISTRY does not point to a file: ${DASHBOARD_KPI_REGISTRY}"
+    warn "record a kpi_registry_sync_checked follow-up before final reporting"
   fi
 fi
 

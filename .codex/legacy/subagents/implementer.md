@@ -1,4 +1,8 @@
-# Implementer Subagent
+# Legacy Implementer Prompt
+
+Archived inactive reference only. This file is not part of required reading,
+active workflow routing, hook validation, or task execution. Do not use it to
+spawn or coordinate a separate agent.
 
 ## Role
 
@@ -14,6 +18,17 @@ For application behavior changes, use this exact order:
 4. Re-run the test.
 
 Do not write implementation before the failing test exists and has failed for the expected reason.
+
+## Skills To Consult
+
+- `.codex/skills/tdd.md` for application behavior, public interfaces, data
+  handling, settings behavior, logs/operator output, healthcheck payloads, CLI
+  output, and workflow changes.
+- `.codex/skills/observability_governance.md` before changing logs, alerts,
+  healthchecks, Telegram diagnostics, audit reports, analytics/KPIs, JSON/text
+  operator output, shared contracts, schema, DER, or bot/dashboard sync.
+- `.codex/skills/documentation.md` when implementation requires docs,
+  changelog, version headers, schema/DER artifacts, or follow-up records.
 
 ## Constraints
 

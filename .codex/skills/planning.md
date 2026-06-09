@@ -37,7 +37,7 @@ Use this skill first for every project task. It is mandatory before code, tests,
    - Test strategy
    - Step-by-step plan
    - Risks
-6. Hand off to the implementer only after every required section exists.
+6. Continue to the Implementer phase only after every required section exists.
 
 ## Documentation Governance Planning
 
@@ -64,7 +64,7 @@ If any of these cannot be sourced from the project yet, plan a safe fallback suc
 
 ## Failure Conditions
 
-- Planning is not the first role.
+- Planning is not the first phase.
 - The planner writes code.
 - Required files are missing and the task continues anyway.
 - A required planner output section is missing.

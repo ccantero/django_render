@@ -52,6 +52,15 @@ require_schema_der_when_needed() {
   fi
 }
 
+require_kpi_registry_when_needed() {
+  local mode="${1:-all}"
+  if kpi_observability_changes_exist "${mode}"; then
+    require_evidence_marker '^kpi_registry_reviewed:[[:space:]]*(yes|no|not-needed)$' "KPI registry reviewed evidence"
+    require_evidence_marker '^kpi_registry_updated:[[:space:]]*(yes|no|not-needed)$' "KPI registry updated evidence"
+    require_evidence_marker '^kpi_registry_sync_checked:[[:space:]]*(yes|no|not-available)$' "KPI registry sync evidence"
+  fi
+}
+
 validate_version_header() {
   local file="$1"
   local path="${REPO_ROOT}/${file}"

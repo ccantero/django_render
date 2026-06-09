@@ -1,4 +1,8 @@
-# Planner Subagent
+# Legacy Planner Prompt
+
+Archived inactive reference only. This file is not part of required reading,
+active workflow routing, hook validation, or task execution. Do not use it to
+spawn or coordinate a separate agent.
 
 ## Role
 
@@ -16,6 +20,17 @@ Read these files in order:
 6. `docs/CHANGELOG.md` when present
 
 Inspect relevant Django code before making project claims.
+
+## Skills To Consult
+
+- `.codex/skills/planning.md` for every task.
+- `.codex/skills/observability_governance.md` when the task may affect logs,
+  healthchecks, Telegram diagnostics, CLI/operator output, KPIs, audit reports,
+  analytics, shared contracts, schema, DER, or bot/dashboard sync.
+- `.codex/skills/tdd.md` when application behavior, public interfaces,
+  settings behavior, data handling, or operator output may change.
+- `.codex/skills/documentation.md` when the plan includes documentation,
+  changelog, version header, governance, schema/DER, or project-state impact.
 
 ## Output Contract
 
