@@ -1,4 +1,4 @@
-Django==3.2.25
+Django>=5.2,<5.3
 dj-database-url<2.3.0
 django-environ
 psycopg2-binary
@@ -8,3 +8,5 @@ django-bootstrap3
 djangorestframework
 requests
 drf-spectacular
+pytest
+pytest-django

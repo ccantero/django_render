@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.1
+doc_version: 1.1.2
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-25
+last_verified_at: 2026-06-09
 source_repo: django_render
 ---
 
@@ -70,8 +70,10 @@ Implemented capabilities:
 - `/buy_status` now renders a mobile-first operational summary with separate
   capacity, position-count, material-exposure, dust-exposure, latest-BUY, and
   status sections; material rows are approximately valued from read-only
-  `bot.portfolio`, sorted descending, and missing projection prices remain
-  visibly unavailable instead of becoming zero.
+  `bot.portfolio`, sorted descending, and include approximate unrealized PnL
+  when `quantity`, `entry_price`, and `current_price` are usable. Missing,
+  invalid, or non-positive entry prices render as `PnL unavailable`, and missing
+  projection prices remain visibly unavailable instead of becoming zero.
 - `/buy_status` also surfaces compact persisted reconciliation inventory
   warnings from the latest healthcheck, filtering the main message to
   `WARNING`/`CRITICAL` diagnostics only; the bot remains the source of those
@@ -126,6 +128,8 @@ Detected infrastructure and tooling:
 
 - Django REST Framework is present.
 - pytest-django is configured in `pytest.ini`.
+- Runtime/test dependencies now use the Django 5.2 LTS line for Python 3.13
+  compatibility.
 - Django `TestCase`, `TransactionTestCase`, and `SimpleTestCase` are used.
 - SQLite is the default local database.
 - PostgreSQL is supported via `DATABASE_URL` and appears in Docker Compose.

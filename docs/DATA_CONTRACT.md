@@ -1,9 +1,9 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.5
+doc_version: 1.0.17
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-25
+last_verified_at: 2026-06-08
 source_repo: binanceBot
 ---
 
@@ -300,9 +300,17 @@ Current diagnostic metadata:
   residual quantity was appended. These fields are observability-only and do
   not change economic quantity, FIFO closures, or lot accounting semantics.
 - Live time-based exit SELL operations may include
-  `raw_payload.sell_reason = "time_based_exit_candidate"`. This is runtime
-  policy metadata only; the economic SELL and FIFO closures still use the
-  normal full-exit path and `position_lots` remains accounting truth.
+  `raw_payload.sell_reason = "time_based_exit_triggered"` and
+  `raw_payload.previous_time_based_exit_reason = "time_based_exit_candidate"`.
+  Current live payloads also carry explicit audit aliases:
+  `raw_payload.reason = "time_based_exit_triggered"`,
+  `raw_payload.time_based_exit = true`, `raw_payload.age_hours`,
+  `raw_payload.pnl_pct`, `raw_payload.min_hours`,
+  `raw_payload.min_pnl_pct`, `raw_payload.max_pnl_pct`,
+  `raw_payload.allowlist_match`, and `raw_payload.dry_run = false`.
+  This is runtime policy metadata only; the economic SELL and FIFO closures
+  still use the normal full-exit path and `position_lots` remains accounting
+  truth.
 - Historical rows without `strategy_version` remain valid and must be grouped
   as `unversioned` for era comparison rather than rewritten.
 - Explicit manual/accounting rows marked by
@@ -502,6 +510,18 @@ classification and BUY diagnostic fields:
 - `latest_buy_symbol`
 - `latest_buy_error_class`
 - `latest_buy_error_code`
+- `scanner_candidates_available`: scanner candidate count visible to the BUY
+  cycle, preferring scanner diagnostics when present and otherwise using the
+  candidate list length
+- `buy_candidates_limit`: configured candidate limit used by
+  `OpportunityService`
+- `buy_candidates_seen`: number of candidates handed to BUY validation in the
+  current cycle
+- `candidate_selected_rank`: one-based scanner rank of the selected BUY
+  candidate, or null when no candidate was selected
+- `candidate_rejection_count_before_selected`: count of higher-ranked
+  candidates rejected before the selected candidate, or null when no candidate
+  was selected
 - cooldown diagnostics when `latest_buy_reason` is
   `loss_reentry_cooldown_active`, `take_profit_reentry_cooldown_active`, or
   `sell_reentry_cooldown_active`:
@@ -603,6 +623,16 @@ Consumers may enrich display-only exposure labels by reading `bot.portfolio`
 as a projection, but that enrichment must remain approximate, must not replace
 `position_lots` as accounting truth, and must not treat missing/null/non-positive
 projection prices as zero.
+`src/scripts/analyze_cooldown_outcomes.py` is a bot-local read-only
+counterfactual report over existing cooldown diagnostics and historical
+snapshot projection prices. It should prefer contract-visible `bot.snapshots`
+when usable and may fall back to bot-local `bot.portfolio_snapshots` when that
+table exists in the bot repository runtime schema. It may report horizon
+returns, incomplete windows, saved-loss vs blocked-gain percentages,
+primary-horizon net effect, and per-symbol impact, but those outputs are not
+execution records, order simulations, dashboard/shared contracts, or proof
+that a blocked BUY would have filled. Missing snapshot evidence must remain
+unavailable rather than treated as zero return.
 
 `reconciliation.inventory_warnings[]` is also bot-owned persisted diagnostic
 state. Warning items may include `symbol`, `reason`, `severity`, `lot_qty`,
@@ -702,6 +732,11 @@ bot emits them:
 - `time_based_exit_min_pnl_pct`
 - `time_based_exit_max_pnl_pct`
 - `time_based_exit_material_only`
+- `time_based_exit_live_mode`
+- `time_based_exit_symbol_allowlist`
+- `time_based_exit_allowlist_matched`
+- `time_based_exit_max_sells_per_cycle`
+- `time_based_exit_sell_intent`
 - `time_based_exit_age_hours`
 - `time_based_exit_open_lot_quantity`
 - `time_based_exit_estimated_value_usdt`
@@ -709,6 +744,17 @@ bot emits them:
 - `time_based_exit_dust_min_notional_usdt`
 - `time_based_exit_candidate`
 - `time_based_exit_rejection_reason`
+- `previous_time_based_exit_reason`
+- `time_based_partial_exit_candidate`
+- `time_based_partial_exit_rejection_reason`
+- `time_based_partial_exit_fraction`
+- `time_based_partial_exit_would_sell_quantity`
+- `time_based_partial_exit_would_sell_notional_usdt`
+- `time_based_partial_exit_projected_remaining_quantity`
+- `time_based_partial_exit_projected_remaining_quantity_rounded`
+- `time_based_partial_exit_projected_remaining_notional_usdt`
+- `time_based_partial_exit_would_create_dust`
+- `time_based_partial_exit_capital_released_usdt`
 - `evaluated_at`
 
 `sell_decision_metadata` is additive observability data. Current strategy
@@ -731,9 +777,33 @@ When the runtime time-based exit policy observes a matching position,
 `time_based_exit_dry_run=true`, this is diagnostics only and no SELL should be
 inferred. Multiple matching candidates can be recorded during one dry-run SELL
 evaluation cycle. If dry-run is disabled and the policy is enabled, a matching
-candidate can proceed as a normal full-exit SELL through existing validation;
-the live path remains at most one actual SELL per cycle. Consumers must still
-treat `position_lots` and `lot_closures` as the accounting record.
+candidate can proceed as a normal full-exit SELL only when the live symbol
+allowlist is non-empty and matches the symbol. Live diagnostic approval and
+operation metadata use `time_based_exit_triggered` as the execution reason and
+retain `previous_time_based_exit_reason=time_based_exit_candidate`. Empty live
+allowlists reject all live time-based exits rather than enabling a global
+scope. The live path remains at most one actual SELL per cycle. Consumers must
+still treat `position_lots` and `lot_closures` as the accounting record.
+For operator audit, `trade_operations.raw_payload` preserves both the existing
+prefixed policy fields and short aliases: `reason`, `time_based_exit`,
+`age_hours`, `pnl_pct`, `min_hours`, `min_pnl_pct`, `max_pnl_pct`,
+`allowlist_match`, and `dry_run`.
+`time_based_exit_max_sells_per_cycle` is currently a policy guardrail with the
+only supported value `1`; values above `1` are rejected by runtime validation
+until multi-SELL cycles are explicitly implemented.
+
+Matching time-based exit candidates may also emit
+`sell_decision_events.reason = "time_based_partial_exit_candidate"` as
+dry-run-only calibration evidence. This row estimates what a configured
+partial time-based exit would have done, including the would-sell quantity and
+notional, projected remaining quantity and notional, whether the remainder
+would create dust, capital released, and a rejection reason when the projected
+remainder would be below minQty, below minNotional, or round to zero. The
+diagnostic also rejects non-partial fractions with
+`partial_fraction_not_positive` for fractions `<= 0` and
+`partial_fraction_not_partial` for fractions `>= 1`. It is not an execution
+signal and must not be interpreted as a submitted or filled SELL. The current
+live time-based exit path remains full-exit only.
 
 The dashboard treats these fields as explanation metadata only. Open inventory
 still comes from `bot.position_lots`; `portfolio` remains display/projection
@@ -759,6 +829,8 @@ Normalized SELL evaluation reason values:
 - `take_profit_reached`
 - `stop_loss_reached`
 - `time_based_exit_candidate`
+- `time_based_partial_exit_candidate`
+- `time_based_exit_triggered`
 - `time_based_exit_dry_run`
 - `no_open_lots`
 - `insufficient_binance_balance`
@@ -1459,6 +1531,42 @@ Latest BUY anti-churn cooldown explanations may be read from
 `cooldown_remaining_minutes`, and `cooldown_classification_source` are
 diagnostics only.
 
+Bot-local operator tooling may also read bounded `bot.event_log`
+`buy_candidate_rejected` / `buy_decision_skipped` diagnostics with those same
+cooldown reason and remaining-minute fields to analyze raw vs logical BUY
+cooldown blockers. Those diagnostics may be legacy per-candidate rows or
+compact summary rows with `reasons` and bounded `examples`. When compact
+summary rows omit symbol detail, bot-local tooling must preserve that
+uncertainty as `unknown_symbol` rather than assigning a guessed symbol.
+`src/scripts/analyze_buy_cooldowns.py` groups repeated observations by
+`(symbol, cooldown_reason, cooldown_window)` so repeated scanner/BUY attempts
+during one inferred cooldown are not treated as independent executed
+opportunities. This is a read-only diagnostic interpretation of existing
+fields; it does not add columns, mutate rows, change cooldown behavior, or
+promote the analyzer JSON output to a dashboard shared contract.
+
+`src/scripts/analyze_buy_blockers.py` is also bot-local read-only tooling over
+existing `bot.event_log` BUY/scanner diagnostics, latest
+`bot.bot_healthcheck.details`, and recent FILLED BUY `trade_operations`
+context. It may expose stable bot-local fields such as `summary`,
+`blockers`, `funnel`, `capital_idle_attribution`, `buy_acceptance_rate`,
+`buy_funnel_conversion_rate`, `top_buy_blocker`,
+`capital_idle_attribution_pct`, `buy_blocker_concentration`, and
+`blocker_entropy`. These fields are explanatory operator output only, not
+dashboard/shared database contract fields. The analyzer must preserve
+uncertainty from compact summary rows and aggregate scanner diagnostics, must
+not invent exact USDT attribution when per-candidate notional is missing, and
+must not call Binance, execute orders, mutate rows, change BUY strategy, or
+alter schema.
+
+Latest BUY traversal context may be read from `bot.bot_healthcheck.details`
+using `scanner_candidates_available`, `buy_candidates_limit`,
+`buy_candidates_seen`, `candidate_selected_rank`, and
+`candidate_rejection_count_before_selected`. These fields are additive
+diagnostics for explaining whether BUY looked beyond the first few scanner
+ranks. They do not change table columns, scanner ranking, filters, cooldowns,
+capacity rules, sizing, order execution, or dashboard write responsibilities.
+
 Required dashboard columns:
 
 - Symbol
@@ -1782,6 +1890,13 @@ Expected event fields when available:
 - `estimated_delta_value_usdt`
 - `reason`
 - `severity`
+- optional latest SELL diagnostic context for drift classification, such as
+  `sell_operation_id`, `sell_fee_asset`, `sell_executed_base_qty`,
+  `sell_closed_quantity`, `sell_closure_gap_quantity`,
+  `has_sell_closure_gap`, `dust_cleanup_attempted`,
+  `dust_cleanup_applied`, `dust_cleanup_reason`,
+  `residual_candidate_quantity`, `step_size`, and
+  `projected_remaining_quantity`
 
 Price / valuation rules:
 
@@ -1801,6 +1916,17 @@ Classification rules:
 - `possible_incomplete_sell` requires stronger evidence, such as a recent SELL
   residual signal or an actual SPOT-vs-lot quantity mismatch. Dashboards should
   not treat every partial open lot below minNotional as an incomplete SELL.
+- `base_asset_fee_below_step_size` is an `info` lot-balance drift
+  classification for explicit base-asset-fee residual evidence. It requires a
+  latest FILLED SELL for the symbol from the last seven days with no SELL
+  closure gap, `fee_asset` matching the base asset,
+  `dust_cleanup_attempted=true`,
+  `dust_cleanup_applied=false`,
+  `dust_cleanup_reason=residual_below_step_size`, and
+  `residual_candidate_quantity < step_size`.
+- `trade_operations.raw_payload` remains diagnostic evidence only. SELL
+  coverage and FIFO closure correctness still come from `position_lots` and
+  linked `lot_closures`, not from `portfolio`.
 
 Constraints:
 

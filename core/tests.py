@@ -4,6 +4,7 @@ from django.utils import timezone
 from django.urls import reverse
 from django.db import DatabaseError, connection
 from decimal import Decimal
+from datetime import timezone as datetime_timezone
 from types import SimpleNamespace
 import inspect
 import json
@@ -806,10 +807,10 @@ class TelegramDiagnosticsCommandTests(TestCase):
             },
         )
         mock_portfolio_manager.filter.return_value = [
-            SimpleNamespace(symbol='BTCUSDT', quantity=Decimal('1'), current_price=Decimal('1.24')),
-            SimpleNamespace(symbol='ETHUSDT', quantity=Decimal('2'), current_price=Decimal('5.41')),
-            SimpleNamespace(symbol='SOLUSDT', quantity=Decimal('1'), current_price=Decimal('3.91')),
-            SimpleNamespace(symbol='XRPUSDT', quantity=Decimal('2'), current_price=Decimal('0.56')),
+            SimpleNamespace(symbol='BTCUSDT', quantity=Decimal('1'), entry_price=None, current_price=Decimal('1.24')),
+            SimpleNamespace(symbol='ETHUSDT', quantity=Decimal('2'), entry_price=Decimal('5.00'), current_price=Decimal('5.41')),
+            SimpleNamespace(symbol='SOLUSDT', quantity=Decimal('1'), entry_price=Decimal('4.00'), current_price=Decimal('3.91')),
+            SimpleNamespace(symbol='XRPUSDT', quantity=Decimal('2'), entry_price=Decimal('0.55'), current_price=Decimal('0.56')),
         ]
 
         with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
@@ -825,6 +826,9 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertIn('<b>Positions</b>', message)
         self.assertIn('Raw: <code>4</code>', message)
         self.assertIn('<b>Material exposure (~15.97 USDT)</b>', message)
+        self.assertIn('ETHUSDT ~ 10.82 USDT | PnL +0.82 USDT (+8.20%)', message)
+        self.assertIn('SOLUSDT ~ 3.91 USDT | PnL -0.09 USDT (-2.25%)', message)
+        self.assertIn('BTCUSDT ~ 1.24 USDT | PnL unavailable', message)
         self.assertLess(message.index('ETHUSDT ~ 10.82 USDT'), message.index('SOLUSDT ~ 3.91 USDT'))
         self.assertLess(message.index('SOLUSDT ~ 3.91 USDT'), message.index('BTCUSDT ~ 1.24 USDT'))
         self.assertIn('<b>Dust exposure</b>', message)
@@ -1493,7 +1497,7 @@ class DashboardEndpointTests(TestCase):
                 ],
                 'pnl_by_day': [
                     {
-                        'date': timezone.datetime(2026, 5, 1, tzinfo=timezone.utc).date(),
+                        'date': timezone.datetime(2026, 5, 1, tzinfo=datetime_timezone.utc).date(),
                         'realized_pnl': Decimal('12.50'),
                         'closures_count': 2,
                     },
@@ -1577,7 +1581,7 @@ class DashboardEndpointTests(TestCase):
             ],
             'pnl_by_day': [
                 {
-                    'date': timezone.datetime(2026, 5, 1, tzinfo=timezone.utc).date(),
+                    'date': timezone.datetime(2026, 5, 1, tzinfo=datetime_timezone.utc).date(),
                     'realized_pnl': Decimal('12.50'),
                     'closures_count': 2,
                 },
@@ -1686,7 +1690,7 @@ class DashboardEndpointTests(TestCase):
             ],
             'pnl_by_day': [
                 {
-                    'date': timezone.datetime(2026, 5, 1, tzinfo=timezone.utc).date(),
+                    'date': timezone.datetime(2026, 5, 1, tzinfo=datetime_timezone.utc).date(),
                     'realized_pnl': Decimal('12.50'),
                     'closures_count': 2,
                 },
@@ -3060,8 +3064,8 @@ class DashboardEndpointTests(TestCase):
                             'symbol': 'BTCUSDT',
                             'client_order_id': '',
                             'raw_payload': {},
-                            'executed_at': timezone.datetime(2026, 5, 1, 9, tzinfo=timezone.utc),
-                            'created_at': timezone.datetime(2026, 5, 1, 8, tzinfo=timezone.utc),
+                            'executed_at': timezone.datetime(2026, 5, 1, 9, tzinfo=datetime_timezone.utc),
+                            'created_at': timezone.datetime(2026, 5, 1, 8, tzinfo=datetime_timezone.utc),
                         },
                     ]
                 if 'fee_amount_in_quote' in fields:
@@ -3210,12 +3214,12 @@ class DashboardEndpointTests(TestCase):
             1: {
                 'symbol': 'BTCUSDT',
                 'manual_correction': False,
-                'timestamp': timezone.datetime(2026, 5, 1, 9, tzinfo=timezone.utc),
+                'timestamp': timezone.datetime(2026, 5, 1, 9, tzinfo=datetime_timezone.utc),
             },
             2: {
                 'symbol': 'ETHUSDT',
                 'manual_correction': False,
-                'timestamp': timezone.datetime(2026, 5, 2, 9, tzinfo=timezone.utc),
+                'timestamp': timezone.datetime(2026, 5, 2, 9, tzinfo=datetime_timezone.utc),
             },
             3: {'symbol': 'SOLUSDT', 'manual_correction': False, 'timestamp': None},
         }
@@ -3802,7 +3806,7 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(summary['rows'], [])
 
     def test_operational_kpis_group_unversioned_and_exclude_manual_corrections(self):
-        now = timezone.datetime(2026, 5, 17, 12, tzinfo=timezone.utc)
+        now = timezone.datetime(2026, 5, 17, 12, tzinfo=datetime_timezone.utc)
         result = _calculate_operational_kpis(
             closure_rows=[
                 {'trade_operation_id': 1, 'lot_id': 'lot-1', 'realized_pnl': Decimal('10')},
@@ -3833,7 +3837,7 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(result['fee_efficiency']['total_normalized_fees'], Decimal('0.75'))
 
     def test_operational_kpis_strategy_churn_uses_eligible_sell_denominator(self):
-        now = timezone.datetime(2026, 5, 17, 12, tzinfo=timezone.utc)
+        now = timezone.datetime(2026, 5, 17, 12, tzinfo=datetime_timezone.utc)
         result = _calculate_operational_kpis(
             closure_rows=[
                 {'trade_operation_id': 1, 'lot_id': 'lot-1', 'realized_pnl': Decimal('3')},
@@ -3858,7 +3862,7 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(strategy_row['churn_frequency'], churn_row['same_symbol_reentry_frequency'])
 
     def test_operational_kpis_calculate_hold_buckets_churn_and_safe_fee_ratios(self):
-        now = timezone.datetime(2026, 5, 17, 12, tzinfo=timezone.utc)
+        now = timezone.datetime(2026, 5, 17, 12, tzinfo=datetime_timezone.utc)
         result = _calculate_operational_kpis(
             closure_rows=[
                 {'trade_operation_id': 1, 'lot_id': 'lot-1', 'realized_pnl': Decimal('5')},

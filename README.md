@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.0
+doc_version: 1.1.1
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-21
+last_verified_at: 2026-06-09
 source_repo: django_render
 ---
 
@@ -36,7 +36,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Drift alerts between `bot.portfolio` and `bot.position_lots`
 - Compact homepage Active Operational Issues from unresolved critical/warning dust/drift signals only, plus informational residual counts
 - Dust / residual dashboard from `bot.dust_detections`
-- Read-only Telegram mobile diagnostics commands for command discovery, bot health, BUY capacity status, positions, latest SELL diagnostics, and why-not-sell explanations
+- Read-only Telegram mobile diagnostics commands for command discovery, bot health, BUY capacity status with material-position unrealized PnL, positions, latest SELL diagnostics, and why-not-sell explanations
 - Read-only “Why positions are not selling” visibility through `/dashboard/exit-status/`; the homepage stays lightweight and links there instead of loading SELL diagnostics by default
 - Read-only `/dashboard/churn/` page for recent SELL→BUY re-entry observability and homepage churn summary counts
 - Dust signal detail page
@@ -179,6 +179,7 @@ python manage.py runserver
 ```
 
 Development uses Django settings from `django_render/settings.py`. By default, the database falls back to local SQLite at `db.sqlite3`; production-style deployments can provide `DATABASE_URL`.
+The project targets the Django 5.2 LTS dependency line so local tests can run on Python 3.13.
 
 Required environment variables:
 
@@ -277,6 +278,8 @@ Run tests:
 python manage.py test core
 pytest
 ```
+
+`pytest` and `pytest-django` are declared in `requirements.txt` for local validation.
 
 Local dashboard profiling is opt-in only:
 

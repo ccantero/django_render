@@ -1,13 +1,50 @@
 ---
 doc_id: changelog
-doc_version: 1.1.3
+doc_version: 1.1.4
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-25
+last_verified_at: 2026-06-09
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-09 - Telegram BUY Status Material PnL
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/CHANGELOG.md
+- docs/DESIGN.md
+- docs/KPI_REGISTRY.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Extended Telegram `/buy_status` material exposure rows with display-only
+  unrealized PnL in USDT and percent, computed only from `bot.portfolio`
+  projection fields already used by the BUY-status exposure view.
+- Kept BUY capacity semantics unchanged: effective positions, material/dust/
+  unknown counts, and remaining capacity were not recalculated.
+- Kept dust PnL out of the message and preserved the existing material row cap
+  for mobile message size.
+- Updated local dependencies to the Django 5.2 LTS line and declared
+  `pytest`/`pytest-django` in `requirements.txt` so tests run under Python
+  3.13.
+
+Operator impact:
+- Operators can now see approximate current PnL beside each displayed material
+  position in `/buy_status`.
+- Rows with missing, invalid, or non-positive `entry_price` show
+  `PnL unavailable` rather than a misleading zero.
+
+Validation:
+- Added failing formatter/test expectations before the final implementation.
+- Ran focused Telegram BUY-status test.
+- Ran `core/tests.py`.
+- Ran full pytest suite: 208 passed, 1 Django 6.0 deprecation warning from DRF
+  format suffix registration.
 
 ## 2026-05-25 - BUY Re-entry Cooldown Diagnostics Rendering
 

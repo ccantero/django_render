@@ -84,6 +84,7 @@ def render_buy_status_message(
 		for row in exposure["material_rows"][:8]:
 			lines.append(
 				f"- {escape(str(row['symbol']))} ~ {_fmt_usdt(row['estimated_value_usdt'])}"
+				f" | {_pnl_label(row)}"
 			)
 		if len(exposure["material_rows"]) > 8:
 			lines.append(f"- ... and {len(exposure['material_rows']) - 8} more")
@@ -291,9 +292,21 @@ def _valued_rows(symbols, rows_by_symbol):
 			"symbol": symbol,
 			"quantity": quantity,
 			"current_price": price,
+			"entry_price": _to_decimal(getattr(row, "entry_price", None)),
 			"estimated_value_usdt": quantity * price,
 		})
 	return rows, unavailable
+
+
+def _pnl_label(row):
+	entry_price = row.get("entry_price")
+	current_price = row.get("current_price")
+	quantity = row.get("quantity")
+	if entry_price is None or current_price is None or quantity is None or entry_price <= 0:
+		return "PnL unavailable"
+	pnl_usdt = (current_price - entry_price) * quantity
+	pnl_pct = ((current_price - entry_price) / entry_price) * Decimal("100")
+	return f"PnL {_fmt_signed_usdt(pnl_usdt)} ({_fmt_signed_percent(pnl_pct)})"
 
 
 def _material_heading(exposure):
@@ -340,6 +353,23 @@ def _fmt_usdt(value):
 	if value is None:
 		return "N/A"
 	return f"{_fmt_usdt_value(value)} USDT"
+
+
+def _fmt_signed_usdt(value):
+	value = _to_decimal(value)
+	if value is None:
+		return "N/A"
+	sign = "+" if value >= 0 else "-"
+	return f"{sign}{_fmt_usdt_value(abs(value))} USDT"
+
+
+def _fmt_signed_percent(value):
+	value = _to_decimal(value)
+	if value is None:
+		return "N/A"
+	sign = "+" if value >= 0 else "-"
+	rounded = abs(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+	return f"{sign}{format(rounded, 'f')}%"
 
 
 def _fmt_usdt_value(value):
