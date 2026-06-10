@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.2
+doc_version: 1.1.3
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-09
+last_verified_at: 2026-06-10
 source_repo: django_render
 ---
 
@@ -128,8 +128,11 @@ Detected infrastructure and tooling:
 
 - Django REST Framework is present.
 - pytest-django is configured in `pytest.ini`.
-- Runtime/test dependencies now use the Django 5.2 LTS line for Python 3.13
-  compatibility.
+- Runtime/test dependencies now use the Django 5.2 LTS line, which requires
+  Python 3.10 or newer.
+- Render native Python deployments should receive the repository
+  `.python-version` file; an old service-level `PYTHON_VERSION` environment
+  variable can override that file and break Django 5.2 installation.
 - Django `TestCase`, `TransactionTestCase`, and `SimpleTestCase` are used.
 - SQLite is the default local database.
 - PostgreSQL is supported via `DATABASE_URL` and appears in Docker Compose.

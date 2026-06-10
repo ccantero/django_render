@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.1
+doc_version: 1.1.2
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-09
+last_verified_at: 2026-06-10
 source_repo: django_render
 ---
 
@@ -179,7 +179,13 @@ python manage.py runserver
 ```
 
 Development uses Django settings from `django_render/settings.py`. By default, the database falls back to local SQLite at `db.sqlite3`; production-style deployments can provide `DATABASE_URL`.
-The project targets the Django 5.2 LTS dependency line so local tests can run on Python 3.13.
+The project targets the Django 5.2 LTS dependency line, which requires Python
+3.10 or newer. For Render native Python deployments, keep `.python-version`
+committed at the repository root so Render installs a compatible Python runtime
+before `pip install -r requirements.txt`. If the Render service has a
+`PYTHON_VERSION` environment variable set, it takes precedence over
+`.python-version`; remove or update old values such as Python 3.7/3.9 before
+redeploying.
 
 Required environment variables:
 
@@ -303,7 +309,8 @@ The endpoint returns `{"status":"ok"}` when the Django web process is reachable.
 
 ## Detected Stack
 
-- Django 3.2.25
+- Django 5.2 LTS dependency line
+- Python runtime pinned for Render through `.python-version`
 - Dedicated `dashboard` app for dashboard routes, read models, forms, and templates
 - Django REST Framework with token auth
 - drf-spectacular OpenAPI schema/docs

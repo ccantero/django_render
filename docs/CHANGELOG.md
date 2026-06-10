@@ -1,13 +1,43 @@
 ---
 doc_id: changelog
-doc_version: 1.1.4
+doc_version: 1.1.5
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-09
+last_verified_at: 2026-06-10
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-10 - Render Python Runtime Pin
+
+Type: operations
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/CHANGELOG.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Documented that Django 5.2 requires Python 3.10 or newer and that Render
+  native Python deployments should use the repository `.python-version` file.
+- Recorded the Render precedence caveat: a service-level `PYTHON_VERSION`
+  environment variable overrides `.python-version` and can keep deployments on
+  an incompatible old Python runtime.
+- Updated stale README stack text from the previous Django 3.2 reference to the
+  current Django 5.2 LTS dependency line.
+
+Operator impact:
+- Render deploys should stop failing with `No matching distribution found for
+  Django<5.3,>=5.2` after the compatible Python runtime pin is committed and no
+  older `PYTHON_VERSION` override remains configured.
+
+Validation:
+- Verified local `python3 --version` reports Python 3.13.7.
+- Verified `.python-version` is present locally with `3.12.9`, which is
+  compatible with Django 5.2.
+- Verified no application behavior, logging, data contract, or schema changed.
 
 ## 2026-06-09 - Telegram BUY Status Material PnL
 
