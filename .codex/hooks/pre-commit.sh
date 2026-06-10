@@ -35,19 +35,23 @@ require_workflow_infra_allowed
 secret_scan_staged
 
 if meaningful_changes_exist staged; then
-  require_evidence_file
-  require_workflow_order
-  require_role_evidence
-  require_non_placeholder_value "tests_executed" "tests executed record"
-  require_non_placeholder_value "code_changes" "code changes summary"
-  require_non_placeholder_value "docs_updated" "docs update summary"
-  require_non_placeholder_value "logging_observability" "logging/observability result"
-  require_non_placeholder_value "schema_der" "schema/DER result"
-  require_non_placeholder_value "pending_issues" "pending issues result"
-  require_behavior_tests_when_needed staged
-  require_docs_review_when_needed staged
-  require_changelog_when_needed staged
-  require_schema_der_when_needed staged
+  if high_risk_changes_exist staged; then
+    require_evidence_file
+    require_common_evidence
+    require_behavior_tests_when_needed staged
+    require_docs_review_when_needed staged
+    require_changelog_when_needed staged
+    require_schema_der_when_needed staged
+    require_contract_sync_when_needed staged
+    require_logging_observability_when_needed staged
+    require_kpi_registry_when_needed staged
+  elif medium_risk_changes_exist staged; then
+    require_evidence_file
+    require_common_evidence
+    warn_secondary_evidence_when_needed staged
+  else
+    warn_common_evidence
+  fi
   validate_touched_doc_headers staged
 else
   info "no meaningful staged changes detected"

@@ -156,6 +156,9 @@ fi
 cat >> "${repo}/.codex/workflow-evidence.md" <<'EOF_BEHAVIOR'
 tests_created: tests/test_orders_view.py covers the temporary view behavior
 failing_test_proof: pytest failed before implementation in the temporary scenario
+docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md
+docs_updated: not_applicable: temporary behavior self-check does not persist project docs
+changelog: not_applicable: temporary behavior self-check repo
 EOF_BEHAVIOR
 "${repo}/.codex/hooks/pre-commit.sh" >/dev/null
 git -C "${repo}" -c user.name=HookSelfCheck -c user.email=hook-self-check@example.invalid commit -q -m "behavior scenario" >/dev/null
@@ -192,6 +195,9 @@ logging_observability: temporary analytics output only
 kpi_registry_reviewed: not-needed
 kpi_registry_updated: not-needed
 kpi_registry_sync_checked: not-available
+docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md
+docs_updated: not_applicable: temporary KPI self-check does not persist project docs
+changelog: not_applicable: temporary KPI self-check repo
 EOF_KPI
 "${repo}/.codex/hooks/pre-commit.sh" >/dev/null
 git -C "${repo}" -c user.name=HookSelfCheck -c user.email=hook-self-check@example.invalid commit -q -m "kpi scenario" >/dev/null

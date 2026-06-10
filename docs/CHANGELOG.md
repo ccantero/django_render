@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.5
+doc_version: 1.1.6
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-06-10
@@ -8,6 +8,39 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-10 - Pre-commit Evidence Function Fix
+
+Type: operations
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+
+Summary:
+- Fixed protected pre-commit workflow validation so it no longer calls removed
+  or undefined evidence helpers.
+- Aligned pre-commit evidence checks with the documented high/medium/low risk
+  model: high-risk changes require common and conditional evidence, medium-risk
+  changes require common evidence with secondary warnings, and low-risk changes
+  warn instead of failing solely for missing workflow evidence.
+- Updated the hook self-check fixtures so behavior and KPI scenarios include
+  the documentator evidence required by current governance.
+
+Protected workflow files changed:
+- `.codex/hooks/pre-commit.sh`
+- `.codex/hooks/self-check.sh`
+
+Operator impact:
+- Commits no longer abort with `require_workflow_order: command not found`.
+- Protected workflow infrastructure changes remain blocked unless
+  `ALLOW_WORKFLOW_INFRA_CHANGE=1` is intentionally set for reviewed commits.
+
+Validation:
+- Reproduced the failure with `.codex/hooks/self-check.sh` before the fix.
+- Ran shell syntax validation for touched hook scripts and related helper
+  libraries.
+- Ran `.codex/hooks/self-check.sh`: passed.
 
 ## 2026-06-10 - Render Python Runtime Pin
 
