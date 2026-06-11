@@ -22,6 +22,7 @@ from dashboard.services.telegram_buy_status_formatter import (
 	build_cooldown_diagnostics,
 	build_cooldown_lines,
 	build_inventory_warning_lines,
+	classify_buy_status_positions,
 	render_buy_status_message,
 )
 
@@ -666,16 +667,18 @@ def _decimal_diff(left, right):
 
 
 def _buy_classification_from_details(details):
+	classification = details.get("position_classification") if isinstance(details, dict) else None
+	source = classification if isinstance(classification, dict) else details if isinstance(details, dict) else {}
 	return {
-		"raw_count": details.get("positions_count"),
-		"material_count": details.get("material_positions_count"),
-		"dust_count": details.get("dust_positions_count"),
-		"unknown_count": details.get("unknown_value_positions_count"),
-		"material_symbols": details.get("material_symbols") or [],
-		"dust_symbols": details.get("dust_symbols") or [],
-		"unknown_symbols": details.get("unknown_value_symbols") or [],
+		"raw_count": source.get("positions_count"),
+		"material_count": source.get("material_positions_count"),
+		"dust_count": source.get("dust_positions_count"),
+		"unknown_count": source.get("unknown_value_positions_count"),
+		"material_symbols": source.get("material_symbols") or [],
+		"dust_symbols": source.get("dust_symbols") or [],
+		"unknown_symbols": source.get("unknown_value_symbols") or [],
 		"has_healthcheck_counts": any(
-			details.get(key) is not None for key in [
+			source.get(key) is not None for key in [
 				"positions_count",
 				"material_positions_count",
 				"dust_positions_count",
@@ -687,26 +690,13 @@ def _buy_classification_from_details(details):
 
 def _buy_classification_from_portfolio():
 	rows = Portfolio.objects.filter(quantity__gt=0).order_by("symbol")
-	raw_count = 0
-	material_symbols = []
-	dust_symbols = []
-	unknown_symbols = []
-	for row in rows:
-		raw_count += 1
-		symbol = getattr(row, "symbol", "")
-		quantity = getattr(row, "quantity", None)
-		price = getattr(row, "current_price", None)
-		value = _decimal_product(quantity, price)
-		if price is None or price <= 0 or value is None:
-			unknown_symbols.append(symbol)
-		elif value >= Decimal("5"):
-			material_symbols.append(symbol)
-		elif value > 0:
-			dust_symbols.append(symbol)
-		else:
-			unknown_symbols.append(symbol)
+	rows = list(rows)
+	classification = classify_buy_status_positions(rows)
+	material_symbols = [row["symbol"] for row in classification["material_rows"]]
+	dust_symbols = [row["symbol"] for row in classification["dust_rows"]]
+	unknown_symbols = classification["unknown_symbols"]
 	return {
-		"raw_count": raw_count,
+		"raw_count": len(rows),
 		"material_count": len(material_symbols),
 		"dust_count": len(dust_symbols),
 		"unknown_count": len(unknown_symbols),

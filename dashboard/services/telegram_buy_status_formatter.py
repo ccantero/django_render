@@ -19,6 +19,30 @@ SELL_REASON_SOURCE_LABELS = {
 	"realized_pnl_fallback": "realized PnL fallback",
 	"unavailable": "unavailable",
 }
+DUST_MIN_NOTIONAL_USDT = Decimal("5")
+
+
+def classify_buy_status_positions(portfolio_rows):
+	material_rows = []
+	dust_rows = []
+	unknown_symbols = []
+	for row in portfolio_rows or []:
+		symbol = getattr(row, "symbol", "")
+		valued_row = _valued_row_from_portfolio(row)
+		if valued_row is None:
+			unknown_symbols.append(symbol)
+			continue
+		if valued_row["estimated_value_usdt"] >= DUST_MIN_NOTIONAL_USDT:
+			material_rows.append(valued_row)
+		elif valued_row["estimated_value_usdt"] > 0:
+			dust_rows.append(valued_row)
+		else:
+			unknown_symbols.append(symbol)
+	return {
+		"material_rows": material_rows,
+		"dust_rows": dust_rows,
+		"unknown_symbols": unknown_symbols,
+	}
 
 
 def build_buy_status_exposure(material_symbols, dust_symbols, portfolio_rows):
@@ -26,8 +50,27 @@ def build_buy_status_exposure(material_symbols, dust_symbols, portfolio_rows):
 	dust_symbols = list(dust_symbols or [])
 	rows_by_symbol = {getattr(row, "symbol", None): row for row in portfolio_rows}
 
-	material_rows, material_unavailable = _valued_rows(material_symbols, rows_by_symbol)
-	dust_rows, dust_unavailable = _valued_rows(dust_symbols, rows_by_symbol)
+	material_unavailable = []
+	dust_unavailable = []
+	classified_rows = []
+	for symbol in dict.fromkeys(material_symbols + dust_symbols):
+		source_bucket = "material" if symbol in material_symbols else "dust"
+		row = rows_by_symbol.get(symbol)
+		if row is None:
+			if source_bucket == "material":
+				material_unavailable.append(symbol)
+			else:
+				dust_unavailable.append(symbol)
+			continue
+		classified_rows.append(row)
+	classification = classify_buy_status_positions(classified_rows)
+	material_rows = classification["material_rows"]
+	dust_rows = classification["dust_rows"]
+	for symbol in classification["unknown_symbols"]:
+		if symbol in material_symbols:
+			material_unavailable.append(symbol)
+		else:
+			dust_unavailable.append(symbol)
 	material_rows.sort(key=lambda row: row["estimated_value_usdt"], reverse=True)
 
 	return {
@@ -278,24 +321,18 @@ def _humanize_inventory_warning_reason(reason):
 	return escape(reason.replace("_", " "))
 
 
-def _valued_rows(symbols, rows_by_symbol):
-	rows = []
-	unavailable = []
-	for symbol in symbols:
-		row = rows_by_symbol.get(symbol)
-		quantity = _to_decimal(getattr(row, "quantity", None)) if row is not None else None
-		price = _to_decimal(getattr(row, "current_price", None)) if row is not None else None
-		if quantity is None or price is None or price <= 0:
-			unavailable.append(symbol)
-			continue
-		rows.append({
-			"symbol": symbol,
-			"quantity": quantity,
-			"current_price": price,
-			"entry_price": _to_decimal(getattr(row, "entry_price", None)),
-			"estimated_value_usdt": quantity * price,
-		})
-	return rows, unavailable
+def _valued_row_from_portfolio(row):
+	quantity = _to_decimal(getattr(row, "quantity", None)) if row is not None else None
+	price = _to_decimal(getattr(row, "current_price", None)) if row is not None else None
+	if quantity is None or price is None or price <= 0:
+		return None
+	return {
+		"symbol": getattr(row, "symbol", ""),
+		"quantity": quantity,
+		"current_price": price,
+		"entry_price": _to_decimal(getattr(row, "entry_price", None)),
+		"estimated_value_usdt": quantity * price,
+	}
 
 
 def _pnl_label(row):

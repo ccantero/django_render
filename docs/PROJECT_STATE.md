@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.3
+doc_version: 1.1.4
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-10
+last_verified_at: 2026-06-11
 source_repo: django_render
 ---
 
@@ -67,6 +67,10 @@ Implemented capabilities:
   dust as non-blocking, falls back to runtime max-position config when the latest
   healthcheck omits it, and keeps optional diagnostic gaps from collapsing the
   whole BUY-capacity answer.
+- `/buy_status` accepts either flat healthcheck classification fields or a
+  nested `details.position_classification` object, and its material/dust
+  exposure display defensively rechecks `quantity * current_price` so tiny
+  residuals cannot be rendered as Material Exposure.
 - `/buy_status` now renders a mobile-first operational summary with separate
   capacity, position-count, material-exposure, dust-exposure, latest-BUY, and
   status sections; material rows are approximately valued from read-only

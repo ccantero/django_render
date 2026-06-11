@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.2
+doc_version: 1.1.3
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-09
+last_verified_at: 2026-06-11
 source_repo: django_render
 ---
 
@@ -196,7 +196,11 @@ shows approximate unrealized PnL for those displayed material rows when
 `bot.portfolio` provides usable quantity, entry price, and current price; lists
 dust symbols only when there are five or fewer; and keeps missing or non-positive
 projection prices visibly unavailable rather than silently turning them into
-zero. Missing, invalid, or non-positive entry prices render PnL as unavailable.
+zero. Material/dust exposure rows must be defensively bucketed by
+`quantity * current_price` at `DUST_MIN_NOTIONAL_USDT` even when healthcheck
+symbol lists are incomplete or stale, so a below-threshold residual is never
+promoted into Material Exposure. Missing, invalid, or non-positive entry prices
+render PnL as unavailable.
 Capacity and latest BUY blockers remain separate so “slots
 available” can coexist with “insufficient free USDT.” It uses
 `diagnostic_unavailable` only when required inputs such as position

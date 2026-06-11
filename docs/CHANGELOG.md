@@ -1,13 +1,42 @@
 ---
 doc_id: changelog
-doc_version: 1.1.6
+doc_version: 1.1.7
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-10
+last_verified_at: 2026-06-11
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-11 - BUY Status Dust Exposure Classification
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+- docs/DESIGN.md
+- docs/KPI_REGISTRY.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Fixed Telegram `/buy_status` material-exposure rendering so display rows are
+  defensively classified by `quantity * current_price >= DUST_MIN_NOTIONAL_USDT`.
+- Added nested `healthcheck.details.position_classification` support while
+  preserving existing flat healthcheck classification compatibility.
+- Added regressions for WLDUSDT-like tiny residuals, material positions above
+  threshold, unknown valuation rows, and stale material-symbol display data.
+
+Operator impact:
+- Tiny residuals such as `0.0884 WLDUSDT * 0.4367 = 0.03860428 USDT` can no
+  longer appear under Material Exposure in `/buy_status`.
+- Unknown-price positive rows remain visible as unknown value and continue to
+  consume effective capacity.
+
+Validation:
+- Added failing BUY-status formatter regression before the fix.
+- Ran focused Telegram BUY-status tests.
 
 ## 2026-06-10 - Pre-commit Evidence Function Fix
 

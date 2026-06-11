@@ -57,7 +57,10 @@ from dashboard.services.operational_kpis import (
     OperationalKpiFilters,
     _calculate_operational_kpis,
 )
-from dashboard.services.telegram_buy_status_formatter import build_cooldown_diagnostics
+from dashboard.services.telegram_buy_status_formatter import (
+    build_buy_status_exposure,
+    build_cooldown_diagnostics,
+)
 from core.models import DustSignalReview, ManualCorrection
 from core.trading_models import DustDetection, LotClosure, PositionLot, TradeOperation
 from dashboard.views import _manual_correction_quantity
@@ -288,6 +291,47 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertIn('Free USDT: <code>diagnostic unavailable</code>', message)
         self.assertIn('Reason: <code>unavailable</code>', message)
         self.assertIn('✅ Capacity available', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_buy_status_prefers_nested_position_classification_from_healthcheck(
+        self,
+        mock_health_manager,
+        mock_portfolio_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = []
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=26,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'max_positions': 8,
+                'position_classification': {
+                    'positions_count': 3,
+                    'material_positions_count': 1,
+                    'dust_positions_count': 1,
+                    'unknown_value_positions_count': 1,
+                    'material_symbols': ['BTCUSDT'],
+                    'dust_symbols': ['WLDUSDT'],
+                    'unknown_value_symbols': ['MYSTERYUSDT'],
+                },
+            },
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/buy_status')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('Raw: <code>3</code>', message)
+        self.assertIn('Material: <code>1</code>', message)
+        self.assertIn('Dust: <code>1</code>', message)
+        self.assertIn('Unknown value: <code>1</code>', message)
+        self.assertIn('Effective positions: <code>2 / 8</code>', message)
+        self.assertIn('Valuation unavailable: <code>MYSTERYUSDT', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -807,9 +851,9 @@ class TelegramDiagnosticsCommandTests(TestCase):
             },
         )
         mock_portfolio_manager.filter.return_value = [
-            SimpleNamespace(symbol='BTCUSDT', quantity=Decimal('1'), entry_price=None, current_price=Decimal('1.24')),
+            SimpleNamespace(symbol='BTCUSDT', quantity=Decimal('1'), entry_price=None, current_price=Decimal('5.24')),
             SimpleNamespace(symbol='ETHUSDT', quantity=Decimal('2'), entry_price=Decimal('5.00'), current_price=Decimal('5.41')),
-            SimpleNamespace(symbol='SOLUSDT', quantity=Decimal('1'), entry_price=Decimal('4.00'), current_price=Decimal('3.91')),
+            SimpleNamespace(symbol='SOLUSDT', quantity=Decimal('1'), entry_price=Decimal('4.00'), current_price=Decimal('6.00')),
             SimpleNamespace(symbol='XRPUSDT', quantity=Decimal('2'), entry_price=Decimal('0.55'), current_price=Decimal('0.56')),
         ]
 
@@ -825,12 +869,12 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertIn('Free USDT: <code>0.02 USDT</code>', message)
         self.assertIn('<b>Positions</b>', message)
         self.assertIn('Raw: <code>4</code>', message)
-        self.assertIn('<b>Material exposure (~15.97 USDT)</b>', message)
+        self.assertIn('<b>Material exposure (~22.06 USDT)</b>', message)
         self.assertIn('ETHUSDT ~ 10.82 USDT | PnL +0.82 USDT (+8.20%)', message)
-        self.assertIn('SOLUSDT ~ 3.91 USDT | PnL -0.09 USDT (-2.25%)', message)
-        self.assertIn('BTCUSDT ~ 1.24 USDT | PnL unavailable', message)
-        self.assertLess(message.index('ETHUSDT ~ 10.82 USDT'), message.index('SOLUSDT ~ 3.91 USDT'))
-        self.assertLess(message.index('SOLUSDT ~ 3.91 USDT'), message.index('BTCUSDT ~ 1.24 USDT'))
+        self.assertIn('SOLUSDT ~ 6 USDT | PnL +2 USDT (+50.00%)', message)
+        self.assertIn('BTCUSDT ~ 5.24 USDT | PnL unavailable', message)
+        self.assertLess(message.index('ETHUSDT ~ 10.82 USDT'), message.index('SOLUSDT ~ 6 USDT'))
+        self.assertLess(message.index('SOLUSDT ~ 6 USDT'), message.index('BTCUSDT ~ 5.24 USDT'))
         self.assertIn('<b>Dust exposure</b>', message)
         self.assertIn('Estimated dust exposure: <code>~1.12 USDT</code>', message)
 
@@ -949,6 +993,263 @@ class TelegramDiagnosticsCommandTests(TestCase):
         message = mock_send_message.call_args[0][0]
         self.assertIn('✅ Capacity available', message)
         self.assertIn('⚠️ Insufficient free USDT for next BUY', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.TradeOperation.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_buy_status_fallback_classifies_wld_residual_as_dust(
+        self,
+        mock_portfolio_manager,
+        mock_health_manager,
+        mock_trade_manager,
+        mock_send_message,
+    ):
+        wld_row = SimpleNamespace(
+            symbol='WLDUSDT',
+            quantity=Decimal('0.0884'),
+            entry_price=Decimal('0.5000'),
+            current_price=Decimal('0.4367'),
+        )
+
+        def portfolio_filter(**kwargs):
+            if kwargs == {'quantity__gt': 0}:
+                return SimpleNamespace(order_by=lambda *args: [wld_row])
+            if kwargs == {'symbol__in': ['WLDUSDT']}:
+                return [wld_row]
+            return []
+
+        mock_portfolio_manager.filter.side_effect = portfolio_filter
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=23,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'max_positions': 8,
+                'free_usdt': Decimal('25'),
+            },
+        )
+        mock_trade_manager.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = None
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/buy_status')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('Material: <code>0</code>', message)
+        self.assertIn('Dust: <code>1</code>', message)
+        self.assertIn('Effective positions: <code>0 / 8</code>', message)
+        self.assertIn('Estimated dust exposure: <code>~0.04 USDT</code>', message)
+        self.assertIn('Symbols: <code>WLDUSDT</code>', message)
+        self.assertNotIn('- WLDUSDT ~ 0.04 USDT', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.TradeOperation.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_buy_status_message_demotes_stale_healthcheck_material_symbol(
+        self,
+        mock_portfolio_manager,
+        mock_health_manager,
+        mock_trade_manager,
+        mock_send_message,
+    ):
+        wld_row = SimpleNamespace(
+            symbol='WLDUSDT',
+            quantity=Decimal('0.0884'),
+            entry_price=Decimal('0.5000'),
+            current_price=Decimal('0.4367'),
+        )
+        mock_portfolio_manager.filter.return_value = [wld_row]
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=27,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 1,
+                'material_positions_count': 1,
+                'dust_positions_count': 0,
+                'unknown_value_positions_count': 0,
+                'material_symbols': ['WLDUSDT'],
+                'dust_symbols': [],
+                'unknown_value_symbols': [],
+                'max_positions': 8,
+            },
+        )
+        mock_trade_manager.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = None
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/buy_status')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('<b>Material exposure (~0 USDT)</b>', message)
+        self.assertIn('- none', message)
+        self.assertIn('<b>Dust exposure</b>', message)
+        self.assertIn('Estimated dust exposure: <code>~0.04 USDT</code>', message)
+        self.assertIn('Symbols: <code>WLDUSDT</code>', message)
+        self.assertNotIn('- WLDUSDT ~ 0.04 USDT', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.TradeOperation.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_buy_status_final_message_keeps_stale_wld_symbol_out_of_material_section(
+        self,
+        mock_portfolio_manager,
+        mock_health_manager,
+        mock_trade_manager,
+        mock_send_message,
+    ):
+        mock_portfolio_manager.filter.return_value = [
+            SimpleNamespace(
+                symbol='WLDUSDT',
+                quantity=Decimal('0.0884'),
+                entry_price=Decimal('0.5000'),
+                current_price=Decimal('0.4367'),
+            ),
+        ]
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=28,
+            status='healthy',
+            created_at=timezone.now(),
+            details={
+                'positions_count': 1,
+                'material_positions_count': 1,
+                'dust_positions_count': 0,
+                'unknown_value_positions_count': 0,
+                'material_symbols': ['WLDUSDT'],
+                'dust_symbols': [],
+                'unknown_value_symbols': [],
+                'max_positions': 8,
+            },
+        )
+        mock_trade_manager.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = None
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/buy_status')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        material_section = message.split('<b>Dust exposure</b>', 1)[0].split('<b>Material exposure', 1)[1]
+        dust_section = message.split('<b>Dust exposure</b>', 1)[1].split('<b>Latest BUY</b>', 1)[0]
+
+        self.assertIn('(~0 USDT)</b>', material_section)
+        self.assertNotIn('WLDUSDT', material_section)
+        self.assertIn('Estimated dust exposure: <code>~0.04 USDT</code>', dust_section)
+        self.assertIn('Symbols: <code>WLDUSDT</code>', dust_section)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.TradeOperation.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_buy_status_fallback_classifies_material_position_above_threshold(
+        self,
+        mock_portfolio_manager,
+        mock_health_manager,
+        mock_trade_manager,
+        mock_send_message,
+    ):
+        material_row = SimpleNamespace(
+            symbol='SOLUSDT',
+            quantity=Decimal('2'),
+            entry_price=Decimal('4.50'),
+            current_price=Decimal('3.00'),
+        )
+
+        def portfolio_filter(**kwargs):
+            if kwargs == {'quantity__gt': 0}:
+                return SimpleNamespace(order_by=lambda *args: [material_row])
+            if kwargs == {'symbol__in': ['SOLUSDT']}:
+                return [material_row]
+            return []
+
+        mock_portfolio_manager.filter.side_effect = portfolio_filter
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=24,
+            status='healthy',
+            created_at=timezone.now(),
+            details={'max_positions': 8},
+        )
+        mock_trade_manager.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = None
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/buy_status')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('Material: <code>1</code>', message)
+        self.assertIn('Dust: <code>0</code>', message)
+        self.assertIn('Effective positions: <code>1 / 8</code>', message)
+        self.assertIn('- SOLUSDT ~ 6 USDT', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.TradeOperation.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_buy_status_fallback_classifies_missing_price_as_unknown_capacity(
+        self,
+        mock_portfolio_manager,
+        mock_health_manager,
+        mock_trade_manager,
+        mock_send_message,
+    ):
+        unknown_row = SimpleNamespace(
+            symbol='MYSTERYUSDT',
+            quantity=Decimal('1.5'),
+            entry_price=Decimal('2'),
+            current_price=None,
+        )
+
+        def portfolio_filter(**kwargs):
+            if kwargs == {'quantity__gt': 0}:
+                return SimpleNamespace(order_by=lambda *args: [unknown_row])
+            return []
+
+        mock_portfolio_manager.filter.side_effect = portfolio_filter
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=25,
+            status='healthy',
+            created_at=timezone.now(),
+            details={'max_positions': 8},
+        )
+        mock_trade_manager.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = None
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/buy_status')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('Material: <code>0</code>', message)
+        self.assertIn('Dust: <code>0</code>', message)
+        self.assertIn('Unknown value: <code>1</code>', message)
+        self.assertIn('Effective positions: <code>1 / 8</code>', message)
+        self.assertIn('Valuation unavailable: <code>MYSTERYUSDT</code>', message)
+
+    def test_buy_status_exposure_demotes_stale_material_symbol_below_threshold(self):
+        exposure = build_buy_status_exposure(
+            ['WLDUSDT'],
+            [],
+            [
+                SimpleNamespace(
+                    symbol='WLDUSDT',
+                    quantity=Decimal('0.0884'),
+                    entry_price=Decimal('0.5000'),
+                    current_price=Decimal('0.4367'),
+                ),
+            ],
+        )
+
+        self.assertEqual(exposure['material_rows'], [])
+        self.assertEqual(exposure['dust_rows'][0]['symbol'], 'WLDUSDT')
+        self.assertEqual(exposure['dust_rows'][0]['estimated_value_usdt'], Decimal('0.03860428'))
+        self.assertEqual(exposure['material_total'], Decimal('0'))
+        self.assertEqual(exposure['dust_total'], Decimal('0.03860428'))
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
