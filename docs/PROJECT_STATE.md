@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.4
+doc_version: 1.1.7
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-11
+last_verified_at: 2026-06-13
 source_repo: django_render
 ---
 
@@ -78,6 +78,16 @@ Implemented capabilities:
   when `quantity`, `entry_price`, and `current_price` are usable. Missing,
   invalid, or non-positive entry prices render as `PnL unavailable`, and missing
   projection prices remain visibly unavailable instead of becoming zero.
+- `/buy_status` now adds a compact PnL section that sums the existing
+  `bot.portfolio` projection PnL across all material rows while keeping the
+  visible row list capped at eight. The row cap applies only to Telegram
+  presentation, not to the summary. If any material row lacks usable valuation
+  or entry-price data, the summary is `unavailable` rather than falsely complete.
+- `/buy_status` labels accounting-realized PnL as `Realized today (UTC)` and
+  uses the Analytics UTC calendar-day interval `[00:00, next 00:00)`, linked by
+  operation `executed_at` with `created_at` fallback only when execution time is
+  null. This is neither Binance's proprietary "Today's PNL" nor the Daily Audit
+  rolling previous-24h window.
 - `/buy_status` also surfaces compact persisted reconciliation inventory
   warnings from the latest healthcheck, filtering the main message to
   `WARNING`/`CRITICAL` diagnostics only; the bot remains the source of those

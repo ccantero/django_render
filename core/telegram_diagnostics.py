@@ -1,23 +1,26 @@
 import logging
 import os
 import re
+from datetime import datetime, time, timedelta, timezone as datetime_timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from html import escape
 
 from django.conf import settings
 from django.db import DatabaseError
-from django.db.models import Avg, Sum
+from django.db.models import Avg, Q, Sum
 from django.utils import timezone
 
 from core.trading_models import (
 	BotHealthcheck,
 	DustDetection,
+	LotClosure,
 	Portfolio,
 	PositionLot,
 	SellDecisionEvent,
 	TradeOperation,
 )
 from dashboard.services.telegram_buy_status_formatter import (
+	build_open_positions_pnl,
 	build_buy_status_exposure,
 	build_cooldown_diagnostics,
 	build_cooldown_lines,
@@ -187,6 +190,7 @@ def format_help():
 
 
 def format_buy_status():
+	realized_today = _safe_realized_pnl_today()
 	latest = BotHealthcheck.objects.order_by("-created_at", "-id").first()
 	if latest is None:
 		return render_buy_status_message(
@@ -205,6 +209,7 @@ def format_buy_status():
 			read_only=False,
 			exposure=build_buy_status_exposure([], [], []),
 			status_lines=["⚪ Diagnostic unavailable: latest healthcheck missing"],
+			realized_today=realized_today,
 			unknown_value_symbols=[],
 		)
 
@@ -286,6 +291,8 @@ def format_buy_status():
 		read_only=read_only,
 		exposure=exposure,
 		status_lines=status_lines,
+		open_positions_pnl=build_open_positions_pnl(exposure),
+		realized_today=realized_today,
 		latest_buy_error_class=details.get("latest_buy_error_class"),
 		latest_buy_error_code=details.get("latest_buy_error_code"),
 		unknown_value_symbols=classification["unknown_symbols"],
@@ -296,6 +303,36 @@ def format_buy_status():
 			else []
 		),
 	)
+
+
+def _safe_realized_pnl_today():
+	try:
+		utc_day = timezone.now().astimezone(datetime_timezone.utc).date()
+		return realized_pnl_for_day(utc_day)
+	except DatabaseError:
+		logger.debug("Could not read realized PnL for Telegram BUY status")
+		return None
+
+
+def realized_pnl_for_day(day):
+	start = datetime.combine(day, time.min, tzinfo=datetime_timezone.utc)
+	end = start + timedelta(days=1)
+	operation_ids = (
+		TradeOperation.objects
+		.filter(
+			Q(executed_at__gte=start, executed_at__lt=end)
+			| Q(
+				executed_at__isnull=True,
+				created_at__gte=start,
+				created_at__lt=end,
+			)
+		)
+		.values_list("id", flat=True)
+	)
+	result = LotClosure.objects.filter(
+		trade_operation_id__in=operation_ids,
+	).aggregate(total=Sum("realized_pnl"))
+	return result["total"] or Decimal("0")
 
 
 def format_position(symbol):

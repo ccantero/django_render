@@ -251,6 +251,7 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertIn('Reason: <code>capacity available</code>', message)
         self.assertIn('✅ Capacity available', message)
 
+
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.TradeOperation.objects')
@@ -1684,7 +1685,7 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
         format_buy_status()
 
-        mock_logger.debug.assert_called_once_with('Could not read portfolio rows for Telegram BUY status exposure')
+        mock_logger.debug.assert_any_call('Could not read portfolio rows for Telegram BUY status exposure')
         mock_logger.warning.assert_not_called()
 
 
@@ -4627,3 +4628,261 @@ class ManualCorrectionWorkflowTests(TransactionTestCase):
         self.assertContains(response, 'The correction request could not be saved.')
         self.assertContains(response, 'The bot remains the source of truth for duplicate correction validation.')
         self.assertEqual(ManualCorrection.objects.count(), 0)
+
+
+class BuyStatusPnlSummaryTests(TestCase):
+    def _render(
+        self,
+        *,
+        portfolio_rows=None,
+        material_symbols=None,
+        realized_today=Decimal('0'),
+    ):
+        from dashboard.services.telegram_buy_status_formatter import (
+            build_open_positions_pnl,
+            render_buy_status_message,
+        )
+
+        portfolio_rows = portfolio_rows or []
+        material_symbols = material_symbols or [row.symbol for row in portfolio_rows]
+        exposure = build_buy_status_exposure(
+            material_symbols,
+            [],
+            portfolio_rows,
+        )
+        return render_buy_status_message(
+            emoji='🟢',
+            raw_count=len(material_symbols),
+            material_count=len(material_symbols),
+            dust_count=0,
+            unknown_count=0,
+            effective_positions=len(material_symbols),
+            max_positions=8,
+            remaining_capacity=max(0, 8 - len(material_symbols)),
+            free_usdt=Decimal('10'),
+            latest_buy_state='available',
+            latest_buy_reason='capacity_available',
+            latest_buy_symbol=None,
+            read_only=False,
+            exposure=exposure,
+            open_positions_pnl=build_open_positions_pnl(exposure),
+            realized_today=realized_today,
+            status_lines=['✅ Capacity available'],
+        )
+
+    def test_buy_status_pnl_renders_positive_realized_today(self):
+        message = self._render(realized_today=Decimal('1.81'))
+
+        self.assertIn('- Realized today (UTC): <code>+1.81 USDT</code>', message)
+
+    def test_buy_status_pnl_renders_negative_realized_today(self):
+        message = self._render(realized_today=Decimal('-1.81'))
+
+        self.assertIn('- Realized today (UTC): <code>-1.81 USDT</code>', message)
+
+    def test_buy_status_pnl_renders_zero_when_no_realized_trades_today(self):
+        message = self._render(realized_today=Decimal('0'))
+
+        self.assertIn('- Realized today (UTC): <code>+0.00 USDT</code>', message)
+
+    def test_buy_status_pnl_combines_open_and_realized_values(self):
+        message = self._render(
+            portfolio_rows=[
+                SimpleNamespace(
+                    symbol='BTCUSDT',
+                    quantity=Decimal('2'),
+                    entry_price=Decimal('5'),
+                    current_price=Decimal('5.05'),
+                ),
+                SimpleNamespace(
+                    symbol='ETHUSDT',
+                    quantity=Decimal('1'),
+                    entry_price=Decimal('10'),
+                    current_price=Decimal('9.95'),
+                ),
+            ],
+            realized_today=Decimal('-1.81'),
+        )
+
+        self.assertIn('<b>PnL</b>', message)
+        self.assertIn('- Open positions: <code>+0.05 USDT</code>', message)
+        self.assertIn('- Realized today (UTC): <code>-1.81 USDT</code>', message)
+
+    def test_buy_status_pnl_empty_portfolio_reports_zero_open_pnl(self):
+        message = self._render()
+
+        self.assertIn('- Open positions: <code>+0.00 USDT</code>', message)
+
+    def test_open_positions_pnl_includes_material_rows_beyond_display_cap(self):
+        rows = [
+            SimpleNamespace(
+                symbol=f'ASSET{index}USDT',
+                quantity=Decimal('1'),
+                entry_price=Decimal('5'),
+                current_price=Decimal('6'),
+            )
+            for index in range(9)
+        ]
+
+        message = self._render(portfolio_rows=rows)
+
+        self.assertIn('- Open positions: <code>+9.00 USDT</code>', message)
+        self.assertEqual(message.count(' | PnL '), 8)
+        self.assertIn('- ... and 1 more', message)
+
+    def test_open_positions_pnl_helper_sums_every_material_row(self):
+        from dashboard.services.telegram_buy_status_formatter import (
+            build_open_positions_pnl,
+        )
+
+        exposure = {
+            'material_rows': [
+                {
+                    'symbol': f'ASSET{index}USDT',
+                    'quantity': Decimal('1'),
+                    'entry_price': Decimal('5'),
+                    'current_price': Decimal('6'),
+                }
+                for index in range(9)
+            ],
+            'material_unavailable_symbols': [],
+        }
+
+        self.assertEqual(build_open_positions_pnl(exposure), Decimal('9'))
+
+    def test_realized_today_label_explicitly_names_utc(self):
+        message = self._render(realized_today=Decimal('1.81'))
+
+        self.assertIn('Realized today (UTC):', message)
+        self.assertNotIn('- Realized today: <code>', message)
+
+    def test_open_positions_pnl_is_unavailable_when_material_entry_price_is_missing(self):
+        message = self._render(portfolio_rows=[
+            SimpleNamespace(
+                symbol='BTCUSDT',
+                quantity=Decimal('1'),
+                entry_price=None,
+                current_price=Decimal('10'),
+            ),
+        ])
+
+        self.assertIn('- BTCUSDT ~ 10 USDT | PnL unavailable', message)
+        self.assertIn('- Open positions: <code>unavailable</code>', message)
+
+    def test_open_positions_pnl_is_unavailable_when_material_valuation_is_missing(self):
+        message = self._render(
+            portfolio_rows=[],
+            material_symbols=['BTCUSDT'],
+        )
+
+        self.assertIn('- Valuation unavailable: <code>BTCUSDT</code>', message)
+        self.assertIn('- Open positions: <code>unavailable</code>', message)
+
+    def test_buy_status_existing_section_order_remains_stable(self):
+        message = self._render()
+
+        self.assertLess(message.index('<b>Capacity</b>'), message.index('<b>Positions</b>'))
+        self.assertLess(message.index('<b>Positions</b>'), message.index('<b>Material exposure'))
+        self.assertLess(message.index('<b>Material exposure'), message.index('<b>PnL</b>'))
+        self.assertLess(message.index('<b>PnL</b>'), message.index('<b>Dust exposure</b>'))
+        self.assertLess(message.index('<b>Dust exposure</b>'), message.index('<b>Latest BUY</b>'))
+        self.assertLess(message.index('<b>Latest BUY</b>'), message.index('<b>Status</b>'))
+        self.assertIn(
+            '<b>PnL</b>\n'
+            '- Open positions: <code>+0.00 USDT</code>\n'
+            '- Realized today (UTC): <code>+0.00 USDT</code>\n\n'
+            '<b>Dust exposure</b>',
+            message,
+        )
+
+    @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('-1.81'))
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_format_buy_status_wires_open_and_realized_pnl(
+        self,
+        mock_health_manager,
+        mock_portfolio_manager,
+        _mock_realized_today,
+    ):
+        from core.telegram_diagnostics import format_buy_status
+
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            details={
+                'positions_count': 1,
+                'material_positions_count': 1,
+                'dust_positions_count': 0,
+                'unknown_value_positions_count': 0,
+                'material_symbols': ['BTCUSDT'],
+                'dust_symbols': [],
+                'unknown_value_symbols': [],
+                'max_positions': 8,
+            },
+        )
+        mock_portfolio_manager.filter.return_value = [
+            SimpleNamespace(
+                symbol='BTCUSDT',
+                quantity=Decimal('2'),
+                entry_price=Decimal('5'),
+                current_price=Decimal('5.05'),
+            ),
+        ]
+
+        message = format_buy_status()
+
+        self.assertIn('- Open positions: <code>+0.10 USDT</code>', message)
+        self.assertIn('- Realized today (UTC): <code>-1.81 USDT</code>', message)
+
+    @patch('core.telegram_diagnostics.LotClosure.objects')
+    @patch('core.telegram_diagnostics.TradeOperation.objects')
+    def test_realized_today_uses_utc_boundaries_and_operation_timestamp_fallback(
+        self,
+        mock_trade_manager,
+        mock_closure_manager,
+    ):
+        from core.telegram_diagnostics import realized_pnl_for_day
+
+        operation_ids = [101, 102]
+        mock_trade_manager.filter.return_value.values_list.return_value = operation_ids
+        mock_closure_manager.filter.return_value.aggregate.return_value = {
+            'total': Decimal('-1.81'),
+        }
+
+        result = realized_pnl_for_day(timezone.datetime(2026, 6, 12).date())
+
+        self.assertEqual(result, Decimal('-1.81'))
+        query = mock_trade_manager.filter.call_args.args[0]
+        start = timezone.datetime(2026, 6, 12, tzinfo=datetime_timezone.utc)
+        end = timezone.datetime(2026, 6, 13, tzinfo=datetime_timezone.utc)
+        cases = [
+            ({'executed_at': start, 'created_at': start}, True),
+            ({'executed_at': end, 'created_at': start}, False),
+            ({'executed_at': start - timezone.timedelta(seconds=1), 'created_at': start}, False),
+            ({'executed_at': None, 'created_at': start}, True),
+            ({'executed_at': None, 'created_at': end}, False),
+        ]
+        for operation, expected in cases:
+            with self.subTest(operation=operation):
+                self.assertEqual(self._matches_query(query, operation), expected)
+        mock_closure_manager.filter.assert_called_once_with(
+            trade_operation_id__in=operation_ids,
+        )
+
+    def _matches_query(self, query, values):
+        child_results = []
+        for child in query.children:
+            if hasattr(child, 'children'):
+                child_results.append(self._matches_query(child, values))
+                continue
+            lookup, expected = child
+            field, _, operator = lookup.partition('__')
+            actual = values[field]
+            if operator == 'gte':
+                child_results.append(actual is not None and actual >= expected)
+            elif operator == 'lt':
+                child_results.append(actual is not None and actual < expected)
+            elif operator == 'isnull':
+                child_results.append((actual is None) is expected)
+            else:
+                self.fail(f'Unsupported query lookup in test: {lookup}')
+        result = all(child_results) if query.connector == 'AND' else any(child_results)
+        return not result if query.negated else result

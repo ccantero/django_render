@@ -1,15 +1,16 @@
 phases_completed: planner, implementer, tester, documentator
-impact: behavior, operations
-tests_executed: .venv/bin/python -m compileall core/telegram_diagnostics.py dashboard/services/telegram_buy_status_formatter.py; .venv/bin/python -m pytest core/tests.py -k "buy_status"; .venv/bin/python -m pytest core/tests.py; .venv/bin/python -m pytest
-pending_issues: paired bot docs/KPI_REGISTRY.md still needs synchronization outside this workspace; DRF emits existing Django 6.0 deprecation warning
-tests_created: core/tests.py BUY status regressions for WLDUSDT dust residual, material above threshold, missing price unknown capacity, nested position_classification, standalone stale material-symbol demotion, integration-style stale healthcheck material-symbol demotion through /buy_status message generation, and final-message section assertions proving WLDUSDT is absent from Material exposure and present in Dust exposure
-failing_test_proof: .venv/bin/python -m pytest core/tests.py -k "buy_status" failed before implementation because WLDUSDT was present in exposure material_rows with estimated_value_usdt 0.03860428
-docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md
-docs_updated: docs/CHANGELOG.md, docs/DESIGN.md, docs/KPI_REGISTRY.md, docs/PROJECT_STATE.md
+impact: behavior
+tests_executed: .venv/bin/python -m pytest core/tests.py::BuyStatusPnlSummaryTests -q; .venv/bin/python -m pytest core/tests.py -q; .venv/bin/python -m pytest -q
+pending_issues: none
+tests_created: core/tests.py covers positive, negative, zero, mixed, empty, over-eight-position aggregation, unavailable material inputs, compact layout stability, format_buy_status wiring, and exact UTC operation-timestamp boundaries/fallback
+failing_test_proof: focused PnL tests failed 8 tests before implementation for the old label, eight-row aggregation cap, and missing-material valuation falsely rendered as complete zero
+docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md, docs/db/*
+docs_updated: README.md, docs/DESIGN.md, docs/PROJECT_STATE.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md, paired binanceBot/docs/KPI_REGISTRY.md
 changelog: updated
-data_contract_sync: not_applicable: no shared data contract semantics changed
-schema_der: not_applicable: no schema, migration, DER, index, or constraint changes changed
-logging_observability: Telegram BUY Status operator output changed; no runtime log fields changed; existing material/dust/unknown diagnostic semantics preserved
+schema_der: not_applicable: no schema, migration, index, constraint, or DB contract changed
+data_contract_sync: not_applicable: existing shared contract semantics were reused without change
+logging_observability: Telegram label now states UTC explicitly; open-position PnL covers all material rows and degrades to unavailable for incomplete inputs; existing useful logging is preserved
 kpi_registry_reviewed: yes
 kpi_registry_updated: yes
-kpi_registry_sync_checked: no
+kpi_registry_sync_checked: yes
+kpi_registry_sync_detail: stale pnl_by_day wording synchronized in both Django and paired bot registries

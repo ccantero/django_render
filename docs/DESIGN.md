@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.3
+doc_version: 1.1.6
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-11
+last_verified_at: 2026-06-13
 source_repo: django_render
 ---
 
@@ -192,7 +192,7 @@ USDT renders as `diagnostic unavailable`, and a missing latest BUY reason render
 as `unavailable` without blocking capacity. Its mobile summary separates
 Capacity, Positions, Material exposure, Dust exposure, Latest BUY, and Status;
 sorts material exposure by approximate USDT value; caps material rows at eight;
-shows approximate unrealized PnL for those displayed material rows when
+shows approximate unrealized PnL for displayed material rows when
 `bot.portfolio` provides usable quantity, entry price, and current price; lists
 dust symbols only when there are five or fewer; and keeps missing or non-positive
 projection prices visibly unavailable rather than silently turning them into
@@ -207,6 +207,21 @@ available” can coexist with “insufficient free USDT.” It uses
 classification or max-position config cannot be read. Inline keyboard buttons,
 if added later, must be navigation or refresh controls only and must never
 trigger trading.
+
+`/buy_status` includes a compact PnL section that separates open-position PnL
+from realized PnL for the current UTC calendar day. Open-position PnL sums all
+material rows with the same `bot.portfolio` projection formula used by each
+position row; the eight-row presentation cap applies only to the visible list
+and does not cap the summary. If any material row lacks usable valuation or
+entry-price data, the summary renders `unavailable` rather than presenting a
+partial value as complete.
+
+The `Realized today (UTC)` value sums `bot.lot_closures.realized_pnl` for linked
+operations whose `executed_at`, falling back to `created_at` only when
+`executed_at` is null, is inside `[00:00 UTC, next 00:00 UTC)`. This matches
+Analytics PnL-by-day grouping. It does not subtract normalized fees and is
+neither Binance's proprietary "Today's PNL" calculation nor the Daily Audit
+rolling previous-24h window.
 
 When the latest bot healthcheck carries persisted reconciliation
 `inventory_warnings`, `/buy_status` may add a compact operator-facing section

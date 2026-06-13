@@ -1,13 +1,61 @@
 ---
 doc_id: changelog
-doc_version: 1.1.7
+doc_version: 1.1.10
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-11
+last_verified_at: 2026-06-13
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-13 - Telegram BUY Status PnL Summary
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/CHANGELOG.md
+- docs/DESIGN.md
+- docs/KPI_REGISTRY.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Added a compact `/buy_status` PnL section separating open-position
+  projection PnL from accounting-realized PnL for the current UTC calendar
+  day.
+- Reused the existing `bot.portfolio` projection formula for open PnL.
+- Aggregated open PnL across all material positions independently of the
+  eight-row mobile display cap, and rendered it as unavailable if any material
+  valuation or entry price is unavailable.
+- Sourced realized PnL from `bot.lot_closures.realized_pnl`, using linked
+  `trade_operations.executed_at` with `created_at` fallback only when execution
+  time is null, inside the UTC interval `[00:00, next 00:00)`.
+- Labeled the Telegram value `Realized today (UTC)` and corrected the KPI
+  registry's stale closure-date wording.
+- Added direct regressions proving the summary includes a ninth material row
+  while the visible list remains capped at eight, and that the realized label
+  explicitly names UTC.
+
+Operator impact:
+- Operators can distinguish open projection performance from realized trading
+  results without treating either value as Binance's proprietary "Today's
+  PNL."
+- The Telegram value matches Analytics UTC calendar-day grouping and is
+  explicitly distinct from Daily Audit's rolling previous-24h window.
+- BUY capacity, dust/material classification, cooldowns, synchronization,
+  accounting mutation, and trade execution are unchanged.
+
+Validation:
+- Added failing regression proof for an eight-row-only summary and for a
+  realized label without the explicit UTC qualifier.
+- Covered positive, negative, zero, mixed, empty, over-eight-position,
+  unavailable-input, compact-layout, and exact UTC operation-timestamp boundary
+  behavior.
+- Ran focused PnL tests: 13 passed plus 5 boundary subtests.
+- Ran `core/tests.py`: 195 passed plus 12 subtests.
+- Ran the full pytest suite: 228 passed plus 12 subtests.
 
 ## 2026-06-11 - BUY Status Dust Exposure Classification
 

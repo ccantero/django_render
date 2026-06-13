@@ -1,9 +1,9 @@
 ---
 doc_id: kpi-registry
-doc_version: 1.0.21
+doc_version: 1.0.22
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-11
+last_verified_at: 2026-06-13
 source_repo: binanceBot
 ---
 
@@ -432,7 +432,7 @@ Source family: `get_audit_events.py`, Trapped Capital holding-time buckets,
 | `profit_factor` | KPI | Gross wins divided by gross losses. | `sum(winning pnl) / abs(sum(losing pnl))` | `lot_closures` | Planned | Future performance report | ratio | `None` when no losses or no sample. | win rate | Status: `planned`. Not currently a primary emitted field. |
 | `gross_deployed_capital_approximation` | Diagnostic | Approximate capital deployed through operations. | sum BUY gross quote or closed notional when available | `trade_operations.gross_quote`, closures | Audit/Trapped Capital | Operator review | USDT | Unavailable when notional evidence missing. | account equity | Approximation, not audited cashflow. |
 | `pnl_by_symbol` | KPI | Realized PnL grouped by symbol. | `sum(realized_pnl) group by symbol` | `lot_closures` | Audit-style reports | Operator review | USDT | Empty when no closures in window. | unrealized symbol PnL | Realized only. |
-| `pnl_by_day` | KPI | Realized PnL grouped by day. | `sum(realized_pnl) group by closed_at date` | `lot_closures.closed_at` | Audit-style reports | Operator review | USDT/day | Empty when no closures in window. | daily account balance | Closure-date grouping. |
+| `pnl_by_day` | KPI | Realized PnL grouped by UTC calendar day. | `sum(lot_closures.realized_pnl)` grouped by linked operation `executed_at`, falling back to `created_at` only when execution time is null | `lot_closures.realized_pnl`, linked `trade_operations` timestamp | Django Analytics | Analytics, `/buy_status` current UTC day | USDT/day | Empty when no linked operation timestamps fall in the UTC day; closures without a linked operation timestamp remain in total/symbol PnL but not day grouping. | Daily Audit rolling previous-24h window; Binance "Today's PNL" | UTC interval is `[00:00, next 00:00)`. |
 | `manual_accounting_adjustment_pnl` | Diagnostic | PnL from manual/accounting-only corrections. | sum PnL for operations marked manual/accounting-only | `trade_operations.raw_payload`, `lot_closures` | Audit events | Operator review | USDT | Zero/empty when no marked operations. | strategy PnL | Excluded from trading-quality metrics when marked. |
 
 ## Planned Governance

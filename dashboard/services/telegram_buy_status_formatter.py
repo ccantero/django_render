@@ -20,6 +20,7 @@ SELL_REASON_SOURCE_LABELS = {
 	"unavailable": "unavailable",
 }
 DUST_MIN_NOTIONAL_USDT = Decimal("5")
+MATERIAL_ROW_DISPLAY_LIMIT = 8
 
 
 def classify_buy_status_positions(portfolio_rows):
@@ -100,6 +101,8 @@ def render_buy_status_message(
 	read_only,
 	exposure,
 	status_lines,
+	open_positions_pnl=None,
+	realized_today=None,
 	latest_buy_error_class=None,
 	latest_buy_error_code=None,
 	unknown_value_symbols=None,
@@ -124,13 +127,15 @@ def render_buy_status_message(
 	]
 
 	if exposure["material_rows"]:
-		for row in exposure["material_rows"][:8]:
+		for row in exposure["material_rows"][:MATERIAL_ROW_DISPLAY_LIMIT]:
 			lines.append(
 				f"- {escape(str(row['symbol']))} ~ {_fmt_usdt(row['estimated_value_usdt'])}"
 				f" | {_pnl_label(row)}"
 			)
-		if len(exposure["material_rows"]) > 8:
-			lines.append(f"- ... and {len(exposure['material_rows']) - 8} more")
+		if len(exposure["material_rows"]) > MATERIAL_ROW_DISPLAY_LIMIT:
+			lines.append(
+				f"- ... and {len(exposure['material_rows']) - MATERIAL_ROW_DISPLAY_LIMIT} more"
+			)
 	else:
 		lines.append("- none")
 	if exposure["material_unavailable_symbols"]:
@@ -140,6 +145,10 @@ def render_buy_status_message(
 		)
 
 	lines.extend([
+		"",
+		"<b>PnL</b>",
+		f"- Open positions: <code>{_pnl_summary_label(open_positions_pnl)}</code>",
+		f"- Realized today (UTC): <code>{_pnl_summary_label(realized_today)}</code>",
 		"",
 		"<b>Dust exposure</b>",
 		f"- Dust positions: <code>{_fmt_count(dust_count)}</code>",
@@ -336,14 +345,43 @@ def _valued_row_from_portfolio(row):
 
 
 def _pnl_label(row):
+	pnl = _position_pnl(row)
+	if pnl is None:
+		return "PnL unavailable"
+	pnl_usdt, pnl_pct = pnl
+	return f"PnL {_fmt_signed_usdt(pnl_usdt)} ({_fmt_signed_percent(pnl_pct)})"
+
+
+def build_open_positions_pnl(exposure):
+	if (exposure or {}).get("material_unavailable_symbols"):
+		return None
+	total = Decimal("0")
+	for row in (exposure or {}).get("material_rows", []):
+		pnl = _position_pnl(row)
+		if pnl is None:
+			return None
+		total += pnl[0]
+	return total
+
+
+def _position_pnl(row):
 	entry_price = row.get("entry_price")
 	current_price = row.get("current_price")
 	quantity = row.get("quantity")
 	if entry_price is None or current_price is None or quantity is None or entry_price <= 0:
-		return "PnL unavailable"
+		return None
 	pnl_usdt = (current_price - entry_price) * quantity
 	pnl_pct = ((current_price - entry_price) / entry_price) * Decimal("100")
-	return f"PnL {_fmt_signed_usdt(pnl_usdt)} ({_fmt_signed_percent(pnl_pct)})"
+	return pnl_usdt, pnl_pct
+
+
+def _pnl_summary_label(value):
+	value = _to_decimal(value)
+	if value is None:
+		return "unavailable"
+	sign = "+" if value >= 0 else "-"
+	rounded = abs(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+	return f"{sign}{format(rounded, 'f')} USDT"
 
 
 def _material_heading(exposure):

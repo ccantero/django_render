@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.2
+doc_version: 1.1.4
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-10
+last_verified_at: 2026-06-13
 source_repo: django_render
 ---
 
@@ -36,7 +36,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Drift alerts between `bot.portfolio` and `bot.position_lots`
 - Compact homepage Active Operational Issues from unresolved critical/warning dust/drift signals only, plus informational residual counts
 - Dust / residual dashboard from `bot.dust_detections`
-- Read-only Telegram mobile diagnostics commands for command discovery, bot health, BUY capacity status with material-position unrealized PnL, positions, latest SELL diagnostics, and why-not-sell explanations
+- Read-only Telegram mobile diagnostics commands for command discovery, bot health, BUY capacity status with open-position and UTC-calendar-day realized PnL, positions, latest SELL diagnostics, and why-not-sell explanations
 - Read-only “Why positions are not selling” visibility through `/dashboard/exit-status/`; the homepage stays lightweight and links there instead of loading SELL diagnostics by default
 - Read-only `/dashboard/churn/` page for recent SELL→BUY re-entry observability and homepage churn summary counts
 - Dust signal detail page
@@ -209,6 +209,13 @@ human-readable interpretation and suggested action before lower-level event
 details for easier mobile review. Dust/drift alert templates are also kept human
 readable: tiny values are labeled as tiny dust, while raw event/reason/stage
 fields remain available for debugging.
+
+`/buy_status` labels accounting-realized PnL as `Realized today (UTC)`. It uses
+the same UTC calendar-day operation-timestamp grouping as Analytics, not
+Binance's proprietary "Today's PNL" and not the Daily Audit rolling previous-24h
+window. Its open-position total covers all material rows even though the mobile
+position list remains capped at eight; incomplete material valuation or entry
+price data renders the total as `unavailable`.
 
 Reviewing or ignoring a dust signal suppresses repeated paging only. It does not
 delete `bot.dust_detections`, change FIFO accounting, or apply a correction.
