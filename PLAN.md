@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.0
+doc_version: 1.1.1
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-21
+last_verified_at: 2026-06-15
 source_repo: django_render
 ---
 
@@ -145,6 +145,10 @@ Additional pending visibility work:
     and labels are stabilized in the shared contract or bot-produced reports.
 19. Add time-based exit dry-run visibility only after the bot owns the dry-run
     decision output and Django can render it without executing exits.
+20. Verify a stable historical equity snapshot payload and freshness contract,
+    then add `/portfolio_status` 24h/7d/30d changes and an on-demand,
+    transport-agnostic 7d PNG chart delivered by Telegram without persistent
+    generated files. GIF delivery remains out of scope.
 
 ## P2 Architecture / Tech Debt
 

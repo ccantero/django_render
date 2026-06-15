@@ -28,11 +28,23 @@ from dashboard.services.telegram_buy_status_formatter import (
 	classify_buy_status_positions,
 	render_buy_status_message,
 )
+from dashboard.services.telegram_portfolio_status import (
+	build_portfolio_status,
+	render_portfolio_status,
+)
 
 
 logger = logging.getLogger(__name__)
 
-DIAGNOSTIC_COMMANDS = {"/help", "/health", "/position", "/last_sell", "/why_not_sell", "/buy_status"}
+DIAGNOSTIC_COMMANDS = {
+	"/help",
+	"/health",
+	"/position",
+	"/last_sell",
+	"/why_not_sell",
+	"/buy_status",
+	"/portfolio_status",
+}
 REJECTED_SELL_EVENTS = [
 	"sell_signal_rejected",
 	"sell_order_skipped",
@@ -85,6 +97,8 @@ def diagnostic_response(text, chat_id, user_id=None):
 		return format_help()
 	if command == "/buy_status":
 		return format_buy_status()
+	if command == "/portfolio_status":
+		return format_portfolio_status()
 
 	symbol = args[0] if args else ""
 	if not is_valid_symbol(symbol):
@@ -176,6 +190,7 @@ def format_help():
 		"<b>Status</b>",
 		"• /health — bot heartbeat and position counts",
 		"• /buy_status — BUY capacity and blockers",
+		"• /portfolio_status — portfolio performance summary",
 		"",
 		"<b>Symbol diagnostics</b>",
 		"• /position SYMBOL — quantity, value, and drift",
@@ -303,6 +318,58 @@ def format_buy_status():
 			else []
 		),
 	)
+
+
+def format_portfolio_status():
+	realized_today = _safe_realized_pnl_today()
+	free_usdt = None
+	now = timezone.now()
+	stale_after = timedelta(
+		minutes=getattr(settings, "HEALTHCHECK_STALE_MINUTES", 15),
+	)
+	try:
+		latest = BotHealthcheck.objects.order_by("-created_at", "-id").first()
+		details = latest.details or {} if latest is not None else {}
+		created_at = getattr(latest, "created_at", None)
+		if created_at is not None and now - created_at <= stale_after:
+			free_usdt = _details_first(details, [
+				"free_usdt",
+				"available_usdt",
+				"free_capital_usdt",
+				"available_capital_usdt",
+				"capital.free_usdt",
+				"balances.USDT.free",
+			])
+	except DatabaseError:
+		logger.debug("Could not read free USDT for Telegram portfolio status")
+
+	try:
+		open_lots = list(
+			PositionLot.objects
+			.filter(remaining_quantity__gt=0)
+			.order_by("symbol", "opened_at", "lot_id")
+		)
+	except DatabaseError:
+		logger.debug("Could not read open lots for Telegram portfolio status")
+		open_lots = None
+
+	portfolio_rows = None
+	if open_lots is not None:
+		symbols = list(dict.fromkeys(lot.symbol for lot in open_lots))
+		try:
+			portfolio_rows = list(Portfolio.objects.filter(symbol__in=symbols)) if symbols else []
+		except DatabaseError:
+			logger.debug("Could not read portfolio prices for Telegram portfolio status")
+
+	summary = build_portfolio_status(
+		open_lots=open_lots,
+		portfolio_rows=portfolio_rows,
+		free_usdt=free_usdt,
+		realized_today=realized_today,
+		as_of=now,
+		stale_after=stale_after,
+	)
+	return render_portfolio_status(summary)
 
 
 def _safe_realized_pnl_today():

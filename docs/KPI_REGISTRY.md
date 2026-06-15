@@ -1,9 +1,9 @@
 ---
 doc_id: kpi-registry
-doc_version: 1.0.22
+doc_version: 1.0.23
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-13
+last_verified_at: 2026-06-15
 source_repo: binanceBot
 ---
 
@@ -434,6 +434,23 @@ Source family: `get_audit_events.py`, Trapped Capital holding-time buckets,
 | `pnl_by_symbol` | KPI | Realized PnL grouped by symbol. | `sum(realized_pnl) group by symbol` | `lot_closures` | Audit-style reports | Operator review | USDT | Empty when no closures in window. | unrealized symbol PnL | Realized only. |
 | `pnl_by_day` | KPI | Realized PnL grouped by UTC calendar day. | `sum(lot_closures.realized_pnl)` grouped by linked operation `executed_at`, falling back to `created_at` only when execution time is null | `lot_closures.realized_pnl`, linked `trade_operations` timestamp | Django Analytics | Analytics, `/buy_status` current UTC day | USDT/day | Empty when no linked operation timestamps fall in the UTC day; closures without a linked operation timestamp remain in total/symbol PnL but not day grouping. | Daily Audit rolling previous-24h window; Binance "Today's PNL" | UTC interval is `[00:00, next 00:00)`. |
 | `manual_accounting_adjustment_pnl` | Diagnostic | PnL from manual/accounting-only corrections. | sum PnL for operations marked manual/accounting-only | `trade_operations.raw_payload`, `lot_closures` | Audit events | Operator review | USDT | Zero/empty when no marked operations. | strategy PnL | Excluded from trading-quality metrics when marked. |
+
+## Portfolio Status
+
+Source family: Django `/portfolio_status` over open `position_lots`,
+`portfolio.current_price`, latest healthcheck details, and UTC-day linked lot
+closures. These are read-only dashboard metrics and do not change accounting or
+trading behavior.
+
+| Canonical name | Category | Purpose | Formula | Source of truth | Current producer | Current consumers | Units | Null/unavailable behavior | Do not confuse with | Notes / caveats |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `portfolio_status_equity_usdt` | KPI | Current compact portfolio equity visible in Telegram. | `free_usdt + portfolio_status_invested_usdt` | Healthcheck free USDT plus lot-backed quantities valued with `portfolio.current_price` | Django `/portfolio_status` | Telegram operators | USDT | Unavailable when free USDT or any open-lot current valuation is missing or stale. | audited account equity; Binance total balance | Current projection only. No Binance call is made. |
+| `portfolio_status_invested_usdt` | KPI | Current valued open-lot exposure. | Sum `open lot quantity * portfolio.current_price` for all positive open-lot symbols | `position_lots` quantity plus `portfolio` valuation | Django `/portfolio_status` | Telegram operators | USDT | Unavailable when any open-lot symbol lacks a usable current price or current projection timestamp. | `material_exposure_usdt` in BUY status | Lot-backed quantity rather than portfolio quantity; includes valued dust. Freshness uses the configured healthcheck stale threshold. |
+| `portfolio_status_unrealized_pnl_usdt` | KPI | Aggregate current unrealized PnL for material open lots. | Sum `current value - lot cost basis` | `position_lots` quantity/entry price plus `portfolio.current_price` | Django `/portfolio_status` | Telegram operators | USDT | Unavailable when any required current price or material lot entry price is missing/non-positive. | realized PnL | Projection valuation, not audited realization. |
+| `portfolio_status_unrealized_pnl_pct` | Diagnostic | Aggregate unrealized return on material lot cost basis. | `portfolio_status_unrealized_pnl_usdt / material cost basis * 100` | Same as aggregate unrealized PnL | Django `/portfolio_status` | Telegram operators | percent | Unavailable with incomplete cost basis; zero for an empty material portfolio. | per-position PnL percent | Cost-basis weighted aggregate. |
+| `portfolio_status_best_contributor` | Diagnostic | Material symbol with the highest current unrealized USDT PnL. | `max(symbol unrealized_pnl_usdt)` | Lot-backed symbol cost basis plus projection price | Django `/portfolio_status` | Telegram operators | symbol, USDT, percent | Unavailable when no complete material contributor exists. | realized `pnl_by_symbol` | Current unrealized contribution only. |
+| `portfolio_status_worst_contributor` | Diagnostic | Material symbol with the lowest current unrealized USDT PnL. | `min(symbol unrealized_pnl_usdt)` | Lot-backed symbol cost basis plus projection price | Django `/portfolio_status` | Telegram operators | symbol, USDT, percent | Unavailable when no complete material contributor exists. | realized `pnl_by_symbol` | Current unrealized contribution only. |
+| `portfolio_status_change_24h_7d_30d` | Planned | Historical equity change for compact Telegram review. | Current verified equity minus a verified historical equity snapshot, with percentage over historical equity | Stable snapshot equity payload not yet contractually verified | None | Future `/portfolio_status` and chart helper | USDT and percent | Always unavailable in V1. Missing history must never become zero. | realized PnL; price-only return | Status: `planned`. Requires snapshot payload and freshness semantics before implementation. |
 
 ## Planned Governance
 

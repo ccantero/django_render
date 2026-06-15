@@ -1,13 +1,64 @@
 ---
 doc_id: changelog
-doc_version: 1.1.10
+doc_version: 1.1.12
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-13
+last_verified_at: 2026-06-15
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-15 - Telegram Portfolio Status
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/CHANGELOG.md
+- docs/DESIGN.md
+- docs/KPI_REGISTRY.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Added the allowlisted read-only `/portfolio_status` Telegram command and
+  command-guide entry.
+- Added a dedicated portfolio summary service that uses open FIFO lots for
+  quantity and cost basis, portfolio projection prices for valuation, latest
+  healthcheck details for free USDT, and UTC-day linked lot closures for
+  realized PnL.
+- Added current valued open-lot exposure and projection equity, plus
+  material-only aggregate unrealized PnL and best/worst contributors with
+  conservative unavailable handling.
+- Applied the existing healthcheck stale threshold to free USDT and portfolio
+  projection timestamps so old or timestamp-less live values are unavailable.
+- Left 24h/7d/30d changes unavailable because the shared snapshot contract does
+  not yet define a verified equity payload or freshness rule.
+- Recorded dynamic on-demand 7d PNG chart delivery as a follow-up; no generated
+  images are persisted.
+
+Operator impact:
+- Operators can review portfolio performance separately from BUY capacity.
+- The current valuation of open positions is labeled `Open value` to avoid
+  implying historical invested capital or cost basis.
+- Missing prices, missing entry data, and unavailable history are visible and
+  are not silently treated as zero.
+- The command performs no Binance calls and no bot-owned table mutations.
+
+Validation:
+- Added failing tests before implementation for routing, help, empty state,
+  positive/negative unrealized PnL, missing valuation inputs, UTC realized PnL
+  wiring, contributor selection, unavailable history, and read-only behavior.
+- Focused portfolio-status tests passed.
+- Full pytest suite: 241 passed plus 12 subtests.
+- Python compilation and `git diff --check` passed.
+
+Known follow-up:
+- Synchronize the new dashboard portfolio-status KPI entries into the canonical
+  bot repository `docs/KPI_REGISTRY.md`; that paired file is outside this
+  workspace's writable scope.
 
 ## 2026-06-13 - Telegram BUY Status PnL Summary
 

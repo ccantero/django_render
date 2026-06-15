@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.7
+doc_version: 1.1.8
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-13
+last_verified_at: 2026-06-15
 source_repo: django_render
 ---
 
@@ -55,6 +55,7 @@ Implemented capabilities:
   - `/help`
   - `/health`
   - `/buy_status`
+  - `/portfolio_status`
   - `/position SYMBOL`
   - `/last_sell SYMBOL`
   - `/why_not_sell SYMBOL`
@@ -92,6 +93,18 @@ Implemented capabilities:
   warnings from the latest healthcheck, filtering the main message to
   `WARNING`/`CRITICAL` diagnostics only; the bot remains the source of those
   warnings.
+- `/portfolio_status` provides a separate mobile-first performance summary
+  using open FIFO lots for quantity/cost basis, portfolio projection prices for
+  current valuation, latest healthcheck details for free USDT, and linked lot
+  closures for realized PnL in the current UTC calendar day.
+- `/portfolio_status` reports current valued open-lot exposure and equity,
+  material-only aggregate unrealized PnL, and best/worst material contributors
+  only when required data is complete and current. Missing or stale current
+  prices and missing material entry prices remain unavailable rather than
+  becoming zero.
+- Historical 24h/7d/30d portfolio change and dynamic chart delivery are not yet
+  implemented because the current shared snapshot contract does not define a
+  verified equity payload or freshness rule.
 - `/buy_status` and the dashboard BUY/Cooldown card render extended persisted
   BUY re-entry cooldown diagnostics from latest healthcheck details, including
   latest SELL operation, symbol, executed timestamp, nullable reason, reason

@@ -198,6 +198,7 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertIn('/help', message)
         self.assertIn('/health', message)
         self.assertIn('/buy_status', message)
+        self.assertIn('/portfolio_status', message)
         self.assertIn('/position SYMBOL', message)
         self.assertIn('/last_sell SYMBOL', message)
         self.assertIn('/why_not_sell SYMBOL', message)
@@ -4886,3 +4887,267 @@ class BuyStatusPnlSummaryTests(TestCase):
                 self.fail(f'Unsupported query lookup in test: {lookup}')
         result = all(child_results) if query.connector == 'AND' else any(child_results)
         return not result if query.negated else result
+
+
+class TelegramPortfolioStatusTests(TestCase):
+    def _lot(self, symbol, quantity, entry_price):
+        return SimpleNamespace(
+            symbol=symbol,
+            remaining_quantity=Decimal(quantity),
+            entry_price=None if entry_price is None else Decimal(entry_price),
+        )
+
+    def _portfolio(self, symbol, current_price, updated_at=None):
+        return SimpleNamespace(
+            symbol=symbol,
+            current_price=None if current_price is None else Decimal(current_price),
+            updated_at=updated_at,
+        )
+
+    def _build(
+        self,
+        *,
+        lots=None,
+        portfolio=None,
+        free_usdt='10',
+        realized_today='0',
+        as_of=None,
+        stale_after=None,
+    ):
+        from dashboard.services.telegram_portfolio_status import build_portfolio_status
+
+        return build_portfolio_status(
+            open_lots=lots or [],
+            portfolio_rows=portfolio or [],
+            free_usdt=None if free_usdt is None else Decimal(free_usdt),
+            realized_today=None if realized_today is None else Decimal(realized_today),
+            as_of=as_of,
+            stale_after=stale_after,
+        )
+
+    def test_empty_portfolio_reports_free_equity_and_zero_invested(self):
+        summary = self._build()
+
+        self.assertEqual(summary['equity_usdt'], Decimal('10'))
+        self.assertEqual(summary['invested_usdt'], Decimal('0'))
+        self.assertEqual(summary['unrealized_pnl_usdt'], Decimal('0'))
+        self.assertEqual(summary['unrealized_pnl_pct'], Decimal('0'))
+        self.assertIsNone(summary['best_contributor'])
+        self.assertIsNone(summary['worst_contributor'])
+
+    def test_equity_includes_valued_dust_but_contributors_remain_material_only(self):
+        summary = self._build(
+            lots=[self._lot('DUSTUSDT', '1', '0.5')],
+            portfolio=[self._portfolio('DUSTUSDT', '1')],
+        )
+
+        self.assertEqual(summary['invested_usdt'], Decimal('1'))
+        self.assertEqual(summary['equity_usdt'], Decimal('11'))
+        self.assertEqual(summary['unrealized_pnl_usdt'], Decimal('0'))
+        self.assertIsNone(summary['best_contributor'])
+        self.assertIsNone(summary['worst_contributor'])
+
+    def test_positive_unrealized_pnl_uses_lot_quantity_and_projection_price(self):
+        summary = self._build(
+            lots=[self._lot('BTCUSDT', '2', '5')],
+            portfolio=[self._portfolio('BTCUSDT', '6')],
+        )
+
+        self.assertEqual(summary['invested_usdt'], Decimal('12'))
+        self.assertEqual(summary['equity_usdt'], Decimal('22'))
+        self.assertEqual(summary['unrealized_pnl_usdt'], Decimal('2'))
+        self.assertEqual(summary['unrealized_pnl_pct'], Decimal('20'))
+        self.assertEqual(summary['best_contributor']['symbol'], 'BTCUSDT')
+
+    def test_negative_unrealized_pnl_is_preserved(self):
+        summary = self._build(
+            lots=[self._lot('WLDUSDT', '10', '1')],
+            portfolio=[self._portfolio('WLDUSDT', '0.8')],
+        )
+
+        self.assertEqual(summary['unrealized_pnl_usdt'], Decimal('-2.0'))
+        self.assertEqual(summary['unrealized_pnl_pct'], Decimal('-20.0'))
+
+    def test_missing_entry_price_makes_unrealized_and_contributors_unavailable(self):
+        summary = self._build(
+            lots=[self._lot('BTCUSDT', '2', None)],
+            portfolio=[self._portfolio('BTCUSDT', '6')],
+        )
+
+        self.assertEqual(summary['invested_usdt'], Decimal('12'))
+        self.assertIsNone(summary['unrealized_pnl_usdt'])
+        self.assertIsNone(summary['unrealized_pnl_pct'])
+        self.assertIsNone(summary['best_contributor'])
+        self.assertIsNone(summary['worst_contributor'])
+
+    def test_missing_current_price_makes_equity_and_unrealized_unavailable(self):
+        summary = self._build(
+            lots=[self._lot('BTCUSDT', '2', '5')],
+            portfolio=[self._portfolio('BTCUSDT', None)],
+        )
+
+        self.assertIsNone(summary['invested_usdt'])
+        self.assertIsNone(summary['equity_usdt'])
+        self.assertIsNone(summary['unrealized_pnl_usdt'])
+        self.assertEqual(summary['unavailable_symbols'], ['BTCUSDT'])
+
+    def test_stale_current_price_makes_equity_and_unrealized_unavailable(self):
+        now = timezone.now()
+        summary = self._build(
+            lots=[self._lot('BTCUSDT', '2', '5')],
+            portfolio=[
+                self._portfolio(
+                    'BTCUSDT',
+                    '6',
+                    updated_at=now - timezone.timedelta(minutes=16),
+                ),
+            ],
+            as_of=now,
+            stale_after=timezone.timedelta(minutes=15),
+        )
+
+        self.assertIsNone(summary['invested_usdt'])
+        self.assertIsNone(summary['equity_usdt'])
+        self.assertEqual(summary['unavailable_symbols'], ['BTCUSDT'])
+
+    def test_best_and_worst_contributors_are_selected_by_unrealized_pnl(self):
+        summary = self._build(
+            lots=[
+                self._lot('BTCUSDT', '2', '5'),
+                self._lot('ETHUSDT', '5', '2'),
+                self._lot('WLDUSDT', '10', '1'),
+            ],
+            portfolio=[
+                self._portfolio('BTCUSDT', '6'),
+                self._portfolio('ETHUSDT', '2.1'),
+                self._portfolio('WLDUSDT', '0.8'),
+            ],
+        )
+
+        self.assertEqual(summary['best_contributor']['symbol'], 'BTCUSDT')
+        self.assertEqual(summary['best_contributor']['pnl_usdt'], Decimal('2'))
+        self.assertEqual(summary['worst_contributor']['symbol'], 'WLDUSDT')
+        self.assertEqual(summary['worst_contributor']['pnl_usdt'], Decimal('-2.0'))
+
+    def test_render_marks_all_historical_changes_unavailable_without_verified_snapshots(self):
+        from dashboard.services.telegram_portfolio_status import render_portfolio_status
+
+        message = render_portfolio_status(self._build())
+
+        self.assertIn('<b>📊 Portfolio status</b>', message)
+        self.assertIn('- 24h: <code>unavailable</code>', message)
+        self.assertIn('- 7d: <code>unavailable</code>', message)
+        self.assertIn('- 30d: <code>unavailable</code>', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.format_portfolio_status', return_value='<b>portfolio</b>')
+    def test_portfolio_status_routes_through_allowlisted_diagnostics(
+        self,
+        mock_format_portfolio_status,
+        mock_send_message,
+    ):
+        client = Client()
+        payload = {
+            'message': {
+                'text': '/portfolio_status',
+                'message_id': 987,
+                'chat': {'id': 999},
+                'from': {'id': 777, 'username': 'operator'},
+            },
+        }
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = client.post(
+                reverse('listener'),
+                data=json.dumps(payload),
+                content_type='application/json',
+                HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN='test-webhook-token',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        mock_format_portfolio_status.assert_called_once_with()
+        mock_send_message.assert_called_once_with('<b>portfolio</b>', 999)
+
+    @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('1.25'))
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.PositionLot.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_format_portfolio_status_wires_free_usdt_lots_prices_and_realized_today(
+        self,
+        mock_health_manager,
+        mock_lot_manager,
+        mock_portfolio_manager,
+        _mock_realized_today,
+    ):
+        from core.telegram_diagnostics import format_portfolio_status
+
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            created_at=timezone.now(),
+            details={'free_usdt': '10'},
+        )
+        mock_lot_manager.filter.return_value.order_by.return_value = [
+            self._lot('BTCUSDT', '2', '5'),
+        ]
+        mock_portfolio_manager.filter.return_value = [
+            self._portfolio('BTCUSDT', '6', updated_at=timezone.now()),
+        ]
+
+        message = format_portfolio_status()
+
+        self.assertIn('- Equity: <code>22.00 USDT</code>', message)
+        self.assertIn('- Open value: <code>12.00 USDT</code>', message)
+        self.assertNotIn('- Invested:', message)
+        self.assertIn('- Unrealized: <code>+2.00 USDT (+20.00%)</code>', message)
+        self.assertIn('- Realized today (UTC): <code>+1.25 USDT</code>', message)
+
+    @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.PositionLot.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_format_portfolio_status_rejects_stale_healthcheck_free_usdt(
+        self,
+        mock_health_manager,
+        mock_lot_manager,
+        mock_portfolio_manager,
+        _mock_realized_today,
+    ):
+        from core.telegram_diagnostics import format_portfolio_status
+
+        now = timezone.now()
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            created_at=now - timezone.timedelta(minutes=16),
+            details={'free_usdt': '10'},
+        )
+        mock_lot_manager.filter.return_value.order_by.return_value = []
+
+        with patch('core.telegram_diagnostics.timezone.now', return_value=now):
+            message = format_portfolio_status()
+
+        self.assertIn('- Free USDT: <code>unavailable</code>', message)
+        self.assertIn('- Equity: <code>unavailable</code>', message)
+        mock_portfolio_manager.filter.assert_not_called()
+
+    @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.PositionLot.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_portfolio_status_does_not_write_bot_owned_tables(
+        self,
+        mock_health_manager,
+        mock_lot_manager,
+        mock_portfolio_manager,
+        _mock_realized_today,
+    ):
+        from core.telegram_diagnostics import format_portfolio_status
+
+        mock_health_manager.order_by.return_value.first.return_value = None
+        mock_lot_manager.filter.return_value.order_by.return_value = []
+
+        format_portfolio_status()
+
+        for manager in [mock_health_manager, mock_lot_manager, mock_portfolio_manager]:
+            manager.create.assert_not_called()
+            manager.bulk_create.assert_not_called()
+            manager.update_or_create.assert_not_called()
+            manager.filter.return_value.update.assert_not_called()

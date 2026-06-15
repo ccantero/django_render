@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.6
+doc_version: 1.1.8
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-13
+last_verified_at: 2026-06-15
 source_repo: django_render
 ---
 
@@ -175,6 +175,7 @@ commands:
 - `/help`
 - `/health`
 - `/buy_status`
+- `/portfolio_status`
 - `/position SYMBOL`
 - `/last_sell SYMBOL`
 - `/why_not_sell SYMBOL`
@@ -222,6 +223,28 @@ operations whose `executed_at`, falling back to `created_at` only when
 Analytics PnL-by-day grouping. It does not subtract normalized fees and is
 neither Binance's proprietary "Today's PNL" calculation nor the Daily Audit
 rolling previous-24h window.
+
+`/portfolio_status` is a distinct performance view, not an extension of BUY
+capacity. It aggregates positive open `position_lots` by symbol for quantity and
+cost basis, joins `portfolio.current_price` only for current projection
+valuation, and reads free USDT from latest healthcheck details. Current open
+value and equity include every valued open-lot position, including dust.
+Aggregate unrealized PnL and contributor ranking include material exposure at
+or above `5 USDT`. A missing/non-positive price on any open-lot symbol makes
+open value and equity unavailable because the position cannot be safely
+valued or classified. On the live command path, a projection
+timestamp missing or older than the configured healthcheck stale threshold is
+also unavailable. Free USDT follows the same latest-healthcheck freshness rule.
+Missing/non-positive lot entry data makes aggregate unrealized PnL and
+contributors unavailable while current valuation may remain usable.
+
+Best and worst contributors are ranked by unrealized USDT PnL among material
+positions with complete quantity, cost-basis, and current-price data. Realized
+today uses the same UTC operation-timestamp rule as `/buy_status` and Analytics.
+The 24h/7d/30d fields render `unavailable` until a stable snapshot equity payload
+and freshness contract are verified. Dynamic PNG charts should later be
+generated on demand through a transport-agnostic helper and sent without
+persisting generated images.
 
 When the latest bot healthcheck carries persisted reconciliation
 `inventory_warnings`, `/buy_status` may add a compact operator-facing section
