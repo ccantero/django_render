@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.8
+doc_version: 1.1.9
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-15
+last_verified_at: 2026-06-16
 source_repo: django_render
 ---
 
@@ -102,9 +102,14 @@ Implemented capabilities:
   only when required data is complete and current. Missing or stale current
   prices and missing material entry prices remain unavailable rather than
   becoming zero.
-- Historical 24h/7d/30d portfolio change and dynamic chart delivery are not yet
-  implemented because the current shared snapshot contract does not define a
-  verified equity payload or freshness rule.
+- `/portfolio_status` now computes 24h/7d/30d change values from reliable
+  persisted `bot.snapshots` equity/account-value payloads when available,
+  keeps incomplete windows unavailable, and sends an in-memory 7-day PNG equity
+  chart through Telegram when at least two usable 7-day points exist.
+- Snapshot history remains best-effort because the current shared contract does
+  not require a canonical equity field; when snapshots are missing or do not
+  expose explicit equity/account-value data, history and chart output degrade
+  honestly instead of inventing values.
 - `/buy_status` and the dashboard BUY/Cooldown card render extended persisted
   BUY re-entry cooldown diagnostics from latest healthcheck details, including
   latest SELL operation, symbol, executed timestamp, nullable reason, reason

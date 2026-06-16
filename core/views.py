@@ -8,11 +8,13 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_GET, require_POST
 
 import json
+import logging
 import requests
 from core.models import BotControl, TelegramMessage
 from core.telegram_diagnostics import diagnostic_response
 
 TELEGRAM_WEBHOOK_TOKEN = settings.TELEGRAM_WEBHOOK_TOKEN
+logger = logging.getLogger(__name__)
 
 class ThanksPage(TemplateView):
     template_name = 'thanks.html'
@@ -106,7 +108,19 @@ def listener(request):
 
 		diagnostic_message = diagnostic_response(t_message_text, chat_id, user_id=user_id)
 		if diagnostic_message is not None:
-			send_message(diagnostic_message, chat_id)
+			if isinstance(diagnostic_message, dict):
+				message_text = diagnostic_message.get("text") or ""
+				photo = diagnostic_message.get("photo")
+				if photo:
+					try:
+						send_photo(photo, chat_id, caption=message_text)
+					except Exception:
+						logger.debug("Could not send Telegram diagnostic photo", exc_info=True)
+						send_message(message_text, chat_id)
+				else:
+					send_message(message_text, chat_id)
+			else:
+				send_message(diagnostic_message, chat_id)
 			return JsonResponse({"ok": "POST request processed"})
 		
 		if t_message_text == "/start":
@@ -136,3 +150,21 @@ def send_message(message, chat_id):
     response = requests.post(
         f"{TELEGRAM_URL}{TUTORIAL_BOT_TOKEN}/sendMessage", data=data
     )
+
+
+def send_photo(photo_bytes, chat_id, caption=None):
+    data = {
+        "chat_id": chat_id,
+        "parse_mode": "HTML",
+    }
+    if caption:
+        data["caption"] = caption
+    files = {
+        "photo": ("portfolio_equity_7d.png", photo_bytes, "image/png"),
+    }
+    response = requests.post(
+        f"{TELEGRAM_URL}{TUTORIAL_BOT_TOKEN}/sendPhoto",
+        data=data,
+        files=files,
+    )
+    return response

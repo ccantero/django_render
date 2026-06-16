@@ -1,13 +1,96 @@
 ---
 doc_id: changelog
-doc_version: 1.1.12
+doc_version: 1.1.14
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-15
+last_verified_at: 2026-06-16
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-16 - Portfolio Status Snapshot Tolerance
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+- docs/DATA_CONTRACT.md
+- docs/DESIGN.md
+- docs/KPI_REGISTRY.md
+
+Summary:
+- Tightened `/portfolio_status` historical change matching so horizon
+  snapshots must fall inside deterministic age windows: 18-30h for 24h, 6-8d
+  for 7d, and 28-32d for 30d.
+- Replaced arbitrary "latest point at or before target" matching with closest
+  in-window snapshot selection.
+- Preserved chart generation and Telegram delivery behavior; chart availability
+  still depends on two usable 7-day points, not on every change horizon being
+  available.
+
+Operator impact:
+- Historical change values now render `unavailable` when evidence is too old,
+  too recent, missing, or incomplete instead of reusing stale snapshots.
+- No Binance calls, trading behavior, accounting writes, schema changes, or
+  generated image persistence were introduced.
+
+Validation:
+- Added failing regression tests for valid, offset-valid, stale, too-recent,
+  and insufficient snapshot evidence across 24h, 7d, and 30d horizons.
+- Added coverage proving chart availability is independent from complete
+  horizon-change availability.
+- Focused portfolio-status and broader Telegram diagnostics tests passed.
+
+## 2026-06-16 - Telegram Portfolio Status V2
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/CHANGELOG.md
+- docs/DATA_CONTRACT.md
+- docs/DESIGN.md
+- docs/KPI_REGISTRY.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Added snapshot-backed 24h/7d/30d portfolio change calculations for
+  `/portfolio_status`, using only explicit reliable equity/account-value USDT
+  fields from `bot.snapshots.data`.
+- Added a dependency-free, transport-agnostic in-memory PNG renderer for the
+  initial 7-day equity chart.
+- Updated Telegram delivery so `/portfolio_status` sends the PNG as a photo
+  with the text summary as caption when enough history exists, falls back to
+  text if image delivery fails, and sends text only with a compact unavailable
+  note when history is insufficient.
+- Preserved the read-only dashboard boundary: no Binance calls, no trades, no
+  bot-owned accounting mutations, no generated image persistence, and no
+  historical values inferred from missing data.
+
+Operator impact:
+- Operators can see historical portfolio deltas and a compact 7-day equity
+  chart when the bot has produced usable snapshots.
+- Missing, stale, incomplete, or ambiguous snapshot history still renders as
+  unavailable instead of zero.
+
+Validation:
+- Added failing tests first for 24h available, 7d available, 30d unavailable,
+  no snapshots, stale/incomplete snapshots, valid PNG bytes, Telegram photo
+  delivery, image-send fallback, and text-only fallback.
+- Focused portfolio-status tests passed.
+- Broader Telegram diagnostics tests passed, including existing `/buy_status`
+  coverage.
+- `core/tests.py` passed.
+
+Known follow-up:
+- Formalize and synchronize the canonical bot-side `bot.snapshots` equity
+  payload/freshness rule and paired KPI registry copy when that repository is
+  available.
 
 ## 2026-06-15 - Telegram Portfolio Status
 

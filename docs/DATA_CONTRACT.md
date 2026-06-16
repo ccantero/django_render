@@ -1,9 +1,9 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.17
+doc_version: 1.0.19
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-08
+last_verified_at: 2026-06-16
 source_repo: binanceBot
 ---
 
@@ -665,6 +665,25 @@ Dashboard usage:
 - Future charts
 
 Do not depend on this table for critical accounting unless its schema and semantics are verified.
+
+Current dashboard `/portfolio_status` V2 usage is read-only and conservative:
+it may compute historical portfolio changes and a 7-day chart only from
+snapshot `data` fields that explicitly name USDT equity or account value, such
+as `portfolio_equity_usdt`, `equity_usdt`, `total_equity_usdt`,
+`account_equity_usdt`, `account_value_usdt`,
+`total_account_value_usdt`, or nested `portfolio.*` / `summary.*` equivalents.
+Consumers must treat missing, non-positive, stale, or ambiguous payloads as
+unavailable. They must not reconstruct historical equity from current
+`portfolio`, call Binance, mutate rows, or treat missing snapshots as zero.
+For current dashboard horizon changes, the historical snapshot must also be
+close to the requested age: 18-30h for 24h, 6-8d for 7d, and 28-32d for 30d.
+Older or too-recent evidence remains unavailable and must not be interpolated,
+estimated, or backfilled.
+
+Smallest recommended bot-side producer: persist periodic `bot.snapshots` rows
+with `created_at` and a canonical `data.portfolio_equity_usdt` decimal string
+representing total portfolio equity in USDT, plus enough freshness/version
+metadata to let consumers detect stale history.
 
 ---
 

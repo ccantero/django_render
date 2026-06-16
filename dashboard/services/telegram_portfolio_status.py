@@ -1,3 +1,7 @@
+import binascii
+import struct
+import zlib
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from html import escape
 
@@ -11,13 +15,14 @@ def build_portfolio_status(
 	portfolio_rows,
 	free_usdt,
 	realized_today,
+	equity_history=None,
 	as_of=None,
 	stale_after=None,
 ):
 	free_usdt = _to_decimal(free_usdt)
 	realized_today = _to_decimal(realized_today)
 	if open_lots is None or portfolio_rows is None:
-		return _unavailable_summary(free_usdt, realized_today)
+		return _unavailable_summary(free_usdt, realized_today, equity_history)
 
 	prices = {}
 	for row in portfolio_rows:
@@ -89,7 +94,9 @@ def build_portfolio_status(
 		"unrealized_pnl_usdt": unrealized_pnl_usdt,
 		"unrealized_pnl_pct": unrealized_pnl_pct,
 		"realized_today": realized_today,
-		"changes": {"24h": None, "7d": None, "30d": None},
+		"changes": _history_changes(equity_history),
+		"chart_points": _history_chart_points(equity_history),
+		"chart_available": bool(_history_chart_points(equity_history)),
 		"best_contributor": max(contributors, key=lambda row: row["pnl_usdt"]) if contributors else None,
 		"worst_contributor": min(contributors, key=lambda row: row["pnl_usdt"]) if contributors else None,
 		"unavailable_symbols": unavailable_symbols,
@@ -113,6 +120,8 @@ def render_portfolio_status(summary):
 	]
 	for label in ("24h", "7d", "30d"):
 		lines.append(f"- {label}: <code>{_change(summary.get('changes', {}).get(label))}</code>")
+	if not summary.get("chart_available"):
+		lines.append("Chart: unavailable, not enough history")
 
 	lines.extend(["", "<b>Top contributors</b>"])
 	best = summary.get("best_contributor")
@@ -151,7 +160,194 @@ def _aggregate_open_lots(open_lots):
 	return positions
 
 
-def _unavailable_summary(free_usdt, realized_today):
+class PortfolioEquityHistoryBuilder:
+	WINDOWS = {
+		"24h": timedelta(hours=24),
+		"7d": timedelta(days=7),
+		"30d": timedelta(days=30),
+	}
+	WINDOW_TOLERANCES = {
+		"24h": (timedelta(hours=18), timedelta(hours=30)),
+		"7d": (timedelta(days=6), timedelta(days=8)),
+		"30d": (timedelta(days=28), timedelta(days=32)),
+	}
+	CHART_WINDOW = timedelta(days=7)
+
+	def __init__(self, *, as_of, max_latest_age=timedelta(hours=6)):
+		self.as_of = as_of
+		self.max_latest_age = max_latest_age
+
+	def build(self, snapshot_rows):
+		points = []
+		for row in snapshot_rows or []:
+			timestamp = getattr(row, "created_at", None)
+			if timestamp is None or timestamp > self.as_of:
+				continue
+			equity = _extract_snapshot_equity(getattr(row, "data", None))
+			if equity is None or equity <= 0:
+				continue
+			points.append({"timestamp": timestamp, "equity_usdt": equity})
+		points.sort(key=lambda point: point["timestamp"])
+		if not points:
+			return self._empty(points)
+
+		latest = points[-1]
+		if self.as_of - latest["timestamp"] > self.max_latest_age:
+			return self._empty(points)
+
+		changes = {}
+		for label, window in self.WINDOWS.items():
+			historical = self._point_for_window(points, label)
+			if historical is None:
+				changes[label] = None
+				continue
+			amount = latest["equity_usdt"] - historical["equity_usdt"]
+			percent = amount / historical["equity_usdt"] * Decimal("100")
+			changes[label] = {"amount_usdt": amount, "percent": percent}
+
+		chart_start = self.as_of - self.CHART_WINDOW
+		chart_points = [
+			point for point in points
+			if chart_start <= point["timestamp"] <= self.as_of
+		]
+		if len(chart_points) < 2:
+			chart_points = []
+		return {
+			"changes": changes,
+			"chart_points": chart_points,
+			"latest_point": latest,
+			"usable": True,
+		}
+
+	def _empty(self, points):
+		return {
+			"changes": {"24h": None, "7d": None, "30d": None},
+			"chart_points": [],
+			"latest_point": points[-1] if points else None,
+			"usable": False,
+		}
+
+	def _point_for_window(self, points, label):
+		target_age = self.WINDOWS[label]
+		min_age, max_age = self.WINDOW_TOLERANCES[label]
+		candidates = []
+		for point in points:
+			age = self.as_of - point["timestamp"]
+			if min_age <= age <= max_age:
+				candidates.append(point)
+		if not candidates:
+			return None
+		return min(
+			candidates,
+			key=lambda point: (
+				abs((self.as_of - point["timestamp"]) - target_age),
+				point["timestamp"],
+			),
+		)
+
+
+class PortfolioEquityChartRenderer:
+	def __init__(self, width=720, height=360):
+		self.width = width
+		self.height = height
+
+	def render_png(self, points):
+		if len(points or []) < 2:
+			return None
+		width = self.width
+		height = self.height
+		margin_left = 56
+		margin_right = 24
+		margin_top = 28
+		margin_bottom = 48
+		pixels = bytearray([255, 255, 255] * width * height)
+		plot_left = margin_left
+		plot_right = width - margin_right
+		plot_top = margin_top
+		plot_bottom = height - margin_bottom
+
+		self._line(pixels, width, plot_left, plot_bottom, plot_right, plot_bottom, (65, 70, 82))
+		self._line(pixels, width, plot_left, plot_top, plot_left, plot_bottom, (65, 70, 82))
+		for idx in range(1, 4):
+			y = plot_top + (plot_bottom - plot_top) * idx // 4
+			self._line(pixels, width, plot_left, y, plot_right, y, (229, 231, 235))
+
+		timestamps = [point["timestamp"] for point in points]
+		values = [_to_decimal(point["equity_usdt"]) for point in points]
+		min_value = min(values)
+		max_value = max(values)
+		if min_value == max_value:
+			min_value -= Decimal("1")
+			max_value += Decimal("1")
+		start = min(timestamps)
+		end = max(timestamps)
+		total_seconds = max((end - start).total_seconds(), 1)
+		value_range = max_value - min_value
+		coords = []
+		for point, value in zip(points, values):
+			x_ratio = Decimal(str((point["timestamp"] - start).total_seconds() / total_seconds))
+			y_ratio = (value - min_value) / value_range
+			x = plot_left + int(x_ratio * (plot_right - plot_left))
+			y = plot_bottom - int(y_ratio * (plot_bottom - plot_top))
+			coords.append((x, y))
+		for left, right in zip(coords, coords[1:]):
+			self._line(pixels, width, left[0], left[1], right[0], right[1], (37, 99, 235), thickness=3)
+		for x, y in coords:
+			self._circle(pixels, width, height, x, y, 4, (29, 78, 216))
+		return self._png_bytes(width, height, pixels)
+
+	def _set_pixel(self, pixels, width, height, x, y, color):
+		if 0 <= x < width and 0 <= y < height:
+			offset = (y * width + x) * 3
+			pixels[offset:offset + 3] = bytes(color)
+
+	def _line(self, pixels, width, x0, y0, x1, y1, color, thickness=1):
+		height = self.height
+		dx = abs(x1 - x0)
+		dy = -abs(y1 - y0)
+		sx = 1 if x0 < x1 else -1
+		sy = 1 if y0 < y1 else -1
+		err = dx + dy
+		while True:
+			for ox in range(-(thickness // 2), thickness // 2 + 1):
+				for oy in range(-(thickness // 2), thickness // 2 + 1):
+					self._set_pixel(pixels, width, height, x0 + ox, y0 + oy, color)
+			if x0 == x1 and y0 == y1:
+				break
+			e2 = 2 * err
+			if e2 >= dy:
+				err += dy
+				x0 += sx
+			if e2 <= dx:
+				err += dx
+				y0 += sy
+
+	def _circle(self, pixels, width, height, cx, cy, radius, color):
+		for y in range(cy - radius, cy + radius + 1):
+			for x in range(cx - radius, cx + radius + 1):
+				if (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2:
+					self._set_pixel(pixels, width, height, x, y, color)
+
+	def _png_bytes(self, width, height, pixels):
+		raw = bytearray()
+		row_width = width * 3
+		for y in range(height):
+			raw.append(0)
+			start = y * row_width
+			raw.extend(pixels[start:start + row_width])
+		chunks = [
+			self._chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)),
+			self._chunk(b"IDAT", zlib.compress(bytes(raw), level=9)),
+			self._chunk(b"IEND", b""),
+		]
+		return b"\x89PNG\r\n\x1a\n" + b"".join(chunks)
+
+	def _chunk(self, chunk_type, data):
+		crc = binascii.crc32(chunk_type + data) & 0xFFFFFFFF
+		return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", crc)
+
+
+def _unavailable_summary(free_usdt, realized_today, equity_history=None):
 	return {
 		"equity_usdt": None,
 		"free_usdt": free_usdt,
@@ -159,11 +355,58 @@ def _unavailable_summary(free_usdt, realized_today):
 		"unrealized_pnl_usdt": None,
 		"unrealized_pnl_pct": None,
 		"realized_today": realized_today,
-		"changes": {"24h": None, "7d": None, "30d": None},
+		"changes": _history_changes(equity_history),
+		"chart_points": _history_chart_points(equity_history),
+		"chart_available": bool(_history_chart_points(equity_history)),
 		"best_contributor": None,
 		"worst_contributor": None,
 		"unavailable_symbols": [],
 	}
+
+
+def _history_changes(equity_history):
+	if not isinstance(equity_history, dict):
+		return {"24h": None, "7d": None, "30d": None}
+	return equity_history.get("changes") or {"24h": None, "7d": None, "30d": None}
+
+
+def _history_chart_points(equity_history):
+	if not isinstance(equity_history, dict):
+		return []
+	return equity_history.get("chart_points") or []
+
+
+def _extract_snapshot_equity(data):
+	if not isinstance(data, dict):
+		return None
+	# Snapshot rows expose only created_at plus JSON data; accept explicit
+	# USDT equity/account-value fields and leave ambiguous payloads unavailable.
+	paths = [
+		("portfolio_equity_usdt",),
+		("equity_usdt",),
+		("total_equity_usdt",),
+		("account_equity_usdt",),
+		("account_value_usdt",),
+		("total_account_value_usdt",),
+		("total_portfolio_value_usdt",),
+		("portfolio", "equity_usdt"),
+		("portfolio", "total_equity_usdt"),
+		("portfolio", "total_value_usdt"),
+		("portfolio", "account_value_usdt"),
+		("summary", "equity_usdt"),
+		("summary", "total_equity_usdt"),
+	]
+	for path in paths:
+		value = data
+		for key in path:
+			if not isinstance(value, dict):
+				value = None
+				break
+			value = value.get(key)
+		value = _to_decimal(value)
+		if value is not None:
+			return value
+	return None
 
 
 def _money(value):

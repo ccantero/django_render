@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.6
+doc_version: 1.1.7
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-15
+last_verified_at: 2026-06-16
 source_repo: django_render
 ---
 
@@ -219,8 +219,12 @@ and equity include every valued open-lot position, while aggregate unrealized
 PnL and best/worst contributors are material-only. Required values become
 `unavailable` when required valuation or entry data is missing or older than
 the configured healthcheck stale threshold. Historical 24h/7d/30d change
-remains unavailable until the payload semantics and freshness of persisted
-snapshots are verified; no historical equity is invented.
+uses reliable `bot.snapshots` equity/account-value payloads when available and
+shows USDT plus percentage deltas; each missing or incomplete window remains
+`unavailable`. When at least two usable 7-day equity snapshots exist, Telegram
+receives an on-demand PNG equity chart generated in memory. If history is not
+usable, the command sends text only with a compact chart-unavailable note. No
+historical equity is invented.
 
 `/buy_status` labels accounting-realized PnL as `Realized today (UTC)`. It uses
 the same UTC calendar-day operation-timestamp grouping as Analytics, not

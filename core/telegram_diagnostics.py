@@ -17,6 +17,7 @@ from core.trading_models import (
 	Portfolio,
 	PositionLot,
 	SellDecisionEvent,
+	Snapshot,
 	TradeOperation,
 )
 from dashboard.services.telegram_buy_status_formatter import (
@@ -29,6 +30,8 @@ from dashboard.services.telegram_buy_status_formatter import (
 	render_buy_status_message,
 )
 from dashboard.services.telegram_portfolio_status import (
+	PortfolioEquityChartRenderer,
+	PortfolioEquityHistoryBuilder,
 	build_portfolio_status,
 	render_portfolio_status,
 )
@@ -361,15 +364,36 @@ def format_portfolio_status():
 		except DatabaseError:
 			logger.debug("Could not read portfolio prices for Telegram portfolio status")
 
+	equity_history = {"changes": {"24h": None, "7d": None, "30d": None}, "chart_points": []}
+	try:
+		snapshot_rows = list(
+			Snapshot.objects
+			.filter(created_at__gte=now - timedelta(days=35), created_at__lte=now)
+			.order_by("created_at", "id")
+		)
+		equity_history = PortfolioEquityHistoryBuilder(as_of=now).build(snapshot_rows)
+	except DatabaseError:
+		logger.debug("Could not read snapshots for Telegram portfolio status")
+
 	summary = build_portfolio_status(
 		open_lots=open_lots,
 		portfolio_rows=portfolio_rows,
 		free_usdt=free_usdt,
 		realized_today=realized_today,
+		equity_history=equity_history,
 		as_of=now,
 		stale_after=stale_after,
 	)
-	return render_portfolio_status(summary)
+	text = render_portfolio_status(summary)
+	photo = None
+	if summary.get("chart_available"):
+		try:
+			photo = PortfolioEquityChartRenderer().render_png(summary.get("chart_points") or [])
+		except Exception:
+			logger.debug("Could not render Telegram portfolio equity chart", exc_info=True)
+			if "Chart: unavailable" not in text:
+				text = text + "\nChart: unavailable, generation failed"
+	return {"text": text, "photo": photo}
 
 
 def _safe_realized_pnl_today():

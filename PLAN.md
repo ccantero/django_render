@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.1
+doc_version: 1.1.2
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-15
+last_verified_at: 2026-06-16
 source_repo: django_render
 ---
 
@@ -78,13 +78,17 @@ Additional pending visibility work:
 - Dashboard requires login for operational views.
 - Dust / residual dashboard reads `bot.dust_detections`.
 - Telegram mobile diagnostics commands read shared bot state through the existing webhook:
-  `/help`, `/health`, `/buy_status`, `/position SYMBOL`, `/last_sell SYMBOL`, and `/why_not_sell SYMBOL`.
+  `/help`, `/health`, `/buy_status`, `/portfolio_status`,
+  `/position SYMBOL`, `/last_sell SYMBOL`, and `/why_not_sell SYMBOL`.
 - Telegram diagnostics expose a compact `/help` guide and present skipped/rejected
   SELL explanations with a mobile-first summary before raw event details.
 - Telegram mobile diagnostics now also support `/buy_status` for conservative
   BUY capacity visibility from healthcheck position classification data.
 - Telegram diagnostics use compact Decimal-safe display formatting for prices,
   quantities, percentages, USDT values, and drift values.
+- `/portfolio_status` reads explicit persisted snapshot equity/account-value
+  payloads when available for 24h/7d/30d change values and sends an in-memory
+  7-day PNG equity chart through Telegram when enough history exists.
 - Manual correction request creation is staff/superuser-only.
 - Manual correction request form is POST and CSRF protected.
 - Dashboard does not apply manual corrections or mutate bot accounting tables directly.
@@ -145,10 +149,9 @@ Additional pending visibility work:
     and labels are stabilized in the shared contract or bot-produced reports.
 19. Add time-based exit dry-run visibility only after the bot owns the dry-run
     decision output and Django can render it without executing exits.
-20. Verify a stable historical equity snapshot payload and freshness contract,
-    then add `/portfolio_status` 24h/7d/30d changes and an on-demand,
-    transport-agnostic 7d PNG chart delivered by Telegram without persistent
-    generated files. GIF delivery remains out of scope.
+20. Formalize the bot-side `bot.snapshots` equity payload and freshness rule in
+    the canonical shared contract so dashboard history/chart behavior does not
+    rely on best-effort explicit JSON field discovery.
 
 ## P2 Architecture / Tech Debt
 

@@ -4904,6 +4904,12 @@ class TelegramPortfolioStatusTests(TestCase):
             updated_at=updated_at,
         )
 
+    def _snapshot(self, created_at, equity):
+        return SimpleNamespace(
+            created_at=created_at,
+            data={"portfolio_equity_usdt": equity},
+        )
+
     def _build(
         self,
         *,
@@ -4911,6 +4917,7 @@ class TelegramPortfolioStatusTests(TestCase):
         portfolio=None,
         free_usdt='10',
         realized_today='0',
+        equity_history=None,
         as_of=None,
         stale_after=None,
     ):
@@ -4921,6 +4928,7 @@ class TelegramPortfolioStatusTests(TestCase):
             portfolio_rows=portfolio or [],
             free_usdt=None if free_usdt is None else Decimal(free_usdt),
             realized_today=None if realized_today is None else Decimal(realized_today),
+            equity_history=equity_history,
             as_of=as_of,
             stale_after=stale_after,
         )
@@ -5039,13 +5047,211 @@ class TelegramPortfolioStatusTests(TestCase):
         self.assertIn('- 7d: <code>unavailable</code>', message)
         self.assertIn('- 30d: <code>unavailable</code>', message)
 
+    def test_historical_change_24h_available_from_reliable_snapshots(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._snapshot(now - timezone.timedelta(hours=25), '100'),
+            self._snapshot(now - timezone.timedelta(minutes=5), '125'),
+        ])
+        summary = self._build(equity_history=history)
+
+        self.assertEqual(summary['changes']['24h']['amount_usdt'], Decimal('25'))
+        self.assertEqual(summary['changes']['24h']['percent'], Decimal('25'))
+
+    def test_historical_change_24h_accepts_exact_and_slightly_offset_snapshots(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        for age in [
+            timezone.timedelta(hours=24),
+            timezone.timedelta(hours=23),
+            timezone.timedelta(hours=25),
+        ]:
+            with self.subTest(age=age):
+                history = PortfolioEquityHistoryBuilder(as_of=now).build([
+                    self._snapshot(now - age, '100'),
+                    self._snapshot(now - timezone.timedelta(minutes=5), '125'),
+                ])
+                summary = self._build(equity_history=history)
+
+                self.assertEqual(summary['changes']['24h']['amount_usdt'], Decimal('25'))
+
+    def test_historical_change_24h_rejects_too_old_and_too_recent_snapshots(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        for age in [
+            timezone.timedelta(days=15),
+            timezone.timedelta(hours=2),
+        ]:
+            with self.subTest(age=age):
+                history = PortfolioEquityHistoryBuilder(as_of=now).build([
+                    self._snapshot(now - age, '100'),
+                    self._snapshot(now - timezone.timedelta(minutes=5), '125'),
+                ])
+                summary = self._build(equity_history=history)
+
+                self.assertIsNone(summary['changes']['24h'])
+
+    def test_historical_change_7d_available_and_30d_unavailable(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._snapshot(now - timezone.timedelta(days=8), '80'),
+            self._snapshot(now - timezone.timedelta(days=7), '100'),
+            self._snapshot(now - timezone.timedelta(minutes=5), '120'),
+        ])
+        summary = self._build(equity_history=history)
+
+        self.assertEqual(summary['changes']['7d']['amount_usdt'], Decimal('20'))
+        self.assertEqual(summary['changes']['7d']['percent'], Decimal('20'))
+        self.assertIsNone(summary['changes']['30d'])
+
+    def test_historical_change_7d_accepts_valid_tolerance_window(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        for age in [
+            timezone.timedelta(days=7),
+            timezone.timedelta(days=6),
+            timezone.timedelta(days=8),
+        ]:
+            with self.subTest(age=age):
+                history = PortfolioEquityHistoryBuilder(as_of=now).build([
+                    self._snapshot(now - age, '100'),
+                    self._snapshot(now - timezone.timedelta(minutes=5), '120'),
+                ])
+                summary = self._build(equity_history=history)
+
+                self.assertEqual(summary['changes']['7d']['amount_usdt'], Decimal('20'))
+
+    def test_historical_change_7d_rejects_stale_too_recent_and_insufficient_history(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        for snapshots in [
+            [self._snapshot(now - timezone.timedelta(days=15), '100')],
+            [self._snapshot(now - timezone.timedelta(days=2), '100')],
+            [],
+        ]:
+            with self.subTest(snapshots=snapshots):
+                history = PortfolioEquityHistoryBuilder(as_of=now).build([
+                    *snapshots,
+                    self._snapshot(now - timezone.timedelta(minutes=5), '120'),
+                ])
+                summary = self._build(equity_history=history)
+
+                self.assertIsNone(summary['changes']['7d'])
+
+    def test_historical_change_30d_accepts_valid_tolerance_window(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        for age in [
+            timezone.timedelta(days=30),
+            timezone.timedelta(days=28),
+            timezone.timedelta(days=32),
+        ]:
+            with self.subTest(age=age):
+                history = PortfolioEquityHistoryBuilder(as_of=now).build([
+                    self._snapshot(now - age, '100'),
+                    self._snapshot(now - timezone.timedelta(minutes=5), '130'),
+                ])
+                summary = self._build(equity_history=history)
+
+                self.assertEqual(summary['changes']['30d']['amount_usdt'], Decimal('30'))
+
+    def test_historical_change_30d_rejects_stale_too_recent_and_insufficient_history(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        for snapshots in [
+            [self._snapshot(now - timezone.timedelta(days=40), '100')],
+            [self._snapshot(now - timezone.timedelta(days=10), '100')],
+            [],
+        ]:
+            with self.subTest(snapshots=snapshots):
+                history = PortfolioEquityHistoryBuilder(as_of=now).build([
+                    *snapshots,
+                    self._snapshot(now - timezone.timedelta(minutes=5), '130'),
+                ])
+                summary = self._build(equity_history=history)
+
+                self.assertIsNone(summary['changes']['30d'])
+
+    def test_historical_changes_unavailable_without_snapshots(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        history = PortfolioEquityHistoryBuilder(as_of=timezone.now()).build([])
+        summary = self._build(equity_history=history)
+
+        self.assertEqual(summary['changes'], {'24h': None, '7d': None, '30d': None})
+        self.assertFalse(summary['chart_available'])
+
+    def test_stale_and_incomplete_snapshots_do_not_create_changes(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            SimpleNamespace(created_at=now - timezone.timedelta(days=1), data={}),
+            self._snapshot(now - timezone.timedelta(hours=8), '100'),
+            self._snapshot(now - timezone.timedelta(days=2), '80'),
+        ])
+        summary = self._build(equity_history=history)
+
+        self.assertEqual(summary['changes'], {'24h': None, '7d': None, '30d': None})
+        self.assertFalse(summary['chart_available'])
+
+    def test_chart_availability_does_not_require_all_change_horizons(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history_7d_only = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._snapshot(now - timezone.timedelta(days=7), '100'),
+            self._snapshot(now - timezone.timedelta(minutes=5), '120'),
+        ])
+        summary_7d_only = self._build(equity_history=history_7d_only)
+        self.assertIsNone(summary_7d_only['changes']['24h'])
+        self.assertIsNotNone(summary_7d_only['changes']['7d'])
+        self.assertTrue(summary_7d_only['chart_available'])
+
+        history_24h_only = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._snapshot(now - timezone.timedelta(hours=24), '100'),
+            self._snapshot(now - timezone.timedelta(minutes=5), '120'),
+        ])
+        summary_24h_only = self._build(equity_history=history_24h_only)
+        self.assertIsNotNone(summary_24h_only['changes']['24h'])
+        self.assertIsNone(summary_24h_only['changes']['7d'])
+        self.assertTrue(summary_24h_only['chart_available'])
+
+    def test_chart_renderer_returns_valid_png_bytes(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityChartRenderer
+
+        now = timezone.now()
+        points = [
+            {'timestamp': now - timezone.timedelta(days=1), 'equity_usdt': Decimal('100')},
+            {'timestamp': now, 'equity_usdt': Decimal('125')},
+        ]
+        png = PortfolioEquityChartRenderer().render_png(points)
+
+        self.assertTrue(png.startswith(b'\x89PNG\r\n\x1a\n'))
+        self.assertIn(b'IEND', png)
+
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_photo')
     @patch('core.views.send_message')
-    @patch('core.telegram_diagnostics.format_portfolio_status', return_value='<b>portfolio</b>')
+    @patch(
+        'core.telegram_diagnostics.format_portfolio_status',
+        return_value={'text': '<b>portfolio</b>', 'photo': b'\x89PNG\r\n\x1a\nimage'},
+    )
     def test_portfolio_status_routes_through_allowlisted_diagnostics(
         self,
         mock_format_portfolio_status,
         mock_send_message,
+        mock_send_photo,
     ):
         client = Client()
         payload = {
@@ -5067,7 +5273,80 @@ class TelegramPortfolioStatusTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         mock_format_portfolio_status.assert_called_once_with()
+        mock_send_photo.assert_called_once_with(b'\x89PNG\r\n\x1a\nimage', 999, caption='<b>portfolio</b>')
+        mock_send_message.assert_not_called()
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_photo', side_effect=RuntimeError('telegram down'))
+    @patch('core.views.send_message')
+    @patch(
+        'core.telegram_diagnostics.format_portfolio_status',
+        return_value={'text': '<b>portfolio</b>', 'photo': b'\x89PNG\r\n\x1a\nimage'},
+    )
+    def test_portfolio_status_falls_back_to_text_when_photo_send_fails(
+        self,
+        _mock_format_portfolio_status,
+        mock_send_message,
+        _mock_send_photo,
+    ):
+        client = Client()
+        payload = {
+            'message': {
+                'text': '/portfolio_status',
+                'message_id': 987,
+                'chat': {'id': 999},
+                'from': {'id': 777, 'username': 'operator'},
+            },
+        }
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = client.post(
+                reverse('listener'),
+                data=json.dumps(payload),
+                content_type='application/json',
+                HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN='test-webhook-token',
+            )
+
+        self.assertEqual(response.status_code, 200)
         mock_send_message.assert_called_once_with('<b>portfolio</b>', 999)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_photo')
+    @patch('core.views.send_message')
+    @patch(
+        'core.telegram_diagnostics.format_portfolio_status',
+        return_value={'text': '<b>portfolio</b>\nChart: unavailable, not enough history', 'photo': None},
+    )
+    def test_portfolio_status_sends_text_only_when_history_unavailable(
+        self,
+        _mock_format_portfolio_status,
+        mock_send_message,
+        mock_send_photo,
+    ):
+        client = Client()
+        payload = {
+            'message': {
+                'text': '/portfolio_status',
+                'message_id': 987,
+                'chat': {'id': 999},
+                'from': {'id': 777, 'username': 'operator'},
+            },
+        }
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = client.post(
+                reverse('listener'),
+                data=json.dumps(payload),
+                content_type='application/json',
+                HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN='test-webhook-token',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        mock_send_photo.assert_not_called()
+        mock_send_message.assert_called_once_with(
+            '<b>portfolio</b>\nChart: unavailable, not enough history',
+            999,
+        )
 
     @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('1.25'))
     @patch('core.telegram_diagnostics.Portfolio.objects')
@@ -5093,7 +5372,7 @@ class TelegramPortfolioStatusTests(TestCase):
             self._portfolio('BTCUSDT', '6', updated_at=timezone.now()),
         ]
 
-        message = format_portfolio_status()
+        message = format_portfolio_status()['text']
 
         self.assertIn('- Equity: <code>22.00 USDT</code>', message)
         self.assertIn('- Open value: <code>12.00 USDT</code>', message)
@@ -5122,7 +5401,7 @@ class TelegramPortfolioStatusTests(TestCase):
         mock_lot_manager.filter.return_value.order_by.return_value = []
 
         with patch('core.telegram_diagnostics.timezone.now', return_value=now):
-            message = format_portfolio_status()
+            message = format_portfolio_status()['text']
 
         self.assertIn('- Free USDT: <code>unavailable</code>', message)
         self.assertIn('- Equity: <code>unavailable</code>', message)

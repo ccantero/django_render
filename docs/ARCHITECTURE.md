@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.2
+doc_version: 1.1.3
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-05-25
+last_verified_at: 2026-06-16
 source_repo: django_render
 ---
 
@@ -26,7 +26,8 @@ It provides visibility, review, and request workflows over bot-owned database ta
 - Serve allowlisted read-only Telegram diagnostics for mobile operators,
   including conservative BUY capacity status from persisted bot state plus
   runtime-config fallback for max-position limits when the read model omits
-  them.
+  them, and portfolio status with snapshot-backed historical changes plus an
+  on-demand in-memory 7-day equity PNG when enough history exists.
 - Display read-only operational performance KPIs from realized lot closures and filled trade operations.
 - Display filtered Operational Trading KPIs v2 from read-only trade operations, lot closures, and linked lot open times.
 - Display future trapped-capital, holding-efficiency, and dry-run exit
@@ -121,6 +122,7 @@ Browser dashboard pages -> django_render.urls -> dashboard.urls -> dashboard.vie
 Browser core pages/bot controls -> django_render.urls -> core.urls -> core.views
 External keepalive cron -> /health/ -> core.views.health -> JSON liveness response
 Telegram diagnostics -> /telegramapi/listener/ -> allowlist check -> read-only bot table queries -> Telegram HTML response
+Telegram portfolio chart -> read-only bot snapshots -> transport-agnostic PNG bytes -> Telegram photo or text fallback
 API client -> django_render.urls -> currencyconverter/profile routers -> DRF viewsets -> serializers/models
 Swagger UI -> /api/docs -> drf-spectacular schema at /api/schema
 Telegram -> /telegramapi/listener/ -> token check -> TelegramMessage row and optional Telegram response

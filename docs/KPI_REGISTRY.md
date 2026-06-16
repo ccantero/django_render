@@ -1,9 +1,9 @@
 ---
 doc_id: kpi-registry
-doc_version: 1.0.23
+doc_version: 1.0.25
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-15
+last_verified_at: 2026-06-16
 source_repo: binanceBot
 ---
 
@@ -450,7 +450,8 @@ trading behavior.
 | `portfolio_status_unrealized_pnl_pct` | Diagnostic | Aggregate unrealized return on material lot cost basis. | `portfolio_status_unrealized_pnl_usdt / material cost basis * 100` | Same as aggregate unrealized PnL | Django `/portfolio_status` | Telegram operators | percent | Unavailable with incomplete cost basis; zero for an empty material portfolio. | per-position PnL percent | Cost-basis weighted aggregate. |
 | `portfolio_status_best_contributor` | Diagnostic | Material symbol with the highest current unrealized USDT PnL. | `max(symbol unrealized_pnl_usdt)` | Lot-backed symbol cost basis plus projection price | Django `/portfolio_status` | Telegram operators | symbol, USDT, percent | Unavailable when no complete material contributor exists. | realized `pnl_by_symbol` | Current unrealized contribution only. |
 | `portfolio_status_worst_contributor` | Diagnostic | Material symbol with the lowest current unrealized USDT PnL. | `min(symbol unrealized_pnl_usdt)` | Lot-backed symbol cost basis plus projection price | Django `/portfolio_status` | Telegram operators | symbol, USDT, percent | Unavailable when no complete material contributor exists. | realized `pnl_by_symbol` | Current unrealized contribution only. |
-| `portfolio_status_change_24h_7d_30d` | Planned | Historical equity change for compact Telegram review. | Current verified equity minus a verified historical equity snapshot, with percentage over historical equity | Stable snapshot equity payload not yet contractually verified | None | Future `/portfolio_status` and chart helper | USDT and percent | Always unavailable in V1. Missing history must never become zero. | realized PnL; price-only return | Status: `planned`. Requires snapshot payload and freshness semantics before implementation. |
+| `portfolio_status_change_24h_7d_30d` | Diagnostic | Historical equity change for compact Telegram review. | Latest reliable snapshot equity minus the closest reliable historical snapshot inside the horizon tolerance window, with percentage over historical equity. Tolerances are 18-30h for 24h, 6-8d for 7d, and 28-32d for 30d. | Explicit equity/account-value USDT fields in `bot.snapshots.data` | Django `/portfolio_status` | Telegram operators | USDT and percent | Window is unavailable when the latest snapshot is stale, no historical snapshot exists inside the horizon tolerance window, or the snapshot payload is incomplete/non-positive. Missing history never becomes zero, interpolated, or backfilled. | realized PnL; price-only return | Status: `partial`: dashboard consumer implemented, but the canonical bot-side snapshot field/freshness contract still needs formalization. |
+| `portfolio_status_equity_chart_7d_png` | Diagnostic | On-demand mobile chart of portfolio equity over the last seven days. | Render reliable 7-day snapshot equity points as a PNG line chart | Explicit equity/account-value USDT fields in `bot.snapshots.data` | Django `/portfolio_status` chart renderer | Telegram operators; reusable by future transports | PNG bytes | Unavailable when fewer than two usable 7-day points exist or rendering/sending fails; generated images are not persisted. | historical change values | Transport-agnostic chart bytes; Telegram delivery is an adapter concern. |
 
 ## Planned Governance
 
