@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.14
+doc_version: 1.1.15
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-06-16
@@ -8,6 +8,30 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-16 - Portfolio Status Open Value Naming
+
+Type: docs
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+- docs/KPI_REGISTRY.md
+
+Summary:
+- Renamed the internal `/portfolio_status` open-position valuation field to
+  `open_value_usdt`, replacing the previous invested-capital wording.
+- Updated the KPI registry canonical metric to
+  `portfolio_status_open_value_usdt`.
+- Preserved the existing `Open value` Telegram label and valuation formula.
+
+Operator impact:
+- Runtime output, calculations, snapshot history, chart generation, Telegram
+  delivery, SQL queries, and source-of-truth rules are unchanged.
+
+Validation:
+- Focused tests were updated first and failed against the old implementation
+  with the expected missing `open_value_usdt` key before the service rename.
 
 ## 2026-06-16 - Portfolio Status Snapshot Tolerance
 

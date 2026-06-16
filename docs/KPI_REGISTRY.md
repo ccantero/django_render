@@ -1,6 +1,6 @@
 ---
 doc_id: kpi-registry
-doc_version: 1.0.25
+doc_version: 1.0.26
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-06-16
@@ -444,8 +444,8 @@ trading behavior.
 
 | Canonical name | Category | Purpose | Formula | Source of truth | Current producer | Current consumers | Units | Null/unavailable behavior | Do not confuse with | Notes / caveats |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `portfolio_status_equity_usdt` | KPI | Current compact portfolio equity visible in Telegram. | `free_usdt + portfolio_status_invested_usdt` | Healthcheck free USDT plus lot-backed quantities valued with `portfolio.current_price` | Django `/portfolio_status` | Telegram operators | USDT | Unavailable when free USDT or any open-lot current valuation is missing or stale. | audited account equity; Binance total balance | Current projection only. No Binance call is made. |
-| `portfolio_status_invested_usdt` | KPI | Current valued open-lot exposure. | Sum `open lot quantity * portfolio.current_price` for all positive open-lot symbols | `position_lots` quantity plus `portfolio` valuation | Django `/portfolio_status` | Telegram operators | USDT | Unavailable when any open-lot symbol lacks a usable current price or current projection timestamp. | `material_exposure_usdt` in BUY status | Lot-backed quantity rather than portfolio quantity; includes valued dust. Freshness uses the configured healthcheck stale threshold. |
+| `portfolio_status_equity_usdt` | KPI | Current compact portfolio equity visible in Telegram. | `free_usdt + portfolio_status_open_value_usdt` | Healthcheck free USDT plus lot-backed quantities valued with `portfolio.current_price` | Django `/portfolio_status` | Telegram operators | USDT | Unavailable when free USDT or any open-lot current valuation is missing or stale. | audited account equity; Binance total balance | Current projection only. No Binance call is made. |
+| `portfolio_status_open_value_usdt` | KPI | Current valued open-lot exposure. | Sum `open lot quantity * portfolio.current_price` for all positive open-lot symbols | `position_lots` quantity plus `portfolio` valuation | Django `/portfolio_status` | Telegram operators | USDT | Unavailable when any open-lot symbol lacks a usable current price or current projection timestamp. | `material_exposure_usdt` in BUY status | Lot-backed quantity rather than portfolio quantity; includes valued dust. Freshness uses the configured healthcheck stale threshold. |
 | `portfolio_status_unrealized_pnl_usdt` | KPI | Aggregate current unrealized PnL for material open lots. | Sum `current value - lot cost basis` | `position_lots` quantity/entry price plus `portfolio.current_price` | Django `/portfolio_status` | Telegram operators | USDT | Unavailable when any required current price or material lot entry price is missing/non-positive. | realized PnL | Projection valuation, not audited realization. |
 | `portfolio_status_unrealized_pnl_pct` | Diagnostic | Aggregate unrealized return on material lot cost basis. | `portfolio_status_unrealized_pnl_usdt / material cost basis * 100` | Same as aggregate unrealized PnL | Django `/portfolio_status` | Telegram operators | percent | Unavailable with incomplete cost basis; zero for an empty material portfolio. | per-position PnL percent | Cost-basis weighted aggregate. |
 | `portfolio_status_best_contributor` | Diagnostic | Material symbol with the highest current unrealized USDT PnL. | `max(symbol unrealized_pnl_usdt)` | Lot-backed symbol cost basis plus projection price | Django `/portfolio_status` | Telegram operators | symbol, USDT, percent | Unavailable when no complete material contributor exists. | realized `pnl_by_symbol` | Current unrealized contribution only. |

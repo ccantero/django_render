@@ -52,12 +52,12 @@ def build_portfolio_status(
 			"current_value": current_value,
 		})
 
-	invested_usdt = None
+	open_value_usdt = None
 	equity_usdt = None
 	if not unavailable_symbols:
-		invested_usdt = valued_total
+		open_value_usdt = valued_total
 		if free_usdt is not None:
-			equity_usdt = free_usdt + invested_usdt
+			equity_usdt = free_usdt + open_value_usdt
 
 	unrealized_pnl_usdt = None
 	unrealized_pnl_pct = None
@@ -90,7 +90,7 @@ def build_portfolio_status(
 	return {
 		"equity_usdt": equity_usdt,
 		"free_usdt": free_usdt,
-		"invested_usdt": invested_usdt,
+		"open_value_usdt": open_value_usdt,
 		"unrealized_pnl_usdt": unrealized_pnl_usdt,
 		"unrealized_pnl_pct": unrealized_pnl_pct,
 		"realized_today": realized_today,
@@ -110,7 +110,7 @@ def render_portfolio_status(summary):
 		"<b>Total</b>",
 		f"- Equity: <code>{_money(summary.get('equity_usdt'))}</code>",
 		f"- Free USDT: <code>{_money(summary.get('free_usdt'))}</code>",
-		f"- Open value: <code>{_money(summary.get('invested_usdt'))}</code>",
+		f"- Open value: <code>{_money(summary.get('open_value_usdt'))}</code>",
 		"",
 		"<b>PnL</b>",
 		f"- Unrealized: <code>{_pnl(summary.get('unrealized_pnl_usdt'), summary.get('unrealized_pnl_pct'))}</code>",
@@ -351,7 +351,7 @@ def _unavailable_summary(free_usdt, realized_today, equity_history=None):
 	return {
 		"equity_usdt": None,
 		"free_usdt": free_usdt,
-		"invested_usdt": None,
+		"open_value_usdt": None,
 		"unrealized_pnl_usdt": None,
 		"unrealized_pnl_pct": None,
 		"realized_today": realized_today,
