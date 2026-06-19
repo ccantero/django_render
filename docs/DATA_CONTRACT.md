@@ -1,9 +1,9 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.19
+doc_version: 1.0.20
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-16
+last_verified_at: 2026-06-19
 source_repo: binanceBot
 ---
 
@@ -102,7 +102,7 @@ The dashboard currently maps bot-owned tables in `core.trading_models` with `man
 - `bot.trade_operations`
 - `bot.trade_fills`
 - `bot.lot_closures`
-- `bot.snapshots`
+- `bot.portfolio_snapshots`
 - `bot.dust_detections`
 - `bot.sell_decision_events`
 
@@ -654,36 +654,36 @@ Threshold should be configurable. Start with 5–15 minutes depending on bot int
 
 ---
 
-## 3.7 `snapshots`
+## 3.7 `portfolio_snapshots`
 
-Periodic bot state snapshots.
+Periodic portfolio state snapshots.
 
 Dashboard usage:
 
-- Historical state
-- Last known portfolio/bot snapshot
-- Future charts
+- Historical portfolio equity
+- Last known portfolio snapshot
+- `/portfolio_status` change and chart history
 
 Do not depend on this table for critical accounting unless its schema and semantics are verified.
 
 Current dashboard `/portfolio_status` V2 usage is read-only and conservative:
 it may compute historical portfolio changes and a 7-day chart only from
-snapshot `data` fields that explicitly name USDT equity or account value, such
-as `portfolio_equity_usdt`, `equity_usdt`, `total_equity_usdt`,
-`account_equity_usdt`, `account_value_usdt`,
-`total_account_value_usdt`, or nested `portfolio.*` / `summary.*` equivalents.
-Consumers must treat missing, non-positive, stale, or ambiguous payloads as
-unavailable. They must not reconstruct historical equity from current
-`portfolio`, call Binance, mutate rows, or treat missing snapshots as zero.
+`bot.portfolio_snapshots.notes.portfolio_equity_usdt`. This field is the only
+canonical historical equity source for dashboard history. Consumers must treat
+missing, invalid, non-positive, stale, ambiguous, or `open_value_usdt`-only
+payloads as unavailable. They must not reconstruct historical equity from
+current `portfolio`, infer it from open lots, call Binance, mutate rows, or
+treat missing snapshots as zero.
 For current dashboard horizon changes, the historical snapshot must also be
 close to the requested age: 18-30h for 24h, 6-8d for 7d, and 28-32d for 30d.
 Older or too-recent evidence remains unavailable and must not be interpolated,
 estimated, or backfilled.
 
-Smallest recommended bot-side producer: persist periodic `bot.snapshots` rows
-with `created_at` and a canonical `data.portfolio_equity_usdt` decimal string
-representing total portfolio equity in USDT, plus enough freshness/version
-metadata to let consumers detect stale history.
+Smallest recommended bot-side producer: persist periodic
+`bot.portfolio_snapshots` rows with `created_at` and a canonical
+`notes.portfolio_equity_usdt` decimal string representing total portfolio
+equity in USDT, plus enough freshness/version metadata to let consumers detect
+stale history.
 
 ---
 

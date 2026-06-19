@@ -1565,10 +1565,13 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertEqual(mock_post.call_args.kwargs['data']['parse_mode'], 'HTML')
 
     def test_diagnostics_models_are_read_only(self):
-        from core.trading_models import SellDecisionEvent
+        from core.trading_models import SellDecisionEvent, Snapshot
 
         self.assertFalse(SellDecisionEvent._meta.managed)
         self.assertEqual(SellDecisionEvent._meta.db_table, '"bot"."sell_decision_events"')
+        self.assertFalse(Snapshot._meta.managed)
+        self.assertEqual(Snapshot._meta.db_table, '"bot"."portfolio_snapshots"')
+        self.assertIn("notes", {field.name for field in Snapshot._meta.fields})
         with self.assertRaisesMessage(RuntimeError, 'read-only'):
             SellDecisionEvent(symbol='SAGAUSDT', event_name='sell_signal_rejected').save()
 
@@ -4905,9 +4908,19 @@ class TelegramPortfolioStatusTests(TestCase):
         )
 
     def _snapshot(self, created_at, equity):
+        return self._canonical_snapshot(created_at, equity)
+
+    def _canonical_snapshot(self, created_at, equity):
         return SimpleNamespace(
             created_at=created_at,
-            data={"portfolio_equity_usdt": equity},
+            notes={"portfolio_equity_usdt": equity},
+        )
+
+    def _legacy_snapshot(self, created_at, data):
+        return SimpleNamespace(
+            created_at=created_at,
+            data=data,
+            notes={},
         )
 
     def _build(
@@ -4933,11 +4946,11 @@ class TelegramPortfolioStatusTests(TestCase):
             stale_after=stale_after,
         )
 
-    def test_empty_portfolio_reports_free_equity_and_zero_invested(self):
+    def test_empty_portfolio_reports_free_equity_and_zero_open_value(self):
         summary = self._build()
 
         self.assertEqual(summary['equity_usdt'], Decimal('10'))
-        self.assertEqual(summary['invested_usdt'], Decimal('0'))
+        self.assertEqual(summary['open_value_usdt'], Decimal('0'))
         self.assertEqual(summary['unrealized_pnl_usdt'], Decimal('0'))
         self.assertEqual(summary['unrealized_pnl_pct'], Decimal('0'))
         self.assertIsNone(summary['best_contributor'])
@@ -4949,7 +4962,7 @@ class TelegramPortfolioStatusTests(TestCase):
             portfolio=[self._portfolio('DUSTUSDT', '1')],
         )
 
-        self.assertEqual(summary['invested_usdt'], Decimal('1'))
+        self.assertEqual(summary['open_value_usdt'], Decimal('1'))
         self.assertEqual(summary['equity_usdt'], Decimal('11'))
         self.assertEqual(summary['unrealized_pnl_usdt'], Decimal('0'))
         self.assertIsNone(summary['best_contributor'])
@@ -4961,7 +4974,7 @@ class TelegramPortfolioStatusTests(TestCase):
             portfolio=[self._portfolio('BTCUSDT', '6')],
         )
 
-        self.assertEqual(summary['invested_usdt'], Decimal('12'))
+        self.assertEqual(summary['open_value_usdt'], Decimal('12'))
         self.assertEqual(summary['equity_usdt'], Decimal('22'))
         self.assertEqual(summary['unrealized_pnl_usdt'], Decimal('2'))
         self.assertEqual(summary['unrealized_pnl_pct'], Decimal('20'))
@@ -4982,7 +4995,7 @@ class TelegramPortfolioStatusTests(TestCase):
             portfolio=[self._portfolio('BTCUSDT', '6')],
         )
 
-        self.assertEqual(summary['invested_usdt'], Decimal('12'))
+        self.assertEqual(summary['open_value_usdt'], Decimal('12'))
         self.assertIsNone(summary['unrealized_pnl_usdt'])
         self.assertIsNone(summary['unrealized_pnl_pct'])
         self.assertIsNone(summary['best_contributor'])
@@ -4994,7 +5007,7 @@ class TelegramPortfolioStatusTests(TestCase):
             portfolio=[self._portfolio('BTCUSDT', None)],
         )
 
-        self.assertIsNone(summary['invested_usdt'])
+        self.assertIsNone(summary['open_value_usdt'])
         self.assertIsNone(summary['equity_usdt'])
         self.assertIsNone(summary['unrealized_pnl_usdt'])
         self.assertEqual(summary['unavailable_symbols'], ['BTCUSDT'])
@@ -5014,7 +5027,7 @@ class TelegramPortfolioStatusTests(TestCase):
             stale_after=timezone.timedelta(minutes=15),
         )
 
-        self.assertIsNone(summary['invested_usdt'])
+        self.assertIsNone(summary['open_value_usdt'])
         self.assertIsNone(summary['equity_usdt'])
         self.assertEqual(summary['unavailable_symbols'], ['BTCUSDT'])
 
@@ -5059,6 +5072,60 @@ class TelegramPortfolioStatusTests(TestCase):
 
         self.assertEqual(summary['changes']['24h']['amount_usdt'], Decimal('25'))
         self.assertEqual(summary['changes']['24h']['percent'], Decimal('25'))
+
+    def test_historical_change_uses_canonical_snapshot_notes_equity(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._canonical_snapshot(now - timezone.timedelta(hours=25), '100'),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '125'),
+        ])
+        summary = self._build(equity_history=history)
+
+        self.assertEqual(summary['changes']['24h']['amount_usdt'], Decimal('25'))
+        self.assertTrue(summary['chart_available'])
+
+    def test_historical_change_ignores_snapshots_without_canonical_equity(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            SimpleNamespace(created_at=now - timezone.timedelta(hours=25), notes={}),
+            SimpleNamespace(created_at=now - timezone.timedelta(hours=23), notes={'portfolio_equity_usdt': ''}),
+            SimpleNamespace(created_at=now - timezone.timedelta(hours=22), notes={'portfolio_equity_usdt': 'invalid'}),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '125'),
+        ])
+        summary = self._build(equity_history=history)
+
+        self.assertIsNone(summary['changes']['24h'])
+        self.assertFalse(summary['chart_available'])
+
+    def test_historical_change_does_not_use_open_value_as_equity_fallback(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            SimpleNamespace(created_at=now - timezone.timedelta(hours=25), notes={'open_value_usdt': '100'}),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '125'),
+        ])
+        summary = self._build(equity_history=history)
+
+        self.assertIsNone(summary['changes']['24h'])
+        self.assertFalse(summary['chart_available'])
+
+    def test_historical_change_does_not_read_legacy_snapshot_data_equity(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._legacy_snapshot(now - timezone.timedelta(hours=25), {'portfolio_equity_usdt': '100'}),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '125'),
+        ])
+        summary = self._build(equity_history=history)
+
+        self.assertIsNone(summary['changes']['24h'])
+        self.assertFalse(summary['chart_available'])
 
     def test_historical_change_24h_accepts_exact_and_slightly_offset_snapshots(self):
         from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder

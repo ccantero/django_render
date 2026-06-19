@@ -183,7 +183,7 @@ class PortfolioEquityHistoryBuilder:
 			timestamp = getattr(row, "created_at", None)
 			if timestamp is None or timestamp > self.as_of:
 				continue
-			equity = _extract_snapshot_equity(getattr(row, "data", None))
+			equity = _extract_snapshot_equity(getattr(row, "notes", None))
 			if equity is None or equity <= 0:
 				continue
 			points.append({"timestamp": timestamp, "equity_usdt": equity})
@@ -376,37 +376,12 @@ def _history_chart_points(equity_history):
 	return equity_history.get("chart_points") or []
 
 
-def _extract_snapshot_equity(data):
-	if not isinstance(data, dict):
+def _extract_snapshot_equity(notes):
+	if not isinstance(notes, dict):
 		return None
-	# Snapshot rows expose only created_at plus JSON data; accept explicit
-	# USDT equity/account-value fields and leave ambiguous payloads unavailable.
-	paths = [
-		("portfolio_equity_usdt",),
-		("equity_usdt",),
-		("total_equity_usdt",),
-		("account_equity_usdt",),
-		("account_value_usdt",),
-		("total_account_value_usdt",),
-		("total_portfolio_value_usdt",),
-		("portfolio", "equity_usdt"),
-		("portfolio", "total_equity_usdt"),
-		("portfolio", "total_value_usdt"),
-		("portfolio", "account_value_usdt"),
-		("summary", "equity_usdt"),
-		("summary", "total_equity_usdt"),
-	]
-	for path in paths:
-		value = data
-		for key in path:
-			if not isinstance(value, dict):
-				value = None
-				break
-			value = value.get(key)
-		value = _to_decimal(value)
-		if value is not None:
-			return value
-	return None
+	# Canonical historical equity is only
+	# bot.portfolio_snapshots.notes.portfolio_equity_usdt.
+	return _to_decimal(notes.get("portfolio_equity_usdt"))
 
 
 def _money(value):

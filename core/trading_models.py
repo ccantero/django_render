@@ -138,11 +138,11 @@ class LotClosure(ReadOnlyTradingModel):
 
 class Snapshot(ReadOnlyTradingModel):
 	created_at = models.DateTimeField(blank=True, null=True)
-	data = models.JSONField(blank=True, null=True)
+	notes = models.JSONField(blank=True, null=True)
 
 	class Meta:
 		managed = False
-		db_table = '"bot"."snapshots"'
+		db_table = '"bot"."portfolio_snapshots"'
 		app_label = "trading_read"
 
 

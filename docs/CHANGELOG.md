@@ -1,13 +1,56 @@
 ---
 doc_id: changelog
-doc_version: 1.1.15
+doc_version: 1.1.16
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-16
+last_verified_at: 2026-06-19
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-19 - Portfolio Status Canonical Equity Snapshots
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/CHANGELOG.md
+- docs/DATA_CONTRACT.md
+- docs/DESIGN.md
+- docs/KPI_REGISTRY.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Updated `/portfolio_status` history and chart reads to use
+  `bot.portfolio_snapshots.notes.portfolio_equity_usdt` as the only canonical
+  historical equity source.
+- Ignored snapshots without valid positive `portfolio_equity_usdt`, including
+  legacy `data.portfolio_equity_usdt` and `open_value_usdt`-only payloads.
+- Preserved the existing 24h/7d/30d tolerance windows and in-memory Telegram
+  chart rendering; no backfill, Binance calls, or bot-owned writes were added.
+
+Operator impact:
+- 24h change becomes available once production has a valid canonical snapshot
+  inside the 18-30h window and a fresh latest canonical snapshot.
+- 7d/30d remain unavailable until enough canonical history exists.
+- Chart rendering becomes available with at least two valid canonical 7-day
+  points.
+
+Validation:
+- Added focused failing tests first for canonical `notes.portfolio_equity_usdt`,
+  missing/invalid canonical equity, legacy `data` rejection,
+  `open_value_usdt` rejection, 24h availability, chart availability, and 7d/30d
+  insufficient-history behavior.
+- Focused Telegram Portfolio Status tests passed.
+- `core/tests.py` passed.
+
+Known follow-up:
+- Verify and synchronize the paired bot repository `docs/DATA_CONTRACT.md` and
+  `docs/KPI_REGISTRY.md` copies when that repository is available.
 
 ## 2026-06-16 - Portfolio Status Open Value Naming
 

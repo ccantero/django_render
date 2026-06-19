@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.10
+doc_version: 1.1.11
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-16
+last_verified_at: 2026-06-19
 source_repo: django_render
 ---
 
@@ -241,18 +241,20 @@ contributors unavailable while current valuation may remain usable.
 Best and worst contributors are ranked by unrealized USDT PnL among material
 positions with complete quantity, cost-basis, and current-price data. Realized
 today uses the same UTC operation-timestamp rule as `/buy_status` and Analytics.
-The 24h/7d/30d fields use persisted `bot.snapshots` only when `data` exposes an
-explicit equity/account-value USDT field and the latest usable snapshot is
-fresh enough for comparison. Historical comparison points must also be close to
-the requested horizon: 24h accepts 18-30h old snapshots, 7d accepts 6-8d old
+The 24h/7d/30d fields use persisted `bot.portfolio_snapshots` only when
+`notes.portfolio_equity_usdt` is a valid positive decimal and the latest usable
+snapshot is fresh enough for comparison. `portfolio_equity_usdt` is the only
+canonical historical equity source; `open_value_usdt` and other snapshot fields
+are not fallbacks. Historical comparison points must also be close to the
+requested horizon: 24h accepts 18-30h old snapshots, 7d accepts 6-8d old
 snapshots, and 30d accepts 28-32d old snapshots. Each missing, incomplete, too
 recent, or too old window remains `unavailable`; missing history is never
 converted to zero, interpolated, or backfilled. A transport-agnostic chart
 renderer generates the initial 7-day equity PNG on demand from in-memory
-snapshot points. Telegram sends that PNG as a photo with the text summary as
-caption when possible, falls back to text if image sending fails, and sends text
-only with `Chart: unavailable, not enough history` when fewer than two usable
-7-day points exist.
+canonical snapshot points. Telegram sends that PNG as a photo with the text
+summary as caption when possible, falls back to text if image sending fails, and
+sends text only with `Chart: unavailable, not enough history` when fewer than
+two usable 7-day points exist.
 
 When the latest bot healthcheck carries persisted reconciliation
 `inventory_warnings`, `/buy_status` may add a compact operator-facing section
