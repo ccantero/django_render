@@ -7,6 +7,7 @@ from html import escape
 
 
 MATERIAL_MIN_NOTIONAL_USDT = Decimal("5")
+CANONICAL_SNAPSHOT_SOURCE = "bot_cycle"
 
 
 def build_portfolio_status(
@@ -182,6 +183,8 @@ class PortfolioEquityHistoryBuilder:
 		for row in snapshot_rows or []:
 			timestamp = getattr(row, "created_at", None)
 			if timestamp is None or timestamp > self.as_of:
+				continue
+			if getattr(row, "source", None) != CANONICAL_SNAPSHOT_SOURCE:
 				continue
 			equity = _extract_snapshot_equity(getattr(row, "notes", None))
 			if equity is None or equity <= 0:

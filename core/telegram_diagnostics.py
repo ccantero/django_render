@@ -368,7 +368,11 @@ def format_portfolio_status():
 	try:
 		snapshot_rows = list(
 			Snapshot.objects
-			.filter(created_at__gte=now - timedelta(days=35), created_at__lte=now)
+			.filter(
+				source="bot_cycle",
+				created_at__gte=now - timedelta(days=35),
+				created_at__lte=now,
+			)
 			.order_by("created_at", "id")
 		)
 		equity_history = PortfolioEquityHistoryBuilder(as_of=now).build(snapshot_rows)

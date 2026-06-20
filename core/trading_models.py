@@ -137,6 +137,7 @@ class LotClosure(ReadOnlyTradingModel):
 
 
 class Snapshot(ReadOnlyTradingModel):
+	source = models.CharField(max_length=64, blank=True, null=True)
 	created_at = models.DateTimeField(blank=True, null=True)
 	notes = models.JSONField(blank=True, null=True)
 

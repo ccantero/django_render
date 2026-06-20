@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.4
+doc_version: 1.1.5
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-19
+last_verified_at: 2026-06-20
 source_repo: django_render
 ---
 
@@ -122,7 +122,7 @@ Browser dashboard pages -> django_render.urls -> dashboard.urls -> dashboard.vie
 Browser core pages/bot controls -> django_render.urls -> core.urls -> core.views
 External keepalive cron -> /health/ -> core.views.health -> JSON liveness response
 Telegram diagnostics -> /telegramapi/listener/ -> allowlist check -> read-only bot table queries -> Telegram HTML response
-Telegram portfolio chart -> read-only `bot.portfolio_snapshots.notes.portfolio_equity_usdt` -> transport-agnostic PNG bytes -> Telegram photo or text fallback
+Telegram portfolio chart -> read-only `bot.portfolio_snapshots` rows with `source = "bot_cycle"` and `notes.portfolio_equity_usdt` -> transport-agnostic PNG bytes -> Telegram photo or text fallback
 API client -> django_render.urls -> currencyconverter/profile routers -> DRF viewsets -> serializers/models
 Swagger UI -> /api/docs -> drf-spectacular schema at /api/schema
 Telegram -> /telegramapi/listener/ -> token check -> TelegramMessage row and optional Telegram response

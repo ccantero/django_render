@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.3
+doc_version: 1.1.4
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-19
+last_verified_at: 2026-06-20
 source_repo: django_render
 ---
 
@@ -86,10 +86,10 @@ Additional pending visibility work:
   BUY capacity visibility from healthcheck position classification data.
 - Telegram diagnostics use compact Decimal-safe display formatting for prices,
   quantities, percentages, USDT values, and drift values.
-- `/portfolio_status` reads canonical
+- `/portfolio_status` reads canonical `source = "bot_cycle"`
   `bot.portfolio_snapshots.notes.portfolio_equity_usdt` values for 24h/7d/30d
   change values and sends an in-memory 7-day PNG equity chart through Telegram
-  when enough canonical history exists.
+  when enough canonical bot-cycle history exists.
 - Manual correction request creation is staff/superuser-only.
 - Manual correction request form is POST and CSRF protected.
 - Dashboard does not apply manual corrections or mutate bot accounting tables directly.
@@ -150,7 +150,7 @@ Additional pending visibility work:
     and labels are stabilized in the shared contract or bot-produced reports.
 19. Add time-based exit dry-run visibility only after the bot owns the dry-run
     decision output and Django can render it without executing exits.
-20. Verify the paired bot repository documents
+20. Verify the paired bot repository documents `source = "bot_cycle"` plus
     `bot.portfolio_snapshots.notes.portfolio_equity_usdt` as the canonical
     dashboard equity-history source and keep the dashboard copy synchronized.
 

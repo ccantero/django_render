@@ -4913,6 +4913,14 @@ class TelegramPortfolioStatusTests(TestCase):
     def _canonical_snapshot(self, created_at, equity):
         return SimpleNamespace(
             created_at=created_at,
+            source="bot_cycle",
+            notes={"portfolio_equity_usdt": equity},
+        )
+
+    def _snapshot_with_source(self, created_at, equity, source):
+        return SimpleNamespace(
+            created_at=created_at,
+            source=source,
             notes={"portfolio_equity_usdt": equity},
         )
 
@@ -5086,6 +5094,50 @@ class TelegramPortfolioStatusTests(TestCase):
         self.assertEqual(summary['changes']['24h']['amount_usdt'], Decimal('25'))
         self.assertTrue(summary['chart_available'])
 
+    def test_historical_change_uses_only_bot_cycle_source(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._snapshot_with_source(
+                now - timezone.timedelta(hours=25),
+                '1000',
+                'portfolio_sync_from_api',
+            ),
+            self._canonical_snapshot(now - timezone.timedelta(hours=25), '100'),
+            self._snapshot_with_source(
+                now - timezone.timedelta(minutes=5),
+                '9999',
+                'portfolio_sync_from_api',
+            ),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '125'),
+        ])
+        summary = self._build(equity_history=history)
+
+        self.assertEqual(summary['changes']['24h']['amount_usdt'], Decimal('25'))
+        self.assertEqual(summary['changes']['24h']['percent'], Decimal('25'))
+
+    def test_historical_change_ignores_api_sync_source_even_with_canonical_equity(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._snapshot_with_source(
+                now - timezone.timedelta(hours=25),
+                '100',
+                'portfolio_sync_from_api',
+            ),
+            self._snapshot_with_source(
+                now - timezone.timedelta(minutes=5),
+                '125',
+                'portfolio_sync_from_api',
+            ),
+        ])
+        summary = self._build(equity_history=history)
+
+        self.assertIsNone(summary['changes']['24h'])
+        self.assertFalse(summary['chart_available'])
+
     def test_historical_change_ignores_snapshots_without_canonical_equity(self):
         from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
 
@@ -5100,6 +5152,19 @@ class TelegramPortfolioStatusTests(TestCase):
 
         self.assertIsNone(summary['changes']['24h'])
         self.assertFalse(summary['chart_available'])
+
+    def test_historical_change_24h_available_from_valid_bot_cycle_history(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._canonical_snapshot(now - timezone.timedelta(hours=24), '100'),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '120'),
+        ])
+        summary = self._build(equity_history=history)
+
+        self.assertEqual(summary['changes']['24h']['amount_usdt'], Decimal('20'))
+        self.assertTrue(summary['chart_available'])
 
     def test_historical_change_does_not_use_open_value_as_equity_fallback(self):
         from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
@@ -5293,6 +5358,27 @@ class TelegramPortfolioStatusTests(TestCase):
         self.assertIsNotNone(summary_24h_only['changes']['24h'])
         self.assertIsNone(summary_24h_only['changes']['7d'])
         self.assertTrue(summary_24h_only['chart_available'])
+
+    def test_chart_points_do_not_mix_incompatible_snapshot_sources(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._canonical_snapshot(now - timezone.timedelta(days=1), '100'),
+            self._snapshot_with_source(
+                now - timezone.timedelta(hours=12),
+                '10000',
+                'portfolio_sync_from_api',
+            ),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '120'),
+        ])
+        summary = self._build(equity_history=history)
+
+        self.assertTrue(summary['chart_available'])
+        self.assertEqual(
+            [point['equity_usdt'] for point in summary['chart_points']],
+            [Decimal('100'), Decimal('120')],
+        )
 
     def test_chart_renderer_returns_valid_png_bytes(self):
         from dashboard.services.telegram_portfolio_status import PortfolioEquityChartRenderer

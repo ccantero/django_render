@@ -1,13 +1,57 @@
 ---
 doc_id: changelog
-doc_version: 1.1.16
+doc_version: 1.1.17
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-19
+last_verified_at: 2026-06-20
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-20 - Portfolio Status Bot-Cycle History
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/CHANGELOG.md
+- docs/DATA_CONTRACT.md
+- docs/DESIGN.md
+- docs/KPI_REGISTRY.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Updated `/portfolio_status` historical change and chart reads to use only
+  `bot.portfolio_snapshots` rows with `source = "bot_cycle"` and valid
+  `notes.portfolio_equity_usdt`.
+- Preserved rejection of missing/invalid canonical equity and
+  `open_value_usdt` fallback behavior.
+- Added the read-only Django model mapping for the existing
+  `portfolio_snapshots.source` column; no migration or bot-owned write path was
+  introduced.
+
+Operator impact:
+- Legacy or API-sync snapshots with `source = "portfolio_sync_from_api"` no
+  longer influence 24h/7d/30d changes or the Telegram equity chart, preventing
+  mixed-valuation history.
+- Historical windows remain `unavailable` until enough valid bot-cycle
+  snapshots exist in the configured tolerance windows.
+
+Validation:
+- Added focused failing tests first for bot-cycle acceptance, API-sync
+  rejection, missing canonical equity rejection, no `open_value_usdt` fallback,
+  24h availability with sufficient bot-cycle history, and chart source
+  isolation.
+- Focused Telegram Portfolio Status tests passed.
+- `core.tests` passed.
+
+Known follow-up:
+- Verify and synchronize the paired bot repository `docs/DATA_CONTRACT.md` and
+  `docs/KPI_REGISTRY.md` copies when that repository is available.
 
 ## 2026-06-19 - Portfolio Status Canonical Equity Snapshots
 

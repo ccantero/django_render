@@ -1,9 +1,9 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.20
+doc_version: 1.0.21
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-19
+last_verified_at: 2026-06-20
 source_repo: binanceBot
 ---
 
@@ -668,19 +668,23 @@ Do not depend on this table for critical accounting unless its schema and semant
 
 Current dashboard `/portfolio_status` V2 usage is read-only and conservative:
 it may compute historical portfolio changes and a 7-day chart only from
-`bot.portfolio_snapshots.notes.portfolio_equity_usdt`. This field is the only
+`bot.portfolio_snapshots` rows where `source = "bot_cycle"` and
+`notes.portfolio_equity_usdt` is valid. This field on bot-cycle rows is the only
 canonical historical equity source for dashboard history. Consumers must treat
-missing, invalid, non-positive, stale, ambiguous, or `open_value_usdt`-only
-payloads as unavailable. They must not reconstruct historical equity from
-current `portfolio`, infer it from open lots, call Binance, mutate rows, or
-treat missing snapshots as zero.
+missing, invalid, non-positive, stale, ambiguous, non-`bot_cycle`, or
+`open_value_usdt`-only payloads as unavailable.
+`source = "portfolio_sync_from_api"` is not valid for dashboard 24h/7d/30d
+history or the chart, even when it contains `notes.portfolio_equity_usdt`.
+Consumers must not reconstruct historical equity from current `portfolio`,
+infer it from open lots, call Binance, mutate rows, or treat missing snapshots
+as zero.
 For current dashboard horizon changes, the historical snapshot must also be
 close to the requested age: 18-30h for 24h, 6-8d for 7d, and 28-32d for 30d.
 Older or too-recent evidence remains unavailable and must not be interpolated,
 estimated, or backfilled.
 
 Smallest recommended bot-side producer: persist periodic
-`bot.portfolio_snapshots` rows with `created_at` and a canonical
+`bot.portfolio_snapshots` rows with `source = "bot_cycle"`, `created_at`, and a canonical
 `notes.portfolio_equity_usdt` decimal string representing total portfolio
 equity in USDT, plus enough freshness/version metadata to let consumers detect
 stale history.

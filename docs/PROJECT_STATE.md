@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.10
+doc_version: 1.1.11
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-19
+last_verified_at: 2026-06-20
 source_repo: django_render
 ---
 
@@ -102,13 +102,16 @@ Implemented capabilities:
   only when required data is complete and current. Missing or stale current
   prices and missing material entry prices remain unavailable rather than
   becoming zero.
-- `/portfolio_status` computes 24h/7d/30d change values only from valid
+- `/portfolio_status` computes 24h/7d/30d change values only from
+  `source = "bot_cycle"` snapshots with valid
   `bot.portfolio_snapshots.notes.portfolio_equity_usdt` values, keeps
   incomplete windows unavailable, and sends an in-memory 7-day PNG equity chart
-  through Telegram when at least two usable 7-day canonical points exist.
+  through Telegram when at least two usable 7-day canonical bot-cycle points
+  exist.
 - Snapshot history uses `portfolio_equity_usdt` as the only historical equity
-  source; missing, invalid, non-positive, or `open_value_usdt`-only snapshots
-  degrade honestly instead of inventing values.
+  source; missing, invalid, non-positive, `portfolio_sync_from_api`, or
+  `open_value_usdt`-only snapshots degrade honestly instead of inventing
+  values.
 - `/buy_status` and the dashboard BUY/Cooldown card render extended persisted
   BUY re-entry cooldown diagnostics from latest healthcheck details, including
   latest SELL operation, symbol, executed timestamp, nullable reason, reason
