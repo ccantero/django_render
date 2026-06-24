@@ -4870,6 +4870,11 @@ class BuyStatusPnlSummaryTests(TestCase):
         mock_closure_manager.filter.assert_called_once_with(
             trade_operation_id__in=operation_ids,
         )
+        for manager in [mock_trade_manager, mock_closure_manager]:
+            manager.create.assert_not_called()
+            manager.bulk_create.assert_not_called()
+            manager.update_or_create.assert_not_called()
+            manager.filter.return_value.update.assert_not_called()
 
     def _matches_query(self, query, values):
         child_results = []
@@ -4938,6 +4943,7 @@ class TelegramPortfolioStatusTests(TestCase):
         portfolio=None,
         free_usdt='10',
         realized_today='0',
+        realized_drivers=None,
         equity_history=None,
         as_of=None,
         stale_after=None,
@@ -4949,6 +4955,7 @@ class TelegramPortfolioStatusTests(TestCase):
             portfolio_rows=portfolio or [],
             free_usdt=None if free_usdt is None else Decimal(free_usdt),
             realized_today=None if realized_today is None else Decimal(realized_today),
+            realized_drivers=realized_drivers,
             equity_history=equity_history,
             as_of=as_of,
             stale_after=stale_after,
@@ -4996,6 +5003,73 @@ class TelegramPortfolioStatusTests(TestCase):
 
         self.assertEqual(summary['unrealized_pnl_usdt'], Decimal('-2.0'))
         self.assertEqual(summary['unrealized_pnl_pct'], Decimal('-20.0'))
+
+    def test_24h_drivers_include_realized_loss_contributor_by_symbol(self):
+        from dashboard.services.telegram_portfolio_status import render_portfolio_status
+
+        summary = self._build(
+            realized_drivers=[
+                {'symbol': 'ETHUSDT', 'pnl_usdt': Decimal('-3.25')},
+                {'symbol': 'BTCUSDT', 'pnl_usdt': Decimal('1.10')},
+            ],
+        )
+
+        message = render_portfolio_status(summary)
+
+        self.assertIn('<b>24h drivers</b>', message)
+        self.assertIn('- Realized: ETHUSDT <code>-3.25 USDT</code>', message)
+
+    def test_24h_drivers_mark_realized_unavailable_when_evidence_is_missing(self):
+        from dashboard.services.telegram_portfolio_status import render_portfolio_status
+
+        summary = self._build(realized_drivers=None)
+
+        message = render_portfolio_status(summary)
+
+        self.assertIn('- Realized: <code>unavailable</code>', message)
+
+    def test_24h_drivers_mark_realized_none_when_query_succeeds_without_contributors(self):
+        from dashboard.services.telegram_portfolio_status import render_portfolio_status
+
+        summary = self._build(realized_drivers=[])
+
+        message = render_portfolio_status(summary)
+
+        self.assertIn('- Realized: <code>none</code>', message)
+        self.assertNotIn('- Realized: <code>unavailable</code>', message)
+
+    def test_24h_drivers_include_current_unrealized_worst_open_contributor(self):
+        from dashboard.services.telegram_portfolio_status import render_portfolio_status
+
+        summary = self._build(
+            lots=[
+                self._lot('BTCUSDT', '2', '5'),
+                self._lot('WLDUSDT', '10', '1'),
+            ],
+            portfolio=[
+                self._portfolio('BTCUSDT', '5.5'),
+                self._portfolio('WLDUSDT', '0.8'),
+            ],
+        )
+
+        message = render_portfolio_status(summary)
+
+        self.assertIn('- Unrealized: WLDUSDT <code>-2.00 USDT</code>', message)
+
+    def test_24h_drivers_mark_unavailable_when_evidence_is_incomplete(self):
+        from dashboard.services.telegram_portfolio_status import render_portfolio_status
+
+        summary = self._build(
+            lots=[self._lot('BTCUSDT', '2', None)],
+            portfolio=[self._portfolio('BTCUSDT', '6')],
+            realized_drivers=None,
+        )
+
+        message = render_portfolio_status(summary)
+
+        self.assertIn('<b>24h drivers</b>', message)
+        self.assertIn('- Realized: <code>unavailable</code>', message)
+        self.assertIn('- Unrealized: <code>unavailable</code>', message)
 
     def test_missing_entry_price_makes_unrealized_and_contributors_unavailable(self):
         summary = self._build(
@@ -5529,6 +5603,9 @@ class TelegramPortfolioStatusTests(TestCase):
 
         self.assertIn('- Equity: <code>22.00 USDT</code>', message)
         self.assertIn('- Open value: <code>12.00 USDT</code>', message)
+        self.assertIn('<b>Change</b>', message)
+        self.assertIn('<b>24h drivers</b>', message)
+        self.assertIn('<b>Top contributors</b>', message)
         self.assertNotIn('- Invested:', message)
         self.assertIn('- Unrealized: <code>+2.00 USDT (+20.00%)</code>', message)
         self.assertIn('- Realized today (UTC): <code>+1.25 USDT</code>', message)
@@ -5583,3 +5660,61 @@ class TelegramPortfolioStatusTests(TestCase):
             manager.bulk_create.assert_not_called()
             manager.update_or_create.assert_not_called()
             manager.filter.return_value.update.assert_not_called()
+
+    @patch('core.telegram_diagnostics.LotClosure.objects')
+    @patch('core.telegram_diagnostics.TradeOperation.objects')
+    def test_realized_today_by_symbol_uses_utc_boundaries_and_operation_timestamp_fallback(
+        self,
+        mock_trade_manager,
+        mock_closure_manager,
+    ):
+        from core.telegram_diagnostics import realized_pnl_by_symbol_for_day
+
+        operation_ids = [101, 102]
+        mock_trade_manager.filter.return_value.values_list.return_value = operation_ids
+        mock_closure_manager.filter.return_value.values.return_value.annotate.return_value.order_by.return_value = [
+            {'symbol': 'ETHUSDT', 'total': Decimal('-3.25')},
+            {'symbol': 'BTCUSDT', 'total': Decimal('1.10')},
+        ]
+
+        result = realized_pnl_by_symbol_for_day(timezone.datetime(2026, 6, 12).date())
+
+        self.assertEqual(result, [
+            {'symbol': 'ETHUSDT', 'pnl_usdt': Decimal('-3.25')},
+            {'symbol': 'BTCUSDT', 'pnl_usdt': Decimal('1.10')},
+        ])
+        query = mock_trade_manager.filter.call_args.args[0]
+        start = timezone.datetime(2026, 6, 12, tzinfo=datetime_timezone.utc)
+        end = timezone.datetime(2026, 6, 13, tzinfo=datetime_timezone.utc)
+        cases = [
+            ({'executed_at': start, 'created_at': start}, True),
+            ({'executed_at': end, 'created_at': start}, False),
+            ({'executed_at': None, 'created_at': start}, True),
+            ({'executed_at': None, 'created_at': end}, False),
+        ]
+        for operation, expected in cases:
+            with self.subTest(operation=operation):
+                self.assertEqual(self._matches_query(query, operation), expected)
+        mock_closure_manager.filter.assert_called_once_with(
+            trade_operation_id__in=operation_ids,
+        )
+
+    def _matches_query(self, query, values):
+        child_results = []
+        for child in query.children:
+            if hasattr(child, 'children'):
+                child_results.append(self._matches_query(child, values))
+                continue
+            lookup, expected = child
+            field, _, operator = lookup.partition('__')
+            actual = values[field]
+            if operator == 'gte':
+                child_results.append(actual is not None and actual >= expected)
+            elif operator == 'lt':
+                child_results.append(actual is not None and actual < expected)
+            elif operator == 'isnull':
+                child_results.append((actual is None) is expected)
+            else:
+                self.fail(f'Unsupported query lookup in test: {lookup}')
+        result = all(child_results) if query.connector == 'AND' else any(child_results)
+        return not result if query.negated else result

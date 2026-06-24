@@ -325,6 +325,7 @@ def format_buy_status():
 
 def format_portfolio_status():
 	realized_today = _safe_realized_pnl_today()
+	realized_drivers = _safe_realized_pnl_by_symbol_today()
 	free_usdt = None
 	now = timezone.now()
 	stale_after = timedelta(
@@ -384,6 +385,7 @@ def format_portfolio_status():
 		portfolio_rows=portfolio_rows,
 		free_usdt=free_usdt,
 		realized_today=realized_today,
+		realized_drivers=realized_drivers,
 		equity_history=equity_history,
 		as_of=now,
 		stale_after=stale_after,
@@ -409,6 +411,15 @@ def _safe_realized_pnl_today():
 		return None
 
 
+def _safe_realized_pnl_by_symbol_today():
+	try:
+		utc_day = timezone.now().astimezone(datetime_timezone.utc).date()
+		return realized_pnl_by_symbol_for_day(utc_day)
+	except DatabaseError:
+		logger.debug("Could not read realized PnL drivers for Telegram portfolio status")
+		return None
+
+
 def realized_pnl_for_day(day):
 	start = datetime.combine(day, time.min, tzinfo=datetime_timezone.utc)
 	end = start + timedelta(days=1)
@@ -428,6 +439,35 @@ def realized_pnl_for_day(day):
 		trade_operation_id__in=operation_ids,
 	).aggregate(total=Sum("realized_pnl"))
 	return result["total"] or Decimal("0")
+
+
+def realized_pnl_by_symbol_for_day(day):
+	start = datetime.combine(day, time.min, tzinfo=datetime_timezone.utc)
+	end = start + timedelta(days=1)
+	operation_ids = (
+		TradeOperation.objects
+		.filter(
+			Q(executed_at__gte=start, executed_at__lt=end)
+			| Q(
+				executed_at__isnull=True,
+				created_at__gte=start,
+				created_at__lt=end,
+			)
+		)
+		.values_list("id", flat=True)
+	)
+	rows = (
+		LotClosure.objects
+		.filter(trade_operation_id__in=operation_ids)
+		.values("symbol")
+		.annotate(total=Sum("realized_pnl"))
+		.order_by("symbol")
+	)
+	return [
+		{"symbol": row["symbol"], "pnl_usdt": row["total"]}
+		for row in rows
+		if row.get("symbol") and row.get("total") is not None
+	]
 
 
 def format_position(symbol):

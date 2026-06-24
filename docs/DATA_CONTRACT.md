@@ -1,6 +1,6 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.21
+doc_version: 1.0.22
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-06-20
@@ -656,7 +656,46 @@ Threshold should be configurable. Start with 5–15 minutes depending on bot int
 
 ## 3.7 `portfolio_snapshots`
 
-Periodic portfolio state snapshots.
+Periodic bot portfolio snapshots. The physical table is
+`bot.portfolio_snapshots`; production deployments should not require
+`bot.snapshots` for Portfolio Status history.
+
+Current physical columns:
+
+- `id`
+- `run_id`
+- `source`
+- `positions_count`
+- `total_quantity`
+- `portfolio`
+- `notes`
+- `created_at`
+
+`portfolio` remains a per-symbol map. Each symbol row may include `symbol`,
+`asset`, `quantity`, `entry_price`, and `current_price`. Consumers must not
+derive account equity from this map because it only represents open-position
+valuation and does not include free USDT.
+
+For canonical Portfolio Status history rows, the bot writes portfolio-level
+equity metadata in `notes` from `source = "bot_cycle"` snapshots:
+
+- `notes.portfolio_equity_usdt`: canonical account equity value for Portfolio
+  Status history, calculated by the bot at snapshot time.
+- `notes.free_usdt`: free USDT observed by the bot at snapshot time.
+- `notes.open_value_usdt`: sum of open-position value from known positive
+  `quantity * current_price` rows at snapshot time.
+
+`portfolio_equity_usdt` must equal `free_usdt + open_value_usdt`. If
+`portfolio_equity_usdt` is absent, non-numeric, non-positive, or invalid, the
+row is unavailable for Portfolio Status equity history. Historical
+per-symbol-only rows remain valid snapshots but unavailable for equity history.
+Consumers must not backfill, invent, or substitute `open_value_usdt` or
+`sum(quantity * current_price)` as account equity.
+
+`source = "portfolio_sync_from_api"` rows are operational sync/diff snapshots.
+They may use a different price freshness path from the final bot-cycle
+snapshot, so they are not canonical Portfolio Status equity-history rows and
+must not be consumed through `notes.portfolio_equity_usdt`.
 
 Dashboard usage:
 
@@ -664,7 +703,8 @@ Dashboard usage:
 - Last known portfolio snapshot
 - `/portfolio_status` change and chart history
 
-Do not depend on this table for critical accounting unless its schema and semantics are verified.
+Do not depend on this table for critical accounting unless its schema and
+semantics are verified.
 
 Current dashboard `/portfolio_status` V2 usage is read-only and conservative:
 it may compute historical portfolio changes and a 7-day chart only from
@@ -684,10 +724,10 @@ Older or too-recent evidence remains unavailable and must not be interpolated,
 estimated, or backfilled.
 
 Smallest recommended bot-side producer: persist periodic
-`bot.portfolio_snapshots` rows with `source = "bot_cycle"`, `created_at`, and a canonical
-`notes.portfolio_equity_usdt` decimal string representing total portfolio
-equity in USDT, plus enough freshness/version metadata to let consumers detect
-stale history.
+`bot.portfolio_snapshots` rows with `source = "bot_cycle"`, `created_at`,
+canonical `notes.portfolio_equity_usdt`, `notes.free_usdt`, and
+`notes.open_value_usdt` decimal strings, plus enough freshness/version metadata
+to let consumers detect stale history.
 
 ---
 

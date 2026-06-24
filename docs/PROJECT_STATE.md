@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.11
+doc_version: 1.1.12
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-20
+last_verified_at: 2026-06-24
 source_repo: django_render
 ---
 
@@ -108,6 +108,10 @@ Implemented capabilities:
   incomplete windows unavailable, and sends an in-memory 7-day PNG equity chart
   through Telegram when at least two usable 7-day canonical bot-cycle points
   exist.
+- `/portfolio_status` now adds compact `24h drivers` lines: realized drivers
+  are grouped by symbol from linked current-UTC-day `lot_closures` and
+  `trade_operations`, while unrealized drivers are current open-lot PnL
+  approximations from `position_lots` plus `portfolio.current_price`.
 - Snapshot history uses `portfolio_equity_usdt` as the only historical equity
   source; missing, invalid, non-positive, `portfolio_sync_from_api`, or
   `open_value_usdt`-only snapshots degrade honestly instead of inventing

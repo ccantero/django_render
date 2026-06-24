@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.4
+doc_version: 1.1.5
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-20
+last_verified_at: 2026-06-23
 source_repo: django_render
 ---
 
@@ -203,3 +203,15 @@ Additional pending visibility work:
   `src/scripts/analyze_symbol_inventory_gap.py`,
   `src/scripts/manual_correction.py`, and
   `src/scripts/sync_portfolio_from_api.py`.
+
+Portfolio Status - 24h Drivers Follow-up
+
+Current implementation selects the contributor with the largest absolute PnL impact.
+
+Potential UX improvement:
+- If 24h portfolio change is negative, surface the most negative contributor.
+- If 24h portfolio change is positive, surface the most positive contributor.
+- Avoid highlighting a large positive contributor when the overall portfolio change is negative (and vice versa).
+
+Status:
+Deferred. Current behavior is acceptable and intentionally simple.

@@ -1,13 +1,99 @@
 ---
 doc_id: changelog
-doc_version: 1.1.17
+doc_version: 1.1.20
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-20
+last_verified_at: 2026-06-24
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-24 - Portfolio Status Driver Empty State
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+- docs/DESIGN.md
+- docs/KPI_REGISTRY.md
+
+Summary:
+- Updated `/portfolio_status` realized 24h driver rendering to distinguish
+  missing evidence from a successful empty contributor result.
+- `realized_drivers is None` still renders `unavailable`; an empty list now
+  renders `none`.
+
+Operator impact:
+- Operators can tell the difference between a read/evidence gap and a clean
+  current UTC-day result with no realized driver to report.
+
+Validation:
+- Added focused failing tests first for `None`, empty list, contributor list,
+  and existing section preservation.
+- Focused Telegram Portfolio Status tests passed.
+
+## 2026-06-24 - Portfolio Status 24h Drivers
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+- docs/DESIGN.md
+- docs/KPI_REGISTRY.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Added a compact `24h drivers` section to Telegram `/portfolio_status`.
+- Realized drivers use read-only `bot.trade_operations` day-window evidence
+  and linked `bot.lot_closures` PnL grouped by symbol.
+- Unrealized drivers use current open-lot PnL from `position_lots` plus
+  `portfolio.current_price` as an approximate current contributor, not exact
+  historical attribution.
+
+Operator impact:
+- Operators can see the main realized and current unrealized symbol driver
+  near the existing 24h portfolio change without Binance calls, trading logic
+  changes, bot-owned writes, or schema changes.
+- Missing or incomplete evidence renders `unavailable` instead of invented
+  attribution.
+
+Validation:
+- Added failing tests first for realized loss driver output, current
+  unrealized worst-driver output, unavailable degradation, existing section
+  preservation, UTC-day realized grouping, and read-only behavior.
+- Focused Telegram Portfolio Status tests passed.
+- `core.tests` passed.
+
+## 2026-06-20 - Data Contract Copy Merge
+
+Type: docs
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- DATA_CONTRACT.md
+- docs/CHANGELOG.md
+- docs/DATA_CONTRACT.md
+
+Summary:
+- Merged the root and `docs/` data-contract copies so both carry the same
+  `portfolio_snapshots` contract text.
+- Preserved bot-side physical-column and canonical metadata notes while keeping
+  the current dashboard rule that Portfolio Status history reads only
+  `source = "bot_cycle"` rows with valid `notes.portfolio_equity_usdt`.
+- Removed stale paired-dashboard follow-up wording because the inspected Django
+  reader already filters `bot_cycle` snapshots and avoids open-value fallback.
+
+Operator impact:
+- No runtime behavior, schema, logging, Telegram, dashboard output, or trading
+  behavior changed.
+
+Validation:
+- Compared both contract copies before the merge.
+- Inspected current `Snapshot` mapping and Portfolio Status snapshot reader for
+  consistency with the merged wording.
 
 ## 2026-06-20 - Portfolio Status Bot-Cycle History
 

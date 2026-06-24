@@ -16,6 +16,7 @@ def build_portfolio_status(
 	portfolio_rows,
 	free_usdt,
 	realized_today,
+	realized_drivers=None,
 	equity_history=None,
 	as_of=None,
 	stale_after=None,
@@ -23,7 +24,7 @@ def build_portfolio_status(
 	free_usdt = _to_decimal(free_usdt)
 	realized_today = _to_decimal(realized_today)
 	if open_lots is None or portfolio_rows is None:
-		return _unavailable_summary(free_usdt, realized_today, equity_history)
+		return _unavailable_summary(free_usdt, realized_today, realized_drivers, equity_history)
 
 	prices = {}
 	for row in portfolio_rows:
@@ -95,6 +96,10 @@ def build_portfolio_status(
 		"unrealized_pnl_usdt": unrealized_pnl_usdt,
 		"unrealized_pnl_pct": unrealized_pnl_pct,
 		"realized_today": realized_today,
+		"drivers_24h": {
+			"realized": _driver_from_rows(realized_drivers),
+			"unrealized": _unrealized_driver(contributors, _history_changes(equity_history).get("24h")),
+		},
 		"changes": _history_changes(equity_history),
 		"chart_points": _history_chart_points(equity_history),
 		"chart_available": bool(_history_chart_points(equity_history)),
@@ -123,6 +128,11 @@ def render_portfolio_status(summary):
 		lines.append(f"- {label}: <code>{_change(summary.get('changes', {}).get(label))}</code>")
 	if not summary.get("chart_available"):
 		lines.append("Chart: unavailable, not enough history")
+
+	drivers = summary.get("drivers_24h") or {}
+	lines.extend(["", "<b>24h drivers</b>"])
+	lines.append(f"- Realized: {_driver(drivers.get('realized'))}")
+	lines.append(f"- Unrealized: {_driver(drivers.get('unrealized'))}")
 
 	lines.extend(["", "<b>Top contributors</b>"])
 	best = summary.get("best_contributor")
@@ -350,7 +360,7 @@ class PortfolioEquityChartRenderer:
 		return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", crc)
 
 
-def _unavailable_summary(free_usdt, realized_today, equity_history=None):
+def _unavailable_summary(free_usdt, realized_today, realized_drivers=None, equity_history=None):
 	return {
 		"equity_usdt": None,
 		"free_usdt": free_usdt,
@@ -358,6 +368,10 @@ def _unavailable_summary(free_usdt, realized_today, equity_history=None):
 		"unrealized_pnl_usdt": None,
 		"unrealized_pnl_pct": None,
 		"realized_today": realized_today,
+		"drivers_24h": {
+			"realized": _driver_from_rows(realized_drivers),
+			"unrealized": None,
+		},
 		"changes": _history_changes(equity_history),
 		"chart_points": _history_chart_points(equity_history),
 		"chart_available": bool(_history_chart_points(equity_history)),
@@ -419,6 +433,47 @@ def _contributor(value):
 		f"<code>{_signed_decimal(value['pnl_usdt'])} USDT "
 		f"({_signed_decimal(value['pnl_pct'])}%)</code>"
 	)
+
+
+def _driver(value):
+	if not value:
+		return "<code>unavailable</code>"
+	if value.get("status") == "none":
+		return "<code>none</code>"
+	return (
+		f"{escape(str(value['symbol']))} "
+		f"<code>{_signed_decimal(value['pnl_usdt'])} USDT</code>"
+	)
+
+
+def _driver_from_rows(rows):
+	if rows is None:
+		return None
+	if not rows:
+		return {"status": "none"}
+	candidates = []
+	for row in rows:
+		symbol = row.get("symbol") if isinstance(row, dict) else getattr(row, "symbol", None)
+		pnl_usdt = row.get("pnl_usdt") if isinstance(row, dict) else getattr(row, "pnl_usdt", None)
+		pnl_usdt = _to_decimal(pnl_usdt)
+		if not symbol or pnl_usdt is None or pnl_usdt == 0:
+			continue
+		candidates.append({"symbol": symbol, "pnl_usdt": pnl_usdt})
+	if not candidates:
+		return {"status": "none"}
+	return max(candidates, key=lambda row: (abs(row["pnl_usdt"]), str(row["symbol"])))
+
+
+def _unrealized_driver(contributors, change_24h):
+	if not contributors:
+		return None
+	if isinstance(change_24h, dict):
+		change_amount = _to_decimal(change_24h.get("amount_usdt"))
+		if change_amount is not None and change_amount < 0:
+			return min(contributors, key=lambda row: row["pnl_usdt"])
+		if change_amount is not None and change_amount > 0:
+			return max(contributors, key=lambda row: row["pnl_usdt"])
+	return max(contributors, key=lambda row: (abs(row["pnl_usdt"]), str(row["symbol"])))
 
 
 def _decimal(value):
