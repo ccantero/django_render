@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.20
+doc_version: 1.1.21
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-06-24
@@ -8,6 +8,37 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-24 - Portfolio Status PnL Context Label
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+- docs/DESIGN.md
+- docs/KPI_REGISTRY.md
+- docs/PROJECT_STATE.md
+- PLAN.md
+
+Summary:
+- Renamed the Telegram `/portfolio_status` section from `24h drivers` to
+  `PnL context`.
+- Preserved the existing `Realized:` and `Unrealized:` lines and their
+  `none` versus `unavailable` behavior.
+- Left historical per-symbol attribution for the snapshot-backed 24h equity
+  delta out of scope as a separate follow-up.
+
+Operator impact:
+- Operators no longer see wording that implies the current UTC-day realized
+  PnL and current unrealized contributor fully explain the 24h snapshot delta.
+
+Validation:
+- Added failing formatter expectations first for the new title, old-title
+  absence, preserved realized/unrealized rows, preserved empty/unavailable
+  states, and Change block separation.
+- Focused Telegram Portfolio Status tests passed.
+- `core.tests` passed.
 
 ## 2026-06-24 - Portfolio Status Driver Empty State
 

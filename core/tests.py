@@ -5004,7 +5004,7 @@ class TelegramPortfolioStatusTests(TestCase):
         self.assertEqual(summary['unrealized_pnl_usdt'], Decimal('-2.0'))
         self.assertEqual(summary['unrealized_pnl_pct'], Decimal('-20.0'))
 
-    def test_24h_drivers_include_realized_loss_contributor_by_symbol(self):
+    def test_pnl_context_includes_realized_loss_contributor_by_symbol(self):
         from dashboard.services.telegram_portfolio_status import render_portfolio_status
 
         summary = self._build(
@@ -5016,29 +5016,32 @@ class TelegramPortfolioStatusTests(TestCase):
 
         message = render_portfolio_status(summary)
 
-        self.assertIn('<b>24h drivers</b>', message)
+        self.assertIn('<b>PnL context</b>', message)
+        self.assertNotIn('<b>24h drivers</b>', message)
         self.assertIn('- Realized: ETHUSDT <code>-3.25 USDT</code>', message)
 
-    def test_24h_drivers_mark_realized_unavailable_when_evidence_is_missing(self):
+    def test_pnl_context_marks_realized_unavailable_when_evidence_is_missing(self):
         from dashboard.services.telegram_portfolio_status import render_portfolio_status
 
         summary = self._build(realized_drivers=None)
 
         message = render_portfolio_status(summary)
 
+        self.assertIn('<b>PnL context</b>', message)
         self.assertIn('- Realized: <code>unavailable</code>', message)
 
-    def test_24h_drivers_mark_realized_none_when_query_succeeds_without_contributors(self):
+    def test_pnl_context_marks_realized_none_when_query_succeeds_without_contributors(self):
         from dashboard.services.telegram_portfolio_status import render_portfolio_status
 
         summary = self._build(realized_drivers=[])
 
         message = render_portfolio_status(summary)
 
+        self.assertIn('<b>PnL context</b>', message)
         self.assertIn('- Realized: <code>none</code>', message)
         self.assertNotIn('- Realized: <code>unavailable</code>', message)
 
-    def test_24h_drivers_include_current_unrealized_worst_open_contributor(self):
+    def test_pnl_context_includes_current_unrealized_worst_open_contributor(self):
         from dashboard.services.telegram_portfolio_status import render_portfolio_status
 
         summary = self._build(
@@ -5054,9 +5057,10 @@ class TelegramPortfolioStatusTests(TestCase):
 
         message = render_portfolio_status(summary)
 
+        self.assertIn('<b>PnL context</b>', message)
         self.assertIn('- Unrealized: WLDUSDT <code>-2.00 USDT</code>', message)
 
-    def test_24h_drivers_mark_unavailable_when_evidence_is_incomplete(self):
+    def test_pnl_context_marks_unavailable_when_evidence_is_incomplete(self):
         from dashboard.services.telegram_portfolio_status import render_portfolio_status
 
         summary = self._build(
@@ -5067,7 +5071,7 @@ class TelegramPortfolioStatusTests(TestCase):
 
         message = render_portfolio_status(summary)
 
-        self.assertIn('<b>24h drivers</b>', message)
+        self.assertIn('<b>PnL context</b>', message)
         self.assertIn('- Realized: <code>unavailable</code>', message)
         self.assertIn('- Unrealized: <code>unavailable</code>', message)
 
@@ -5604,7 +5608,9 @@ class TelegramPortfolioStatusTests(TestCase):
         self.assertIn('- Equity: <code>22.00 USDT</code>', message)
         self.assertIn('- Open value: <code>12.00 USDT</code>', message)
         self.assertIn('<b>Change</b>', message)
-        self.assertIn('<b>24h drivers</b>', message)
+        self.assertIn('<b>PnL context</b>', message)
+        self.assertLess(message.index('<b>Change</b>'), message.index('<b>PnL context</b>'))
+        self.assertNotIn('<b>24h drivers</b>', message)
         self.assertIn('<b>Top contributors</b>', message)
         self.assertNotIn('- Invested:', message)
         self.assertIn('- Unrealized: <code>+2.00 USDT (+20.00%)</code>', message)

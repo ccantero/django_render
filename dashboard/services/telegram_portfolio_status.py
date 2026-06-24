@@ -130,7 +130,7 @@ def render_portfolio_status(summary):
 		lines.append("Chart: unavailable, not enough history")
 
 	drivers = summary.get("drivers_24h") or {}
-	lines.extend(["", "<b>24h drivers</b>"])
+	lines.extend(["", "<b>PnL context</b>"])
 	lines.append(f"- Realized: {_driver(drivers.get('realized'))}")
 	lines.append(f"- Unrealized: {_driver(drivers.get('unrealized'))}")
 

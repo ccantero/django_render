@@ -1,6 +1,6 @@
 ---
 doc_id: design
-doc_version: 1.1.14
+doc_version: 1.1.15
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-06-24
@@ -241,14 +241,15 @@ contributors unavailable while current valuation may remain usable.
 Best and worst contributors are ranked by unrealized USDT PnL among material
 positions with complete quantity, cost-basis, and current-price data. Realized
 today uses the same UTC operation-timestamp rule as `/buy_status` and Analytics.
-The compact `24h drivers` section appears after Change and before Top
+The compact `PnL context` section appears after Change and before Top
 contributors. Its realized line is grouped by symbol from linked
 `lot_closures` for operations inside the same current UTC-day window. Its
-unrealized line uses the current open-lot contributor as an approximate visible
-driver, not exact historical attribution for the 24h equity move. Missing
-realized breakdown evidence or incomplete current valuation/cost-basis evidence
-renders the corresponding line as `unavailable`; a successful realized-driver
-read with no contributors renders `none`.
+unrealized line uses the current open-lot contributor as visible current
+context. This section is not exact historical attribution for the 24h equity
+move, which can include free-USDT and open-value changes between snapshots.
+Missing realized breakdown evidence or incomplete current valuation/cost-basis
+evidence renders the corresponding line as `unavailable`; a successful
+realized-driver read with no contributors renders `none`.
 The 24h/7d/30d fields use persisted `bot.portfolio_snapshots` only when
 `source = "bot_cycle"`, `notes.portfolio_equity_usdt` is a valid positive
 decimal, and the latest usable snapshot is fresh enough for comparison.
