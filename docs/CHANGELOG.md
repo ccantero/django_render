@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.22
+doc_version: 1.1.23
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-06-25
@@ -8,6 +8,37 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-25 - Codex Task Mode Governance
+
+Type: docs
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- AGENTS.md
+- .codex/hooks/README.md
+- docs/CHANGELOG.md
+
+Summary:
+- Compared the dashboard workflow instructions with the bot project workflow
+  reference.
+- Added explicit `STANDARD`, `INVESTIGATION`, `PLANNING`, and `DOCUMENTATION`
+  task modes to `AGENTS.md`.
+- Preserved `STANDARD` as the required fallback for implementation, mixed
+  tasks, uncertain scope, and protected workflow infrastructure changes.
+- Clarified that hook validation applies to project-state changes and that
+  read-only modes must stop without mutating files.
+
+Operator impact:
+- Future Codex work can use narrower read-only modes for investigations or
+  plans without weakening the protected workflow path for real changes.
+- Protected workflow infrastructure changes still require explicit approval,
+  separate planning, validation, diff summary, and manual review before commit.
+
+Validation:
+- Planned as a protected workflow infrastructure update.
+- Confirmed no application behavior, runtime logging, schema, contract, KPI,
+  or operator-output semantics changed.
 
 ## 2026-06-25 - Portfolio Status Equity Chart Readability
 

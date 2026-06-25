@@ -1,11 +1,142 @@
 # Codex Agent System
 
-This project uses a strict single-agent Codex workflow. The workflow is
-mandatory for every task, and one agent must run each internal phase in order.
+This project uses a strict single-agent Codex workflow. `STANDARD` is the
+mandatory default and safety baseline. Unless a task clearly satisfies every
+condition of a narrower mode below, one agent MUST run Planner → Implementer →
+Tester → Documentator in order before the task is complete.
+
+## Task Mode Selection
+
+Before reading, planning, or changing project files, classify the task into
+exactly one mode and state that mode in the first user-facing update.
+
+### `STANDARD`
+
+This is the default mode and the required fallback. Use it for:
+
+- implementation, bugfixes, refactors, and tests
+- mixed documentation and code changes
+- planning tasks that update repository artifacts
+- any project-state change that does not fully qualify for `DOCUMENTATION`
+- mixed requests that ask both to investigate and to implement or fix
+- any task whose correct mode, scope, or final deliverable is uncertain
+
+`STANDARD` mode uses the complete Planner → Implementer → Tester →
+Documentator workflow and all existing enforcement in this file.
+
+Before selecting any narrower mode, confirm that its full eligibility rules
+are satisfied. If scope expands beyond those rules at any time, stop, state the
+reclassification, complete the `STANDARD` required reading, and restart at the
+Planner phase before making further changes. A narrower mode must never be
+used merely to skip a `STANDARD` phase.
+
+### `INVESTIGATION`
+
+Use it only when the user requests analysis or diagnosis without project
+changes. Typical work includes:
+
+- root-cause analysis and incident review
+- watchdog, audit, reconciliation, SQL, or log review
+- production behavior or performance analysis
+- architecture understanding and code comprehension
+- operational diagnosis
+
+Investigation goals are to establish facts, review evidence, identify
+hypotheses, identify missing evidence, and answer the investigation question.
+
+Required investigation order:
+
+1. State `Task mode: INVESTIGATION`.
+2. Review only documentation relevant to the question.
+3. Review only relevant code paths.
+4. Review the provided or discovered evidence.
+5. Separate verified facts from hypotheses.
+6. State missing evidence explicitly.
+7. Stop after conclusions and optional recommendations.
+
+Forbidden in `INVESTIGATION` mode:
+
+- creating or editing project files
+- patches or implementation
+- test creation or behavior changes
+- documentation, changelog, schema, or roadmap updates
+- commits or other project-state mutation
+
+Expected investigation output:
+
+1. Documents reviewed
+2. Code reviewed
+3. Evidence reviewed
+4. Facts
+5. Hypotheses
+6. Missing evidence
+7. Conclusions
+8. Optional recommendations
+
+If an investigation shows that a change is needed, stop the investigation
+before editing. Reclassify the follow-up as `STANDARD`, then begin the complete
+required reading and Planner phase. Never drift silently from investigation
+into implementation.
+
+### `PLANNING`
+
+Use it only when the user explicitly requests a plan, roadmap, prioritization,
+architecture proposal, technical design, or implementation approach without
+asking for repository changes.
+
+Required planning order:
+
+1. State `Task mode: PLANNING`.
+2. Review documentation relevant to the proposed work.
+3. Review relevant code when project facts are needed.
+4. Separate current verified facts from proposed future changes.
+5. Produce the requested plan, options, tradeoffs, risks, and recommendation.
+6. Stop without changing project state.
+
+Forbidden in `PLANNING` mode:
+
+- creating or editing project files
+- implementation, patches, tests, or schema changes
+- documentation or changelog updates
+- commits or other project-state mutation
+
+If the user asks to persist the plan or begin implementation, reclassify the
+task as `STANDARD` before editing.
+
+### `DOCUMENTATION`
+
+Use it only when the requested deliverable changes documentation or
+documentation-governance files and does not change application behavior,
+tests, runtime configuration, schema, contracts, logs, operator output, hooks,
+skills, templates, or other protected workflow infrastructure.
+
+`DOCUMENTATION` is a specialized full-workflow profile. It MUST run:
+
+1. Planner phase
+2. Implementer phase, limited to documentation edits
+3. Tester phase, using documentation and governance validation
+4. Documentator phase
+
+TDD and a new behavior test are not required when no application behavior
+changes. The Implementer phase must record that fact explicitly. The Tester
+phase must still execute relevant link, reference, version-header, formatting,
+hook, or docs-governance checks.
+
+If documentation work requires or discovers any non-documentation change,
+contract/schema semantic change, operator-output change, or protected workflow
+change, reclassify it as `STANDARD` before continuing.
+
+`AGENTS.md` and files under `.codex/hooks/`, `.codex/lib/`, and
+`.codex/templates/` remain protected workflow infrastructure. Changes to them
+always use `STANDARD`, even when their content is documentation-like.
+
+If the correct mode is uncertain, use `STANDARD`. These modes are internal
+single-agent workflows; they do not authorize sub-agents or delegation.
 
 ## Required Reading Order
 
-Before planning or changing anything, read these files in this order:
+In `STANDARD` and `DOCUMENTATION` modes, before planning or changing anything,
+read these files in this order:
 
 1. `README.md`
 2. `PLAN.md`
@@ -15,17 +146,34 @@ Before planning or changing anything, read these files in this order:
 
 If any file is missing, stop and report failure before making project changes.
 
+In `INVESTIGATION` and `PLANNING` modes, review only the documents directly
+relevant to the question. The full reading list is not required because those
+modes cannot change project state. If either task is reclassified to
+`STANDARD`, complete the full reading list in order before planning or changing
+anything.
+
 ## Mandatory Single-Agent Workflow
 
-The only valid order is:
+In `STANDARD` mode, the only valid order is:
 
 1. Planner phase
 2. Implementer phase
 3. Tester phase
 4. Documentator phase
 
-No phase can be skipped, reordered, merged, delegated to a separate sub-agent,
-or treated as optional. If any phase is missing, stop and report failure.
+No `STANDARD` phase can be skipped, reordered, merged, delegated to a separate
+sub-agent, or treated as optional. If any phase is missing, stop and report
+failure.
+
+`INVESTIGATION` mode follows its read-only order above and does not run
+Implementer, Tester, or Documentator phases because it is forbidden from
+changing project state.
+
+`PLANNING` mode follows its read-only order above and stops after producing the
+plan.
+
+`DOCUMENTATION` mode follows the same four mandatory phases as `STANDARD`, with
+implementation and testing constrained to documentation work.
 
 ## Global Rules
 
@@ -54,6 +202,8 @@ review remains required for protected workflow infrastructure changes.
 
 | Change area | Required route |
 | --- | --- |
+| Read-only root-cause, incident, audit, log, SQL, performance, architecture, or operational analysis | `INVESTIGATION` mode; stop before any project change |
+| Read-only roadmap, prioritization, architecture proposal, technical design, or implementation plan | `PLANNING` mode; stop before any project change |
 | Planning any project task | Planner phase + `.codex/skills/planning.md` |
 | Application behavior, public interface, data handling, settings, or operator-output changes | Implementer phase + `.codex/skills/tdd.md` |
 | Test validation, broader suite selection, logging/schema/docs-governance validation | Tester phase + `.codex/skills/tdd.md` when behavior changed |
@@ -61,7 +211,8 @@ review remains required for protected workflow infrastructure changes.
 | Analytics, KPI, audit reports, dashboard metrics, healthcheck details, Telegram diagnostics, alerts, logs, or CLI output | `.codex/skills/observability_governance.md` + Documentator phase |
 | DB semantics, shared table interpretation, `managed = False` model changes, healthcheck payload semantics, or bot/dashboard read-model assumptions | `.codex/skills/observability_governance.md` for contract/version review + Documentator phase |
 | Trading behavior, BUY/SELL logic, accounting mutation, reconciliation, or safety-sensitive strategy changes | Planner + Implementer + Tester phases, with TDD and strategy/safety review evidence |
-| Docs-only governance changes | Documentator phase; use Planner phase first and Tester phase for hook/docs-governance checks |
+| Documentation-only changes outside protected workflow infrastructure | `DOCUMENTATION` mode with all four phases; use `.codex/skills/documentation.md` and documentation validation |
+| Protected workflow infrastructure changes, including `AGENTS.md` | `STANDARD` mode with a separate plan, explicit approval, diff summary, validation, and manual review |
 
 Current versioned skills:
 
@@ -225,7 +376,8 @@ Rules:
 
 ## Planner Enforcement
 
-The Planner phase must run first and must not write code.
+For `STANDARD` and `DOCUMENTATION` modes, the Planner phase must run first and
+must not write code.
 
 Planner output must include:
 
@@ -252,7 +404,12 @@ If any Planner phase failure occurs, stop and report failure.
 
 ## Implementer Enforcement
 
-The Implementer phase uses TDD hard mode for application behavior changes.
+For `STANDARD` mode, the Implementer phase uses TDD hard mode for application
+behavior changes. In `DOCUMENTATION` mode, the Implementer may edit only
+documentation and must explicitly record that application behavior did not
+change.
+
+The TDD order below applies when application behavior changes:
 
 Required order:
 
@@ -277,7 +434,8 @@ For documentation-only or governance-only changes, the Implementer phase must ex
 
 ## Tester Enforcement
 
-The Tester phase must run after implementation.
+For `STANDARD` and `DOCUMENTATION` modes, the Tester phase must run after
+implementation.
 
 Tester duties:
 
@@ -300,7 +458,8 @@ If any Tester phase failure occurs, stop and report failure.
 
 ## Documentator Enforcement
 
-The Documentator phase must always review:
+For `STANDARD` and `DOCUMENTATION` modes, the Documentator phase must always
+review:
 
 - `README.md`
 - `PLAN.md`
@@ -343,7 +502,7 @@ Before documenting or planning Django changes, inspect:
 
 ## Final Output Contract
 
-Every task must report:
+Every `STANDARD` and `DOCUMENTATION` task must report:
 
 1. Planner output
 2. Tests created and failing proof
@@ -356,3 +515,10 @@ Every task must report:
 9. Pending issues
 
 If any enforcement rule failed, the final output must clearly say `FAILURE` and identify the missing or invalid step.
+
+Every `INVESTIGATION` task must report the investigation output defined under
+Task Mode Selection. It must also confirm that no project files were changed.
+
+Every `PLANNING` task must report the current facts reviewed, options,
+tradeoffs, risks, and recommended plan. It must also confirm that no project
+files were changed.

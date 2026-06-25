@@ -1,6 +1,7 @@
 # Codex Workflow Hooks
 
-Repo-local hooks for the AGENTS.md single-agent workflow:
+Repo-local hooks for the AGENTS.md single-agent workflow. For project-state
+changes, `STANDARD` mode remains the default safety baseline:
 
 1. planner
 2. implementer
@@ -12,6 +13,11 @@ Git state, and an explicit workflow evidence file. They validate phase
 evidence for one agent; they do not spawn, require, or coordinate sub-agents.
 They are guardrails for evidence and consistency, not a substitute for human
 review.
+
+Read-only `INVESTIGATION` and `PLANNING` modes do not create project-state
+changes and therefore have nothing for these commit hooks to validate.
+`DOCUMENTATION` mode still runs the four phases, with implementation and
+testing constrained to documentation work.
 
 ## Scripts
 
