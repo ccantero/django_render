@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.15
+doc_version: 1.1.16
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-24
+last_verified_at: 2026-06-25
 source_repo: django_render
 ---
 
@@ -261,10 +261,15 @@ horizon: 24h accepts 18-30h old snapshots, 7d accepts 6-8d old snapshots, and
 recent, or too old window remains `unavailable`; missing history is never
 converted to zero, interpolated, or backfilled. A transport-agnostic chart
 renderer generates the initial 7-day equity PNG on demand from in-memory
-canonical bot-cycle snapshot points. Telegram sends that PNG as a photo with the text
-summary as caption when possible, falls back to text if image sending fails, and
-sends text only with `Chart: unavailable, not enough history` when fewer than
-two usable 7-day points exist.
+canonical bot-cycle snapshot points. The PNG path uses a display-only visual
+series: 7-day chart points are bucketed to a bounded maximum, the last valid
+point in each time bucket is retained, and points with an absolute jump above
+25% from the previously accepted visual point are excluded from the chart only.
+This visual filtering does not affect the textual 24h/7d/30d change
+calculations. Telegram sends that PNG as a photo with the text summary as
+caption when possible, falls back to text if image sending fails, and sends text
+only with `Chart: unavailable, not enough history` when fewer than two usable
+visual 7-day points remain.
 
 When the latest bot healthcheck carries persisted reconciliation
 `inventory_warnings`, `/buy_status` may add a compact operator-facing section

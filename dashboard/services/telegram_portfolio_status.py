@@ -8,6 +8,20 @@ from html import escape
 
 MATERIAL_MIN_NOTIONAL_USDT = Decimal("5")
 CANONICAL_SNAPSHOT_SOURCE = "bot_cycle"
+DEFAULT_MAX_CHART_POINTS = 96
+DEFAULT_CHART_OUTLIER_THRESHOLD = Decimal("0.25")
+_CHART_FONT = {
+	"E": ["111", "100", "100", "111", "100", "100", "111"],
+	"H": ["101", "101", "101", "111", "101", "101", "101"],
+	"I": ["111", "010", "010", "010", "010", "010", "111"],
+	"O": ["111", "101", "101", "101", "101", "101", "111"],
+	"Q": ["111", "101", "101", "101", "101", "111", "001"],
+	"R": ["110", "101", "101", "110", "101", "101", "101"],
+	"S": ["111", "100", "100", "111", "001", "001", "111"],
+	"T": ["111", "010", "010", "010", "010", "010", "010"],
+	"U": ["101", "101", "101", "101", "101", "101", "111"],
+	"Y": ["101", "101", "101", "010", "010", "010", "010"],
+}
 
 
 def build_portfolio_status(
@@ -184,9 +198,18 @@ class PortfolioEquityHistoryBuilder:
 	}
 	CHART_WINDOW = timedelta(days=7)
 
-	def __init__(self, *, as_of, max_latest_age=timedelta(hours=6)):
+	def __init__(
+		self,
+		*,
+		as_of,
+		max_latest_age=timedelta(hours=6),
+		max_chart_points=DEFAULT_MAX_CHART_POINTS,
+		chart_outlier_threshold=DEFAULT_CHART_OUTLIER_THRESHOLD,
+	):
 		self.as_of = as_of
 		self.max_latest_age = max_latest_age
+		self.max_chart_points = max_chart_points
+		self.chart_outlier_threshold = chart_outlier_threshold
 
 	def build(self, snapshot_rows):
 		points = []
@@ -223,11 +246,13 @@ class PortfolioEquityHistoryBuilder:
 			point for point in points
 			if chart_start <= point["timestamp"] <= self.as_of
 		]
+		chart_points = self._visual_chart_points(chart_points, chart_start)
 		if len(chart_points) < 2:
 			chart_points = []
 		return {
 			"changes": changes,
 			"chart_points": chart_points,
+			"chart_available": bool(chart_points),
 			"latest_point": latest,
 			"usable": True,
 		}
@@ -236,6 +261,7 @@ class PortfolioEquityHistoryBuilder:
 		return {
 			"changes": {"24h": None, "7d": None, "30d": None},
 			"chart_points": [],
+			"chart_available": False,
 			"latest_point": points[-1] if points else None,
 			"usable": False,
 		}
@@ -258,6 +284,48 @@ class PortfolioEquityHistoryBuilder:
 			),
 		)
 
+	def _visual_chart_points(self, points, chart_start):
+		return self._filter_visual_outliers(
+			self._downsample_chart_points(points, chart_start)
+		)
+
+	def _downsample_chart_points(self, points, chart_start):
+		if not points:
+			return []
+		max_points = self.max_chart_points
+		if max_points is None or max_points <= 0 or len(points) <= max_points:
+			return list(points)
+		total_seconds = max((self.as_of - chart_start).total_seconds(), 1)
+		bucket_seconds = total_seconds / max_points
+		buckets = {}
+		for point in points:
+			elapsed = max((point["timestamp"] - chart_start).total_seconds(), 0)
+			bucket_index = min(int(elapsed / bucket_seconds), max_points - 1)
+			buckets[bucket_index] = point
+		return [buckets[index] for index in sorted(buckets)]
+
+	def _filter_visual_outliers(self, points):
+		if not points:
+			return []
+		threshold = self.chart_outlier_threshold
+		if threshold is None or threshold <= 0:
+			return list(points)
+		filtered = []
+		previous = None
+		# Filtering is visual-only and uses the last accepted point as the
+		# comparison baseline so rejected outliers do not influence future chart points.
+		for point in points:
+			equity = _to_decimal(point.get("equity_usdt"))
+			if equity is None or equity <= 0:
+				continue
+			if previous is not None:
+				change_ratio = abs(equity - previous) / previous
+				if change_ratio > threshold:
+					continue
+			filtered.append(point)
+			previous = equity
+		return filtered
+
 
 class PortfolioEquityChartRenderer:
 	def __init__(self, width=720, height=360):
@@ -271,7 +339,7 @@ class PortfolioEquityChartRenderer:
 		height = self.height
 		margin_left = 56
 		margin_right = 24
-		margin_top = 28
+		margin_top = 44
 		margin_bottom = 48
 		pixels = bytearray([255, 255, 255] * width * height)
 		plot_left = margin_left
@@ -279,11 +347,12 @@ class PortfolioEquityChartRenderer:
 		plot_top = margin_top
 		plot_bottom = height - margin_bottom
 
-		self._line(pixels, width, plot_left, plot_bottom, plot_right, plot_bottom, (65, 70, 82))
-		self._line(pixels, width, plot_left, plot_top, plot_left, plot_bottom, (65, 70, 82))
+		self._draw_text(pixels, width, height, 56, 18, "EQUITY HISTORY", (17, 24, 39), scale=2)
+		self._line(pixels, width, plot_left, plot_bottom, plot_right, plot_bottom, (148, 163, 184))
+		self._line(pixels, width, plot_left, plot_top, plot_left, plot_bottom, (148, 163, 184))
 		for idx in range(1, 4):
 			y = plot_top + (plot_bottom - plot_top) * idx // 4
-			self._line(pixels, width, plot_left, y, plot_right, y, (229, 231, 235))
+			self._line(pixels, width, plot_left, y, plot_right, y, (241, 245, 249))
 
 		timestamps = [point["timestamp"] for point in points]
 		values = [_to_decimal(point["equity_usdt"]) for point in points]
@@ -305,8 +374,6 @@ class PortfolioEquityChartRenderer:
 			coords.append((x, y))
 		for left, right in zip(coords, coords[1:]):
 			self._line(pixels, width, left[0], left[1], right[0], right[1], (37, 99, 235), thickness=3)
-		for x, y in coords:
-			self._circle(pixels, width, height, x, y, 4, (29, 78, 216))
 		return self._png_bytes(width, height, pixels)
 
 	def _set_pixel(self, pixels, width, height, x, y, color):
@@ -335,11 +402,31 @@ class PortfolioEquityChartRenderer:
 				err += dx
 				y0 += sy
 
-	def _circle(self, pixels, width, height, cx, cy, radius, color):
-		for y in range(cy - radius, cy + radius + 1):
-			for x in range(cx - radius, cx + radius + 1):
-				if (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2:
-					self._set_pixel(pixels, width, height, x, y, color)
+	def _draw_text(self, pixels, width, height, x, y, text, color, scale=1):
+		cursor = x
+		for char in str(text).upper():
+			if char == " ":
+				cursor += 4 * scale
+				continue
+			glyph = _CHART_FONT.get(char)
+			if glyph is None:
+				cursor += 4 * scale
+				continue
+			for row_index, row in enumerate(glyph):
+				for column_index, bit in enumerate(row):
+					if bit != "1":
+						continue
+					for ox in range(scale):
+						for oy in range(scale):
+							self._set_pixel(
+								pixels,
+								width,
+								height,
+								cursor + column_index * scale + ox,
+								y + row_index * scale + oy,
+								color,
+							)
+			cursor += (len(glyph[0]) + 1) * scale
 
 	def _png_bytes(self, width, height, pixels):
 		raw = bytearray()

@@ -5458,6 +5458,170 @@ class TelegramPortfolioStatusTests(TestCase):
             [Decimal('100'), Decimal('120')],
         )
 
+    def test_chart_points_ignore_snapshots_without_canonical_equity(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._canonical_snapshot(now - timezone.timedelta(days=1), '100'),
+            SimpleNamespace(
+                created_at=now - timezone.timedelta(hours=12),
+                source='bot_cycle',
+                notes={},
+            ),
+            SimpleNamespace(
+                created_at=now - timezone.timedelta(hours=6),
+                source='bot_cycle',
+                notes={'portfolio_equity_usdt': 'invalid'},
+            ),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '120'),
+        ])
+
+        self.assertTrue(history['chart_points'])
+        self.assertEqual(
+            [point['equity_usdt'] for point in history['chart_points']],
+            [Decimal('100'), Decimal('120')],
+        )
+
+    def test_chart_downsampling_caps_dense_history_to_configured_max_points(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        snapshots = [
+            self._canonical_snapshot(
+                now - timezone.timedelta(days=7) + timezone.timedelta(minutes=30 * index),
+                str(100 + index),
+            )
+            for index in range(337)
+        ]
+
+        history = PortfolioEquityHistoryBuilder(as_of=now, max_chart_points=96).build(snapshots)
+
+        self.assertTrue(history['chart_available'])
+        self.assertLessEqual(len(history['chart_points']), 96)
+
+    def test_chart_downsampling_keeps_last_valid_point_per_bucket(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        start = now - timezone.timedelta(days=7)
+        history = PortfolioEquityHistoryBuilder(as_of=now, max_chart_points=2).build([
+            self._canonical_snapshot(start, '100'),
+            self._canonical_snapshot(start + timezone.timedelta(days=1), '101'),
+            self._canonical_snapshot(start + timezone.timedelta(days=2), '102'),
+            self._canonical_snapshot(start + timezone.timedelta(days=5), '105'),
+            self._canonical_snapshot(start + timezone.timedelta(days=6), '106'),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '107'),
+        ])
+
+        self.assertEqual(
+            [point['equity_usdt'] for point in history['chart_points']],
+            [Decimal('102'), Decimal('107')],
+        )
+
+    def test_chart_visual_filter_excludes_outlier_jumps_above_threshold(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._canonical_snapshot(now - timezone.timedelta(days=1), '100'),
+            self._canonical_snapshot(now - timezone.timedelta(hours=12), '200'),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '105'),
+        ])
+
+        self.assertTrue(history['chart_available'])
+        self.assertEqual(
+            [point['equity_usdt'] for point in history['chart_points']],
+            [Decimal('100'), Decimal('105')],
+        )
+
+    def test_chart_visual_filter_ignores_consecutive_outliers(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._canonical_snapshot(now - timezone.timedelta(hours=4), '100'),
+            self._canonical_snapshot(now - timezone.timedelta(hours=3), '200'),
+            self._canonical_snapshot(now - timezone.timedelta(hours=2), '210'),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '105'),
+        ])
+
+        self.assertTrue(history['chart_available'])
+        self.assertEqual(
+            [point['equity_usdt'] for point in history['chart_points']],
+            [Decimal('100'), Decimal('105')],
+        )
+
+    def test_chart_visual_filter_outlier_chain_does_not_poison_future_valid_points(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._canonical_snapshot(now - timezone.timedelta(hours=5), '100'),
+            self._canonical_snapshot(now - timezone.timedelta(hours=4), '200'),
+            self._canonical_snapshot(now - timezone.timedelta(hours=3), '210'),
+            self._canonical_snapshot(now - timezone.timedelta(hours=2), '220'),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '110'),
+        ])
+
+        self.assertTrue(history['chart_available'])
+        self.assertEqual(
+            [point['equity_usdt'] for point in history['chart_points']],
+            [Decimal('100'), Decimal('110')],
+        )
+
+    def test_chart_visual_filter_does_not_affect_textual_change_calculations(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._canonical_snapshot(now - timezone.timedelta(hours=24), '100'),
+            self._canonical_snapshot(now - timezone.timedelta(hours=12), '200'),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '105'),
+        ])
+
+        self.assertEqual(history['changes']['24h']['amount_usdt'], Decimal('5'))
+        self.assertEqual(history['changes']['24h']['percent'], Decimal('5'))
+        self.assertEqual(
+            [point['equity_usdt'] for point in history['chart_points']],
+            [Decimal('100'), Decimal('105')],
+        )
+
+    @patch('core.telegram_diagnostics.PortfolioEquityChartRenderer.render_png')
+    @patch('core.telegram_diagnostics._safe_realized_pnl_by_symbol_today', return_value=[])
+    @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
+    @patch('core.telegram_diagnostics.Snapshot.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    @patch('core.telegram_diagnostics.PositionLot.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_portfolio_status_does_not_attempt_png_when_visual_filter_leaves_one_point(
+        self,
+        mock_health_manager,
+        mock_lot_manager,
+        mock_portfolio_manager,
+        mock_snapshot_manager,
+        _mock_realized_today,
+        _mock_realized_drivers,
+        mock_render_png,
+    ):
+        from core.telegram_diagnostics import format_portfolio_status
+
+        now = timezone.now()
+        mock_health_manager.order_by.return_value.first.return_value = None
+        mock_lot_manager.filter.return_value.order_by.return_value = []
+        mock_snapshot_manager.filter.return_value.order_by.return_value = [
+            self._canonical_snapshot(now - timezone.timedelta(hours=24), '100'),
+            self._canonical_snapshot(now - timezone.timedelta(hours=12), '200'),
+        ]
+
+        with patch('core.telegram_diagnostics.timezone.now', return_value=now):
+            result = format_portfolio_status()
+
+        self.assertIn('Chart: unavailable, not enough history', result['text'])
+        self.assertIsNone(result['photo'])
+        mock_render_png.assert_not_called()
+        mock_portfolio_manager.filter.assert_not_called()
+
     def test_chart_renderer_returns_valid_png_bytes(self):
         from dashboard.services.telegram_portfolio_status import PortfolioEquityChartRenderer
 

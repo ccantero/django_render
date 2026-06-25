@@ -1,13 +1,47 @@
 ---
 doc_id: changelog
-doc_version: 1.1.21
+doc_version: 1.1.22
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-24
+last_verified_at: 2026-06-25
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-25 - Portfolio Status Equity Chart Readability
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Improved the Telegram `/portfolio_status` equity PNG by downsampling the
+  visual 7-day series to a bounded bucketed set of points.
+- Kept the last valid point in each time bucket and excluded chart-only equity
+  jumps above 25% from the previously accepted visual point.
+- Removed visible point markers and added a simple `Equity history` title with
+  softer grid styling.
+
+Operator impact:
+- The Telegram chart should read as a cleaner equity curve on mobile while the
+  Equity, Free USDT, Open value, PnL, Change, PnL context, and Top contributor
+  text values remain unchanged.
+- Snapshot source rules remain unchanged: only `source = "bot_cycle"` rows with
+  valid positive `notes.portfolio_equity_usdt` can feed history, and
+  `open_value_usdt` is still not a fallback.
+
+Validation:
+- Added failing chart tests first for source isolation, missing canonical
+  equity rejection, bucketed max-point downsampling, last-point-per-bucket
+  retention, chart-only outlier filtering, textual change preservation, and
+  skipping PNG rendering when the visual series has fewer than two points.
+- Focused Telegram Portfolio Status tests passed.
+- `core.tests` passed.
 
 ## 2026-06-24 - Portfolio Status PnL Context Label
 

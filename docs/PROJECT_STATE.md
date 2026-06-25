@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.13
+doc_version: 1.1.14
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-24
+last_verified_at: 2026-06-25
 source_repo: django_render
 ---
 
@@ -105,9 +105,8 @@ Implemented capabilities:
 - `/portfolio_status` computes 24h/7d/30d change values only from
   `source = "bot_cycle"` snapshots with valid
   `bot.portfolio_snapshots.notes.portfolio_equity_usdt` values, keeps
-  incomplete windows unavailable, and sends an in-memory 7-day PNG equity chart
-  through Telegram when at least two usable 7-day canonical bot-cycle points
-  exist.
+  incomplete windows unavailable, and can send an in-memory 7-day PNG equity
+  chart through Telegram when at least two usable visual chart points remain.
 - `/portfolio_status` now labels its compact realized/current-unrealized lines
   as `PnL context`: realized context is grouped by symbol from linked
   current-UTC-day `lot_closures` and `trade_operations`, while unrealized
@@ -118,6 +117,11 @@ Implemented capabilities:
   source; missing, invalid, non-positive, `portfolio_sync_from_api`, or
   `open_value_usdt`-only snapshots degrade honestly instead of inventing
   values.
+- `/portfolio_status` equity PNG rendering now uses a display-only 7-day visual
+  series that keeps canonical snapshot rules unchanged, downsamples dense
+  history by time bucket, keeps the last valid point per bucket, excludes
+  visual-only jumps above 25%, and sends no PNG when fewer than two visual
+  points remain.
 - `/buy_status` and the dashboard BUY/Cooldown card render extended persisted
   BUY re-entry cooldown diagnostics from latest healthcheck details, including
   latest SELL operation, symbol, executed timestamp, nullable reason, reason
