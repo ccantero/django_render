@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.7
+doc_version: 1.1.8
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-24
+last_verified_at: 2026-06-26
 source_repo: django_render
 ---
 
@@ -204,34 +204,15 @@ Additional pending visibility work:
   `src/scripts/manual_correction.py`, and
   `src/scripts/sync_portfolio_from_api.py`.
 
-Portfolio Status - PnL Context Follow-up
-
-Current implementation selects the contributor with the largest absolute PnL impact.
-
-Potential UX improvement:
-- Add real historical per-symbol attribution for the snapshot-backed 24h
-  equity delta only after the required bot-owned evidence is available.
-- Keep the current `PnL context` block honest until then: current UTC-day
-  realized PnL and current unrealized contributors are useful context, not a
-  complete explanation of 24h snapshot movement.
+Portfolio Status - Performance Label Cleanup
 
 Status:
-Deferred. Current behavior is acceptable as context and intentionally does not
-claim historical 24h attribution.
+Completed in the Django Telegram formatter. `/portfolio_status` now separates
+snapshot-backed 24h/7d/30d equity movement, current UTC realized closed trades,
+and current open-position unrealized PnL into explicit `Performance`
+subsections. The KPI registry now uses labels aligned to the current operator
+surface instead of the previous context naming.
 
-### Portfolio Status KPI Naming Cleanup
-
-Priority: P3
-
-Context:
-The Telegram `/portfolio_status` section was renamed from `24h drivers` to `PnL context` because the current values are contextual indicators, not a full attribution of the 24h snapshot delta.
-
-Pending:
-- Rename KPI registry entries:
-  - `portfolio_status_24h_realized_driver`
-  - `portfolio_status_24h_unrealized_driver`
-- Replace them with naming aligned to the current UX, for example:
-  - `portfolio_status_realized_pnl_context`
-  - `portfolio_status_unrealized_pnl_context`
-- Preserve semantics and calculations.
-- Documentation-only cleanup unless a shared contract consumer depends on the old names.
+Potential future UX improvement:
+- Add real historical per-symbol attribution for the snapshot-backed 24h
+  equity delta only after the required bot-owned evidence is available.

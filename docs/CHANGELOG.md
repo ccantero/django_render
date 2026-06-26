@@ -1,13 +1,46 @@
 ---
 doc_id: changelog
-doc_version: 1.1.23
+doc_version: 1.1.24
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-25
+last_verified_at: 2026-06-26
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-26 - Portfolio Status Performance Sections
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+- docs/DESIGN.md
+- docs/KPI_REGISTRY.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Reorganized the Telegram `/portfolio_status` text after `Total` into a
+  `Performance` section with `Portfolio equity`, `Today's trading (UTC)`, and
+  `Open positions` subsections.
+- Renamed the realized line from `Realized today (UTC)` to
+  `Realized closed trades` and the current unrealized line from `Unrealized`
+  to `Unrealized now`.
+- Preserved the existing accounting, open-position valuation, snapshot-backed
+  24h/7d/30d equity changes, HTML formatting, and equity PNG chart behavior.
+
+Operator impact:
+- Operators can more easily see that 24h/7d/30d equity movement, current UTC
+  closed-trade realization, and current open-position unrealized PnL are
+  separate windows/snapshots and should not be summed.
+
+Validation:
+- Added failing formatter expectations first for the new `Performance`
+  structure, replacement labels, old-label absence, 24h/7d/30d retention, and
+  unavailable-state rendering.
+- Focused Telegram Portfolio Status tests passed.
+- `core.tests` passed.
 
 ## 2026-06-25 - Codex Task Mode Governance
 

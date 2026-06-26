@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.16
+doc_version: 1.1.17
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-25
+last_verified_at: 2026-06-26
 source_repo: django_render
 ---
 
@@ -241,15 +241,17 @@ contributors unavailable while current valuation may remain usable.
 Best and worst contributors are ranked by unrealized USDT PnL among material
 positions with complete quantity, cost-basis, and current-price data. Realized
 today uses the same UTC operation-timestamp rule as `/buy_status` and Analytics.
-The compact `PnL context` section appears after Change and before Top
-contributors. Its realized line is grouped by symbol from linked
-`lot_closures` for operations inside the same current UTC-day window. Its
-unrealized line uses the current open-lot contributor as visible current
-context. This section is not exact historical attribution for the 24h equity
-move, which can include free-USDT and open-value changes between snapshots.
-Missing realized breakdown evidence or incomplete current valuation/cost-basis
-evidence renders the corresponding line as `unavailable`; a successful
-realized-driver read with no contributors renders `none`.
+After the unchanged `Total` block, `/portfolio_status` renders a compact
+`Performance` section. `Portfolio equity` contains the snapshot-backed
+24h/7d/30d equity changes. `Today's trading (UTC)` contains `Realized closed
+trades`, using the same current UTC calendar-day closed-trade realization
+source that previously appeared as `Realized today (UTC)`. `Open positions`
+contains `Unrealized now`, using the same current open-lot unrealized PnL value
+that previously appeared as `Unrealized`. The labels intentionally avoid
+implying that current UTC realized PnL or current unrealized PnL explains the
+snapshot-backed 24h equity move, which can include free-USDT and open-value
+changes between snapshots. Missing current valuation/cost-basis evidence still
+renders the current open-position line as `unavailable`.
 The 24h/7d/30d fields use persisted `bot.portfolio_snapshots` only when
 `source = "bot_cycle"`, `notes.portfolio_equity_usdt` is a valid positive
 decimal, and the latest usable snapshot is fresh enough for comparison.

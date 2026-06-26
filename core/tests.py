@@ -5004,76 +5004,62 @@ class TelegramPortfolioStatusTests(TestCase):
         self.assertEqual(summary['unrealized_pnl_usdt'], Decimal('-2.0'))
         self.assertEqual(summary['unrealized_pnl_pct'], Decimal('-20.0'))
 
-    def test_pnl_context_includes_realized_loss_contributor_by_symbol(self):
+    def test_portfolio_status_renders_explicit_performance_sections(self):
         from dashboard.services.telegram_portfolio_status import render_portfolio_status
 
         summary = self._build(
-            realized_drivers=[
-                {'symbol': 'ETHUSDT', 'pnl_usdt': Decimal('-3.25')},
-                {'symbol': 'BTCUSDT', 'pnl_usdt': Decimal('1.10')},
-            ],
+            lots=[self._lot('BTCUSDT', '2', '5')],
+            portfolio=[self._portfolio('BTCUSDT', '6')],
+            realized_today='1.25',
         )
 
         message = render_portfolio_status(summary)
 
-        self.assertIn('<b>PnL context</b>', message)
+        self.assertIn('<b>Performance</b>', message)
+        self.assertIn('<b>Portfolio equity</b>', message)
+        self.assertIn('<b>Today&#x27;s trading (UTC)</b>', message)
+        self.assertIn('<b>Open positions</b>', message)
+        self.assertLess(message.index('<b>Performance</b>'), message.index('<b>Portfolio equity</b>'))
+        self.assertLess(message.index('<b>Portfolio equity</b>'), message.index('<b>Today&#x27;s trading (UTC)</b>'))
+        self.assertLess(message.index('<b>Today&#x27;s trading (UTC)</b>'), message.index('<b>Open positions</b>'))
+        self.assertLess(message.index('<b>Open positions</b>'), message.index('<b>Top contributors</b>'))
+        self.assertIn('- 24h: <code>unavailable</code>', message)
+        self.assertIn('- 7d: <code>unavailable</code>', message)
+        self.assertIn('- 30d: <code>unavailable</code>', message)
+        self.assertIn('- Realized PnL: <code>+1.25 USDT</code>', message)
+        self.assertIn('- Unrealized now: <code>+2.00 USDT (+20.00%)</code>', message)
+        self.assertNotIn('<b>PnL</b>', message)
+        self.assertNotIn('<b>Change</b>', message)
+        self.assertNotIn('<b>PnL context</b>', message)
         self.assertNotIn('<b>24h drivers</b>', message)
-        self.assertIn('- Realized: ETHUSDT <code>-3.25 USDT</code>', message)
+        self.assertNotIn('Realized today (UTC)', message)
+        self.assertNotIn('- Unrealized: <code>', message)
 
-    def test_pnl_context_marks_realized_unavailable_when_evidence_is_missing(self):
-        from dashboard.services.telegram_portfolio_status import render_portfolio_status
-
-        summary = self._build(realized_drivers=None)
-
-        message = render_portfolio_status(summary)
-
-        self.assertIn('<b>PnL context</b>', message)
-        self.assertIn('- Realized: <code>unavailable</code>', message)
-
-    def test_pnl_context_marks_realized_none_when_query_succeeds_without_contributors(self):
-        from dashboard.services.telegram_portfolio_status import render_portfolio_status
-
-        summary = self._build(realized_drivers=[])
-
-        message = render_portfolio_status(summary)
-
-        self.assertIn('<b>PnL context</b>', message)
-        self.assertIn('- Realized: <code>none</code>', message)
-        self.assertNotIn('- Realized: <code>unavailable</code>', message)
-
-    def test_pnl_context_includes_current_unrealized_worst_open_contributor(self):
-        from dashboard.services.telegram_portfolio_status import render_portfolio_status
-
-        summary = self._build(
-            lots=[
-                self._lot('BTCUSDT', '2', '5'),
-                self._lot('WLDUSDT', '10', '1'),
-            ],
-            portfolio=[
-                self._portfolio('BTCUSDT', '5.5'),
-                self._portfolio('WLDUSDT', '0.8'),
-            ],
-        )
-
-        message = render_portfolio_status(summary)
-
-        self.assertIn('<b>PnL context</b>', message)
-        self.assertIn('- Unrealized: WLDUSDT <code>-2.00 USDT</code>', message)
-
-    def test_pnl_context_marks_unavailable_when_evidence_is_incomplete(self):
+    def test_portfolio_status_performance_keeps_unavailable_values(self):
         from dashboard.services.telegram_portfolio_status import render_portfolio_status
 
         summary = self._build(
             lots=[self._lot('BTCUSDT', '2', None)],
             portfolio=[self._portfolio('BTCUSDT', '6')],
-            realized_drivers=None,
+            free_usdt=None,
+            realized_today=None,
         )
 
         message = render_portfolio_status(summary)
 
-        self.assertIn('<b>PnL context</b>', message)
-        self.assertIn('- Realized: <code>unavailable</code>', message)
-        self.assertIn('- Unrealized: <code>unavailable</code>', message)
+        self.assertIn('- Equity: <code>unavailable</code>', message)
+        self.assertIn('- Realized PnL: <code>unavailable</code>', message)
+        self.assertIn('- Unrealized now: <code>unavailable</code>', message)
+
+    def test_portfolio_status_performance_keeps_unavailable_for_empty_contributors(self):
+        from dashboard.services.telegram_portfolio_status import render_portfolio_status
+
+        summary = self._build()
+
+        message = render_portfolio_status(summary)
+
+        self.assertIn('- Best: <code>unavailable</code>', message)
+        self.assertIn('- Worst: <code>unavailable</code>', message)
 
     def test_missing_entry_price_makes_unrealized_and_contributors_unavailable(self):
         summary = self._build(
@@ -5771,14 +5757,20 @@ class TelegramPortfolioStatusTests(TestCase):
 
         self.assertIn('- Equity: <code>22.00 USDT</code>', message)
         self.assertIn('- Open value: <code>12.00 USDT</code>', message)
-        self.assertIn('<b>Change</b>', message)
-        self.assertIn('<b>PnL context</b>', message)
-        self.assertLess(message.index('<b>Change</b>'), message.index('<b>PnL context</b>'))
+        self.assertIn('<b>Performance</b>', message)
+        self.assertIn('<b>Portfolio equity</b>', message)
+        self.assertIn('<b>Today&#x27;s trading (UTC)</b>', message)
+        self.assertIn('<b>Open positions</b>', message)
+        self.assertLess(message.index('<b>Portfolio equity</b>'), message.index('<b>Today&#x27;s trading (UTC)</b>'))
+        self.assertLess(message.index('<b>Today&#x27;s trading (UTC)</b>'), message.index('<b>Open positions</b>'))
+        self.assertNotIn('<b>Change</b>', message)
+        self.assertNotIn('<b>PnL context</b>', message)
         self.assertNotIn('<b>24h drivers</b>', message)
         self.assertIn('<b>Top contributors</b>', message)
         self.assertNotIn('- Invested:', message)
-        self.assertIn('- Unrealized: <code>+2.00 USDT (+20.00%)</code>', message)
-        self.assertIn('- Realized today (UTC): <code>+1.25 USDT</code>', message)
+        self.assertIn('- Unrealized now: <code>+2.00 USDT (+20.00%)</code>', message)
+        self.assertIn('- Realized PnL: <code>+1.25 USDT</code>', message)
+        self.assertNotIn('Realized today (UTC)', message)
 
     @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
     @patch('core.telegram_diagnostics.Portfolio.objects')

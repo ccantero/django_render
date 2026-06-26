@@ -132,21 +132,23 @@ def render_portfolio_status(summary):
 		f"- Free USDT: <code>{_money(summary.get('free_usdt'))}</code>",
 		f"- Open value: <code>{_money(summary.get('open_value_usdt'))}</code>",
 		"",
-		"<b>PnL</b>",
-		f"- Unrealized: <code>{_pnl(summary.get('unrealized_pnl_usdt'), summary.get('unrealized_pnl_pct'))}</code>",
-		f"- Realized today (UTC): <code>{_signed_money(summary.get('realized_today'))}</code>",
+		"<b>Performance</b>",
 		"",
-		"<b>Change</b>",
+		"<b>Portfolio equity</b>",
 	]
 	for label in ("24h", "7d", "30d"):
 		lines.append(f"- {label}: <code>{_change(summary.get('changes', {}).get(label))}</code>")
 	if not summary.get("chart_available"):
 		lines.append("Chart: unavailable, not enough history")
 
-	drivers = summary.get("drivers_24h") or {}
-	lines.extend(["", "<b>PnL context</b>"])
-	lines.append(f"- Realized: {_driver(drivers.get('realized'))}")
-	lines.append(f"- Unrealized: {_driver(drivers.get('unrealized'))}")
+	lines.extend([
+		"",
+		"<b>Today&#x27;s trading (UTC)</b>",
+		f"- Realized PnL: <code>{_signed_money(summary.get('realized_today'))}</code>",
+		"",
+		"<b>Open positions</b>",
+		f"- Unrealized now: <code>{_pnl(summary.get('unrealized_pnl_usdt'), summary.get('unrealized_pnl_pct'))}</code>",
+	])
 
 	lines.extend(["", "<b>Top contributors</b>"])
 	best = summary.get("best_contributor")

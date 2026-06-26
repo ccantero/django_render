@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.9
+doc_version: 1.1.10
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-20
+last_verified_at: 2026-06-26
 source_repo: django_render
 ---
 
@@ -227,7 +227,10 @@ plus percentage deltas; each missing or incomplete window remains
 two usable 7-day canonical bot-cycle equity snapshots exist, Telegram receives
 an on-demand PNG equity chart generated in memory. If history is not usable,
 the command sends text only with a compact chart-unavailable note. No
-historical equity is invented.
+historical equity is invented. The Telegram text groups those values under
+`Performance`: `Portfolio equity` for 24h/7d/30d snapshot windows,
+`Today's trading (UTC)` for current UTC closed-trade realization, and
+`Open positions` for current unrealized open-lot PnL.
 
 `/buy_status` labels accounting-realized PnL as `Realized today (UTC)`. It uses
 the same UTC calendar-day operation-timestamp grouping as Analytics, not
