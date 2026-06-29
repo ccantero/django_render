@@ -114,6 +114,7 @@ def build_portfolio_status(
 			"realized": _driver_from_rows(realized_drivers),
 			"unrealized": _unrealized_driver(contributors, _history_changes(equity_history).get("24h")),
 		},
+		"equity_drivers_24h": None,
 		"changes": _history_changes(equity_history),
 		"chart_points": _history_chart_points(equity_history),
 		"chart_available": bool(_history_chart_points(equity_history)),
@@ -143,6 +144,23 @@ def render_portfolio_status(summary):
 
 	lines.extend([
 		"",
+		"<b>24h equity drivers</b>",
+	])
+	equity_drivers = summary.get("equity_drivers_24h")
+	if equity_drivers:
+		lines.append(f"- Worst: {_equity_driver(equity_drivers.get('worst'))}")
+		lines.append(f"- Best: {_equity_driver(equity_drivers.get('best'))}")
+		lines.append(
+			"- Open-position contribution: <code>"
+			f"{_signed_decimal(equity_drivers['open_position_contribution_usdt'])} USDT "
+			f"of {_signed_decimal(equity_drivers['total_change_usdt'])} USDT"
+			"</code>"
+		)
+	else:
+		lines.append("unavailable")
+
+	lines.extend([
+		"",
 		"<b>Today&#x27;s trading (UTC)</b>",
 		f"- Realized PnL: <code>{_signed_money(summary.get('realized_today'))}</code>",
 		"",
@@ -150,7 +168,7 @@ def render_portfolio_status(summary):
 		f"- Unrealized now: <code>{_pnl(summary.get('unrealized_pnl_usdt'), summary.get('unrealized_pnl_pct'))}</code>",
 	])
 
-	lines.extend(["", "<b>Top contributors</b>"])
+	lines.extend(["", "<b>Current unrealized contributors</b>"])
 	best = summary.get("best_contributor")
 	worst = summary.get("worst_contributor")
 	lines.append(f"- Best: {_contributor(best)}")
@@ -461,6 +479,7 @@ def _unavailable_summary(free_usdt, realized_today, realized_drivers=None, equit
 			"realized": _driver_from_rows(realized_drivers),
 			"unrealized": None,
 		},
+		"equity_drivers_24h": None,
 		"changes": _history_changes(equity_history),
 		"chart_points": _history_chart_points(equity_history),
 		"chart_available": bool(_history_chart_points(equity_history)),
@@ -521,6 +540,18 @@ def _contributor(value):
 		f"{escape(str(value['symbol']))} "
 		f"<code>{_signed_decimal(value['pnl_usdt'])} USDT "
 		f"({_signed_decimal(value['pnl_pct'])}%)</code>"
+	)
+
+
+def _equity_driver(value):
+	if not value:
+		return "<code>unavailable</code>"
+	percent = _to_decimal(value.get("delta_pct"))
+	percent_text = f"{_signed_decimal(percent)}%" if percent is not None else "pct unavailable"
+	return (
+		f"{escape(str(value['symbol']))} "
+		f"<code>{_signed_decimal(value['delta_usdt'])} USDT "
+		f"({percent_text})</code>"
 	)
 
 

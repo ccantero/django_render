@@ -5022,10 +5022,14 @@ class TelegramPortfolioStatusTests(TestCase):
         self.assertLess(message.index('<b>Performance</b>'), message.index('<b>Portfolio equity</b>'))
         self.assertLess(message.index('<b>Portfolio equity</b>'), message.index('<b>Today&#x27;s trading (UTC)</b>'))
         self.assertLess(message.index('<b>Today&#x27;s trading (UTC)</b>'), message.index('<b>Open positions</b>'))
-        self.assertLess(message.index('<b>Open positions</b>'), message.index('<b>Top contributors</b>'))
+        self.assertLess(message.index('<b>Portfolio equity</b>'), message.index('<b>24h equity drivers</b>'))
+        self.assertLess(message.index('<b>24h equity drivers</b>'), message.index('<b>Today&#x27;s trading (UTC)</b>'))
+        self.assertLess(message.index('<b>Open positions</b>'), message.index('<b>Current unrealized contributors</b>'))
         self.assertIn('- 24h: <code>unavailable</code>', message)
         self.assertIn('- 7d: <code>unavailable</code>', message)
         self.assertIn('- 30d: <code>unavailable</code>', message)
+        self.assertIn('<b>24h equity drivers</b>', message)
+        self.assertIn('unavailable', message)
         self.assertIn('- Realized PnL: <code>+1.25 USDT</code>', message)
         self.assertIn('- Unrealized now: <code>+2.00 USDT (+20.00%)</code>', message)
         self.assertNotIn('<b>PnL</b>', message)
@@ -5060,6 +5064,7 @@ class TelegramPortfolioStatusTests(TestCase):
 
         self.assertIn('- Best: <code>unavailable</code>', message)
         self.assertIn('- Worst: <code>unavailable</code>', message)
+        self.assertIn('<b>Current unrealized contributors</b>', message)
 
     def test_missing_entry_price_makes_unrealized_and_contributors_unavailable(self):
         summary = self._build(
@@ -5144,6 +5149,120 @@ class TelegramPortfolioStatusTests(TestCase):
 
         self.assertEqual(summary['changes']['24h']['amount_usdt'], Decimal('25'))
         self.assertEqual(summary['changes']['24h']['percent'], Decimal('25'))
+
+    def test_portfolio_status_renders_24h_equity_drivers_unavailable_without_verified_symbol_source(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder, render_portfolio_status
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._canonical_snapshot(now - timezone.timedelta(hours=24), '100'),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '105'),
+        ])
+        summary = self._build(
+            lots=[
+                self._lot('BTCUSDT', '10', '10'),
+                self._lot('ETHUSDT', '10', '5'),
+                self._lot('WLDUSDT', '10', '2'),
+            ],
+            portfolio=[
+                self._portfolio('BTCUSDT', '9'),
+                self._portfolio('ETHUSDT', '7'),
+                self._portfolio('WLDUSDT', '1.5'),
+            ],
+            equity_history=history,
+        )
+
+        message = render_portfolio_status(summary)
+
+        self.assertIn('<b>24h equity drivers</b>', message)
+        self.assertIn('<b>24h equity drivers</b>\nunavailable', message)
+        self.assertNotIn('Explained:', message)
+        self.assertNotIn('Open-position contribution:', message)
+        self.assertLess(message.index('<b>24h equity drivers</b>'), message.index('<b>Today&#x27;s trading (UTC)</b>'))
+
+    def test_24h_equity_drivers_render_observational_contribution_label(self):
+        from dashboard.services.telegram_portfolio_status import render_portfolio_status
+
+        message = render_portfolio_status({
+            "equity_usdt": Decimal("105"),
+            "free_usdt": Decimal("10"),
+            "open_value_usdt": Decimal("95"),
+            "unrealized_pnl_usdt": Decimal("0"),
+            "unrealized_pnl_pct": Decimal("0"),
+            "realized_today": Decimal("0"),
+            "changes": {"24h": {"amount_usdt": Decimal("5"), "percent": Decimal("5")}},
+            "chart_available": True,
+            "equity_drivers_24h": {
+                "worst": {"symbol": "BTCUSDT", "delta_usdt": Decimal("-10"), "delta_pct": Decimal("-10")},
+                "best": {"symbol": "ETHUSDT", "delta_usdt": Decimal("20"), "delta_pct": Decimal("40")},
+                "open_position_contribution_usdt": Decimal("5"),
+                "total_change_usdt": Decimal("5"),
+            },
+            "best_contributor": None,
+            "worst_contributor": None,
+        })
+
+        self.assertIn('- Worst: BTCUSDT <code>-10.00 USDT (-10.00%)</code>', message)
+        self.assertIn('- Best: ETHUSDT <code>+20.00 USDT (+40.00%)</code>', message)
+        self.assertIn('- Open-position contribution: <code>+5.00 USDT of +5.00 USDT</code>', message)
+        self.assertNotIn('Explained:', message)
+
+    def test_24h_equity_drivers_unavailable_without_prior_symbol_values(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder, render_portfolio_status
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._canonical_snapshot(now - timezone.timedelta(hours=24), '100'),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '90'),
+        ])
+        summary = self._build(
+            lots=[self._lot('BTCUSDT', '10', '10')],
+            portfolio=[self._portfolio('BTCUSDT', '9')],
+            equity_history=history,
+        )
+
+        message = render_portfolio_status(summary)
+
+        self.assertIsNone(summary['equity_drivers_24h'])
+        self.assertIn('<b>24h equity drivers</b>\nunavailable', message)
+
+    def test_24h_equity_drivers_do_not_change_equity_windows(self):
+        from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
+
+        now = timezone.now()
+        history = PortfolioEquityHistoryBuilder(as_of=now).build([
+            self._canonical_snapshot(now - timezone.timedelta(hours=24), '100'),
+            self._canonical_snapshot(now - timezone.timedelta(days=7), '80'),
+            self._canonical_snapshot(now - timezone.timedelta(days=30), '50'),
+            self._canonical_snapshot(now - timezone.timedelta(minutes=5), '120'),
+        ])
+        summary = self._build(
+            lots=[self._lot('BTCUSDT', '10', '10')],
+            portfolio=[self._portfolio('BTCUSDT', '12')],
+            equity_history=history,
+        )
+
+        self.assertEqual(summary['changes']['24h']['amount_usdt'], Decimal('20'))
+        self.assertEqual(summary['changes']['7d']['amount_usdt'], Decimal('40'))
+        self.assertEqual(summary['changes']['30d']['amount_usdt'], Decimal('70'))
+        self.assertIsNone(summary['equity_drivers_24h'])
+
+    def test_snapshot_model_does_not_depend_on_portfolio_payload_column(self):
+        from core.trading_models import Snapshot
+
+        self.assertNotIn("portfolio", {field.name for field in Snapshot._meta.fields})
+
+    def test_current_unrealized_contributors_are_not_labeled_as_24h_drivers(self):
+        from dashboard.services.telegram_portfolio_status import render_portfolio_status
+
+        message = render_portfolio_status(self._build(
+            lots=[self._lot('BTCUSDT', '2', '5')],
+            portfolio=[self._portfolio('BTCUSDT', '6')],
+        ))
+
+        self.assertIn('<b>24h equity drivers</b>\nunavailable', message)
+        self.assertIn('<b>Current unrealized contributors</b>', message)
+        self.assertNotIn('<b>Top contributors</b>', message)
 
     def test_historical_change_uses_canonical_snapshot_notes_equity(self):
         from dashboard.services.telegram_portfolio_status import PortfolioEquityHistoryBuilder
@@ -5766,7 +5885,7 @@ class TelegramPortfolioStatusTests(TestCase):
         self.assertNotIn('<b>Change</b>', message)
         self.assertNotIn('<b>PnL context</b>', message)
         self.assertNotIn('<b>24h drivers</b>', message)
-        self.assertIn('<b>Top contributors</b>', message)
+        self.assertIn('<b>Current unrealized contributors</b>', message)
         self.assertNotIn('- Invested:', message)
         self.assertIn('- Unrealized now: <code>+2.00 USDT (+20.00%)</code>', message)
         self.assertIn('- Realized PnL: <code>+1.25 USDT</code>', message)
@@ -5799,6 +5918,7 @@ class TelegramPortfolioStatusTests(TestCase):
         self.assertIn('- Equity: <code>unavailable</code>', message)
         mock_portfolio_manager.filter.assert_not_called()
 
+    @patch('core.telegram_diagnostics.Snapshot.objects')
     @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
     @patch('core.telegram_diagnostics.Portfolio.objects')
     @patch('core.telegram_diagnostics.PositionLot.objects')
@@ -5809,15 +5929,17 @@ class TelegramPortfolioStatusTests(TestCase):
         mock_lot_manager,
         mock_portfolio_manager,
         _mock_realized_today,
+        mock_snapshot_manager,
     ):
         from core.telegram_diagnostics import format_portfolio_status
 
         mock_health_manager.order_by.return_value.first.return_value = None
         mock_lot_manager.filter.return_value.order_by.return_value = []
+        mock_snapshot_manager.filter.return_value.order_by.return_value = []
 
         format_portfolio_status()
 
-        for manager in [mock_health_manager, mock_lot_manager, mock_portfolio_manager]:
+        for manager in [mock_health_manager, mock_lot_manager, mock_portfolio_manager, mock_snapshot_manager]:
             manager.create.assert_not_called()
             manager.bulk_create.assert_not_called()
             manager.update_or_create.assert_not_called()

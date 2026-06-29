@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.25
+doc_version: 1.1.27
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-06-29
@@ -8,6 +8,44 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-29 - Portfolio Status 24h Equity Drivers
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+- docs/DESIGN.md
+- docs/KPI_REGISTRY.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Added a compact `24h equity drivers` section to Telegram `/portfolio_status`
+  after `Portfolio equity` and before `Today's trading (UTC)`.
+- Kept the section on the graceful fallback state, `unavailable`, because no
+  verified Django snapshot read path for symbol-level 24h attribution is wired
+  in this patch.
+- Renamed the former current unrealized contributor block to
+  `Current unrealized contributors` so it is not confused with 24h equity
+  attribution.
+- Reserved the observational line label `Open-position contribution` for any
+  future verified attribution payload, avoiding the stronger `Explained`
+  wording.
+
+Operator impact:
+- Operators no longer see current unrealized contributors presented as 24h
+  movement drivers.
+- Symbol-level 24h attribution remains unavailable rather than fabricated;
+  Django does not add snapshot-column dependencies, infer SELL coverage, call
+  Binance, trade, or mutate bot-owned tables.
+
+Validation:
+- Added failing formatter/read-model tests first for unavailable attribution,
+  no `Snapshot.portfolio` model-field dependency, observational contribution
+  wording, unchanged 24h/7d/30d equity windows, current-unrealized label
+  separation, and read-only manager behavior.
+- Focused Telegram Portfolio Status tests passed.
 
 ## 2026-06-29 - KPI Registry Copy Merge
 

@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.17
+doc_version: 1.1.19
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-26
+last_verified_at: 2026-06-29
 source_repo: django_render
 ---
 
@@ -243,15 +243,25 @@ positions with complete quantity, cost-basis, and current-price data. Realized
 today uses the same UTC operation-timestamp rule as `/buy_status` and Analytics.
 After the unchanged `Total` block, `/portfolio_status` renders a compact
 `Performance` section. `Portfolio equity` contains the snapshot-backed
-24h/7d/30d equity changes. `Today's trading (UTC)` contains `Realized closed
-trades`, using the same current UTC calendar-day closed-trade realization
-source that previously appeared as `Realized today (UTC)`. `Open positions`
-contains `Unrealized now`, using the same current open-lot unrealized PnL value
-that previously appeared as `Unrealized`. The labels intentionally avoid
-implying that current UTC realized PnL or current unrealized PnL explains the
-snapshot-backed 24h equity move, which can include free-USDT and open-value
-changes between snapshots. Missing current valuation/cost-basis evidence still
-renders the current open-position line as `unavailable`.
+24h/7d/30d equity changes. `24h equity drivers` is reserved for symbol-level
+24h valuation attribution, but the current Django implementation renders it as
+`unavailable` because no verified symbol-level attribution source is wired in
+the dashboard snapshot read path. Django does not invent contributors, add
+unverified snapshot-column dependencies, or infer SELL coverage. If a future
+verified attribution payload is added, its compact total line should use
+observational wording such as `Open-position contribution` rather than
+`Explained`, because open-position valuation does not necessarily account for
+SELLs, realized PnL, free-USDT changes, dust, or other portfolio movement.
+`Today's trading (UTC)` contains `Realized PnL`, using the same current UTC
+calendar-day closed-trade realization source. `Open positions` contains
+`Unrealized now`, using the same current open-lot unrealized PnL value that
+previously appeared as `Unrealized`. The former top contributor block is labeled
+`Current unrealized contributors` so it is visibly separate from 24h equity
+attribution. The labels intentionally avoid implying that current UTC realized
+PnL or current unrealized PnL explains the snapshot-backed 24h equity move,
+which can include free-USDT and open-value changes between snapshots. Missing
+current valuation/cost-basis evidence still renders the current open-position
+line as `unavailable`.
 The 24h/7d/30d fields use persisted `bot.portfolio_snapshots` only when
 `source = "bot_cycle"`, `notes.portfolio_equity_usdt` is a valid positive
 decimal, and the latest usable snapshot is fresh enough for comparison.

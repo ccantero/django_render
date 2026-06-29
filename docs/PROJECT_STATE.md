@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.15
+doc_version: 1.1.17
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-26
+last_verified_at: 2026-06-29
 source_repo: django_render
 ---
 
@@ -108,10 +108,15 @@ Implemented capabilities:
   incomplete windows unavailable, and can send an in-memory 7-day PNG equity
   chart through Telegram when at least two usable visual chart points remain.
 - `/portfolio_status` keeps the `Total` block unchanged, then renders
-  `Performance` with separate `Portfolio equity`, `Today's trading (UTC)`, and
-  `Open positions` subsections so snapshot-backed 24h/7d/30d equity changes,
-  current UTC realized closed trades, and current open-position unrealized PnL
-  are visibly distinct.
+  `Performance` with separate `Portfolio equity`, `24h equity drivers`,
+  `Today's trading (UTC)`, and `Open positions` subsections so
+  snapshot-backed 24h/7d/30d equity changes, unavailable symbol-level 24h
+  attribution, current UTC realized closed trades, and current open-position
+  unrealized PnL are visibly distinct.
+- `/portfolio_status` currently renders `24h equity drivers` as `unavailable`
+  because no verified symbol-level attribution source is wired in the Django
+  snapshot read path. The former current unrealized contributor block is
+  labeled `Current unrealized contributors`.
 - Snapshot history uses `portfolio_equity_usdt` as the only historical equity
   source; missing, invalid, non-positive, `portfolio_sync_from_api`, or
   `open_value_usdt`-only snapshots degrade honestly instead of inventing
