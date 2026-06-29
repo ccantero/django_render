@@ -1,13 +1,44 @@
 ---
 doc_id: changelog
-doc_version: 1.1.24
+doc_version: 1.1.25
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-26
+last_verified_at: 2026-06-29
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-06-29 - KPI Registry Copy Merge
+
+Type: docs
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+- docs/KPI_REGISTRY.md
+
+Summary:
+- Merged the incoming root `KPI_REGISTRY.md` copy into the canonical
+  `docs/KPI_REGISTRY.md` registry.
+- Added bot-local Portfolio Status history, bot cycle timing, cooldown
+  recommendation, stop-loss outcome, and Portfolio Status PnL-context metric
+  taxonomy from the incoming version.
+- Preserved the registry as documentation and observability governance only;
+  no Django runtime output, trading behavior, schema, logging, or shared data
+  contract changed.
+
+Operator impact:
+- Operators and future Codex tasks have a more complete canonical KPI naming
+  reference while Django behavior remains unchanged.
+
+Validation:
+- Verified the merged registry body matches the incoming root registry copy;
+  only the local `doc_version` and `last_verified_at` header values differ.
+- Ran `git diff --check -- docs/KPI_REGISTRY.md docs/CHANGELOG.md`.
+- Verified the expected merged KPI sections are present.
+- Confirmed this is documentation-only and does not require behavior tests or
+  schema/DER generation.
 
 ## 2026-06-26 - Portfolio Status Performance Sections
 
