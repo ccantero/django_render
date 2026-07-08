@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.28
+doc_version: 1.1.29
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-07-08
@@ -8,6 +8,41 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-07-08 - Telegram Health Disk Usage
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/CHANGELOG.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Added a `Disk Usage` section to Telegram `/health`.
+- Reused the dashboard Disk Usage helper so filesystem `/`, used percent, free
+  GB, and OK/warning/critical thresholds stay identical to the dashboard.
+- Disk collection failure renders `Unavailable` and the rest of the `/health`
+  message continues rendering.
+- No shell command, cron, Celery task, persistence, database schema change,
+  Binance integration, trading behavior, dashboard behavior, or new endpoint
+  was added.
+
+Operator impact:
+- Operators can now check Django host disk pressure from Telegram on mobile.
+- `/health` still reports bot health when disk information is unavailable, and
+  still reports Disk Usage when the latest bot healthcheck row is missing.
+
+Validation:
+- Added failing Telegram `/health` tests first for OK, warning, critical,
+  unavailable, and missing-healthcheck disk rendering.
+- Focused Telegram `/health` disk tests passed.
+- `core.tests` passed.
+- `git diff --check` passed.
 
 ## 2026-07-08 - Dashboard Disk Usage Health
 

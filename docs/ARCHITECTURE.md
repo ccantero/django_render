@@ -1,6 +1,6 @@
 ---
 doc_id: architecture
-doc_version: 1.1.6
+doc_version: 1.1.7
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-07-08
@@ -25,7 +25,8 @@ It provides visibility, review, and request workflows over bot-owned database ta
 - Display lightweight Django-host filesystem usage on demand for operator disk-pressure visibility.
 - Display portfolio, lots, trades, fees, drift, and dust detections.
 - Serve allowlisted read-only Telegram diagnostics for mobile operators,
-  including conservative BUY capacity status from persisted bot state plus
+  including bot health with Django-host Disk Usage, conservative BUY capacity
+  status from persisted bot state plus
   runtime-config fallback for max-position limits when the read model omits
   them, and portfolio status with snapshot-backed historical changes plus an
   on-demand in-memory 7-day equity PNG when enough history exists.
@@ -133,10 +134,11 @@ State-changing dashboard actions are protected with login, staff checks where re
 
 `/health/` is public and side-effect-free. It reports only Django web-process liveness for hosting keepalive checks; bot operational health remains sourced from `bot.bot_healthcheck` in dashboard views.
 
-Authenticated dashboard Disk Usage is also side-effect-free, but it is not part
-of `/health/` and not part of the shared bot healthcheck contract. It reads the
-Django host filesystem `/` with `shutil.disk_usage()` during page rendering and
-degrades to an unavailable card if collection fails.
+Authenticated dashboard Disk Usage and Telegram `/health` Disk Usage are also
+side-effect-free, but they are not part of the public `/health/` liveness
+endpoint and not part of the shared bot healthcheck contract. They read the
+Django host filesystem `/` with `shutil.disk_usage()` during rendering and
+degrade to unavailable output if collection fails.
 
 ## 4.2 External Services
 

@@ -1,6 +1,6 @@
 ---
 doc_id: readme
-doc_version: 1.1.11
+doc_version: 1.1.12
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-07-08
@@ -36,7 +36,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Drift alerts between `bot.portfolio` and `bot.position_lots`
 - Compact homepage Active Operational Issues from unresolved critical/warning dust/drift signals only, plus informational residual counts
 - Dust / residual dashboard from `bot.dust_detections`
-- Read-only Telegram mobile diagnostics commands for command discovery, bot health, BUY capacity status, portfolio performance, positions, latest SELL diagnostics, and why-not-sell explanations
+- Read-only Telegram mobile diagnostics commands for command discovery, bot health, Disk Usage, BUY capacity status, portfolio performance, positions, latest SELL diagnostics, and why-not-sell explanations
 - Read-only “Why positions are not selling” visibility through `/dashboard/exit-status/`; the homepage stays lightweight and links there instead of loading SELL diagnostics by default
 - Read-only `/dashboard/churn/` page for recent SELL→BUY re-entry observability and homepage churn summary counts
 - Dust signal detail page
@@ -206,7 +206,8 @@ to match one of those allowlists. The commands use safe HTML formatting and only
 read shared bot tables. Supported commands are `/help`, `/health`, `/buy_status`,
 `/portfolio_status`, `/position SYMBOL`, `/last_sell SYMBOL`, and
 `/why_not_sell SYMBOL`. `/help`
-returns a compact operator guide, and SELL rejection diagnostics present a short
+returns a compact operator guide, `/health` includes the same on-demand Django
+host Disk Usage status as the dashboard, and SELL rejection diagnostics present a short
 human-readable interpretation and suggested action before lower-level event
 details for easier mobile review. Dust/drift alert templates are also kept human
 readable: tiny values are labeled as tiny dust, while raw event/reason/stage
@@ -341,6 +342,7 @@ Dashboard Disk Usage is separate from the public liveness endpoint. It is
 calculated on demand with Python's filesystem APIs for `/`, shows used percent
 and free GB, and degrades to `Unavailable` if the filesystem data cannot be
 collected. It does not run shell commands, persist data, or read bot tables.
+Telegram `/health` reuses the same disk status logic for mobile operator review.
 
 ## Detected Stack
 

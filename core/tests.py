@@ -187,6 +187,87 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_health_formats_disk_usage_states(self, mock_health_manager, mock_send_message):
+        created_at = timezone.now() - timezone.timedelta(minutes=3)
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=7,
+            status='healthy',
+            created_at=created_at,
+            details={'run_id': 'run-123'},
+        )
+        gib = 1024 ** 3
+        usage_cases = [
+            (69, '31.00', '🟢 OK'),
+            (70, '30.00', '🟡 Warning'),
+            (86, '14.00', '🔴 Critical'),
+        ]
+
+        for used_percent, free_gb, status_line in usage_cases:
+            with self.subTest(status=status_line):
+                mock_send_message.reset_mock()
+                with patch('dashboard.dashboard_read_model.shutil.disk_usage') as disk_usage:
+                    disk_usage.return_value = SimpleNamespace(
+                        total=100 * gib,
+                        used=used_percent * gib,
+                        free=(100 - used_percent) * gib,
+                    )
+
+                    with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+                        response = self.post_telegram_message('/health')
+
+                self.assertEqual(response.status_code, 200)
+                message = mock_send_message.call_args[0][0]
+                self.assertIn('<b>Disk Usage</b>', message)
+                self.assertIn('Filesystem: <code>/</code>', message)
+                self.assertIn(f'Used: <code>{used_percent}.0%</code>', message)
+                self.assertIn(f'Free: <code>{free_gb} GB</code>', message)
+                self.assertIn(f'Status:\n<code>{status_line}</code>', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_health_disk_usage_unavailable_does_not_hide_bot_health(self, mock_health_manager, mock_send_message):
+        created_at = timezone.now() - timezone.timedelta(minutes=3)
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=7,
+            status='healthy',
+            created_at=created_at,
+            details={'run_id': 'run-123'},
+        )
+
+        with patch('dashboard.dashboard_read_model.shutil.disk_usage', side_effect=OSError('no stat')):
+            with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+                response = self.post_telegram_message('/health')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('<b>🟢 Bot health</b>', message)
+        self.assertIn('<b>Disk Usage</b>', message)
+        self.assertIn('Status:\n<code>Unavailable</code>', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_health_disk_usage_renders_when_bot_healthcheck_missing(self, mock_health_manager, mock_send_message):
+        mock_health_manager.order_by.return_value.first.return_value = None
+        gib = 1024 ** 3
+
+        with patch('dashboard.dashboard_read_model.shutil.disk_usage') as disk_usage:
+            disk_usage.return_value = SimpleNamespace(total=100 * gib, used=69 * gib, free=31 * gib)
+
+            with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+                response = self.post_telegram_message('/health')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('<b>⚪ Bot health</b>', message)
+        self.assertIn('Status: <code>unknown</code>', message)
+        self.assertIn('<b>Disk Usage</b>', message)
+        self.assertIn('Status:\n<code>🟢 OK</code>', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
     def test_help_lists_available_diagnostics_commands(self, mock_send_message):
         with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
             response = self.post_telegram_message('/help')

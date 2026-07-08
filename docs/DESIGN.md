@@ -1,6 +1,6 @@
 ---
 doc_id: design
-doc_version: 1.1.20
+doc_version: 1.1.21
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-07-08
@@ -120,11 +120,12 @@ Analytics read-model output may be cached briefly because the page is read-only 
 - About-me page at `/me`
 - Thanks page at `/thanks/`
 
-Dashboard Disk Usage is an authenticated operator-console diagnostic, not a
-public liveness check and not a bot-owned healthcheck payload. It classifies
-the Django host filesystem as OK below 70% used, warning from 70% through 85%,
-and critical above 85%. If filesystem information cannot be collected, the card
-renders `Unavailable` and the dashboard should continue loading normally.
+Dashboard and Telegram `/health` Disk Usage are operator-console diagnostics,
+not public liveness checks and not bot-owned healthcheck payloads. They
+classify the Django host filesystem as OK below 70% used, warning from 70%
+through 85%, and critical above 85%. If filesystem information cannot be
+collected, the output renders `Unavailable` and the rest of the dashboard or
+Telegram health message should continue loading normally.
 
 ### Dust / Residuals
 
@@ -189,7 +190,10 @@ commands:
 
 Messages use Telegram HTML parse mode, escape dynamic values before rendering,
 and should stay compact enough for mobile review. `/help` should act as a compact
-operator guide, and skipped/rejected SELL diagnostics should lead with a plain
+operator guide. `/health` should keep bot heartbeat and position counts first,
+then show `Disk Usage` with filesystem `/`, used percent, free GB, and the same
+OK/warning/critical/unavailable status as the dashboard. Skipped/rejected SELL
+diagnostics should lead with a plain
 language interpretation and suggested action before lower-level event fields.
 Dust/drift alerts should use human labels, expose raw reason/event identifiers in
 details, and explicitly call out tiny dust values below `0.01 USDT` without

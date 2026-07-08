@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.18
+doc_version: 1.1.19
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-07-08
@@ -61,6 +61,9 @@ Implemented capabilities:
   - `/why_not_sell SYMBOL`
 - Telegram diagnostics include a compact command guide and format skipped/rejected
   SELL diagnostics with status, interpretation, suggested action, and raw event details for mobile review.
+- Telegram `/health` includes on-demand Disk Usage for filesystem `/`, reusing
+  the dashboard OK/warning/critical thresholds and degrading to `Unavailable`
+  without hiding the rest of the health message when collection fails.
 - Human-readable dust/drift alert formatting exists for notifier callers, including tiny-dust wording, urgency for incomplete SELL drift, and safe HTML escaping.
 - Telegram diagnostics render compact Decimal-safe numeric values for mobile
   review while preserving read-only DB access and HTML escaping.
@@ -152,7 +155,10 @@ Implemented capabilities:
 - Project-level environment validation for required settings
 - Optional Telegram diagnostics allowlists through `TELEGRAM_ALLOWED_CHAT_IDS` and `TELEGRAM_ALLOWED_USER_IDS`
 - Public Django app liveness endpoint at `/health/` for external keepalive checks
-- On-demand Disk Usage card on the authenticated dashboard, sourced from `shutil.disk_usage("/")`, with OK below 70%, warning from 70% through 85%, critical above 85%, and `Unavailable` fallback when collection fails
+- On-demand Disk Usage card on the authenticated dashboard and Telegram
+  `/health`, sourced from `shutil.disk_usage("/")`, with OK below 70%, warning
+  from 70% through 85%, critical above 85%, and `Unavailable` fallback when
+  collection fails
 
 2026-05-19 inventory mismatch follow-up:
 
@@ -268,7 +274,7 @@ deployment metrics.
   data before Django should display them.
 - Alerting is not implemented in dashboard and should likely be bot-owned.
 - More filters/pagination may be needed as dust detections grow.
-- `/health/` only confirms that the Django web process is reachable; it is not a bot/database health check. Dashboard Disk Usage is separate on-demand host filesystem visibility and does not persist data.
+- `/health/` only confirms that the Django web process is reachable; it is not a bot/database health check. Dashboard and Telegram Disk Usage are separate on-demand host filesystem visibility and do not persist data.
 - Historical dust/drift rows remain visible after correction, so views must keep making active/latest state and linked correction status clear.
 - Reviewed/ignored/external-or-Earn dust signals suppress repeated paging only; their detections remain visible in history and do not alter bot accounting.
 

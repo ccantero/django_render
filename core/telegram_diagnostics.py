@@ -29,6 +29,7 @@ from dashboard.services.telegram_buy_status_formatter import (
 	classify_buy_status_positions,
 	render_buy_status_message,
 )
+from dashboard.dashboard_read_model import _build_disk_usage
 from dashboard.services.telegram_portfolio_status import (
 	PortfolioEquityChartRenderer,
 	PortfolioEquityHistoryBuilder,
@@ -137,7 +138,13 @@ def is_valid_symbol(symbol):
 def format_health():
 	latest = BotHealthcheck.objects.order_by("-created_at", "-id").first()
 	if latest is None:
-		return "<b>⚪ Bot health</b>\n\nStatus: <code>unknown</code>"
+		lines = [
+			"<b>⚪ Bot health</b>",
+			"",
+			"Status: <code>unknown</code>",
+		]
+		lines.extend(_format_health_disk_usage())
+		return "\n".join(lines)
 
 	now = timezone.now()
 	created_at = latest.created_at
@@ -179,7 +186,29 @@ def format_health():
 			"raw/material/dust/unknown: "
 			f"<code>{h('/'.join(fmt_count(value) for value in counts))}</code>"
 		)
+	lines.extend(_format_health_disk_usage())
 	return "\n".join(lines)
+
+
+def _format_health_disk_usage():
+	disk_usage = _build_disk_usage()
+	lines = [
+		"",
+		"<b>Disk Usage</b>",
+		f"Filesystem: <code>{h(disk_usage.get('filesystem') or 'Unavailable')}</code>",
+	]
+
+	if not disk_usage.get("available"):
+		lines.append("Status:\n<code>Unavailable</code>")
+		return lines
+
+	lines.extend([
+		f"Used: <code>{h(_fmt_disk_percent(disk_usage.get('used_percent')))}</code>",
+		f"Free: <code>{h(_fmt_disk_free_gb(disk_usage.get('free_gb')))}</code>",
+		"Status:\n"
+		f"<code>{h((disk_usage.get('status_icon') or '').strip() + ' ' + disk_usage.get('status_label', 'Unavailable')).strip()}</code>",
+	])
+	return lines
 
 
 def format_help():
@@ -755,6 +784,20 @@ def fmt_percent(value):
 	if decimal_value is None:
 		return "N/A"
 	return f"{fmt_decimal(decimal_value, places=2)}%"
+
+
+def _fmt_disk_percent(value):
+	decimal_value = to_decimal(value)
+	if decimal_value is None:
+		return "Unavailable"
+	return f"{format(decimal_value.quantize(Decimal('0.1'), rounding=ROUND_HALF_UP), 'f')}%"
+
+
+def _fmt_disk_free_gb(value):
+	decimal_value = to_decimal(value)
+	if decimal_value is None:
+		return "Unavailable"
+	return f"{format(decimal_value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP), 'f')} GB"
 
 
 def fmt_count(value):
