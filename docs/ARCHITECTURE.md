@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.5
+doc_version: 1.1.6
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-20
+last_verified_at: 2026-07-08
 source_repo: django_render
 ---
 
@@ -22,6 +22,7 @@ It provides visibility, review, and request workflows over bot-owned database ta
 ### Dashboard responsibilities
 
 - Read bot health and trading state.
+- Display lightweight Django-host filesystem usage on demand for operator disk-pressure visibility.
 - Display portfolio, lots, trades, fees, drift, and dust detections.
 - Serve allowlisted read-only Telegram diagnostics for mobile operators,
   including conservative BUY capacity status from persisted bot state plus
@@ -131,6 +132,11 @@ Telegram -> /telegramapi/listener/ -> token check -> TelegramMessage row and opt
 State-changing dashboard actions are protected with login, staff checks where required, POST-only decorators where present, and Django CSRF except for the Telegram webhook listener, which uses the Telegram secret-token header.
 
 `/health/` is public and side-effect-free. It reports only Django web-process liveness for hosting keepalive checks; bot operational health remains sourced from `bot.bot_healthcheck` in dashboard views.
+
+Authenticated dashboard Disk Usage is also side-effect-free, but it is not part
+of `/health/` and not part of the shared bot healthcheck contract. It reads the
+Django host filesystem `/` with `shutil.disk_usage()` during page rendering and
+degrades to an unavailable card if collection fails.
 
 ## 4.2 External Services
 

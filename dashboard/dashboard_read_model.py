@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from contextlib import nullcontext
 import logging
 import os
+import shutil
 from time import perf_counter
 from types import SimpleNamespace
 from typing import List
@@ -70,6 +71,8 @@ ANALYTICS_CACHE_KEY = "dashboard:analytics_context:v1"
 ANALYTICS_CACHE_SECONDS = 60
 CHURN_WINDOW_HOURS = 48
 CHURN_GAP_MINUTES = 15
+DISK_USAGE_FILESYSTEM = "/"
+BYTES_PER_GB = Decimal(1024 ** 3)
 BUY_COOLDOWN_REASON_PRESENTATION = {
 	"loss_reentry_cooldown_active": "Re-entry blocked after loss/stop-loss cooldown",
 	"take_profit_reentry_cooldown_active": "Re-entry blocked after take-profit cooldown",
@@ -196,6 +199,7 @@ def _get_dashboard_context(include_performance_kpis=False, profiler=None):
 		"inventory_scope": _empty_inventory_scope_summary(),
 		"buy_status_summary": _empty_buy_status_summary(),
 		"churn_summary": _empty_churn_summary(),
+		"disk_usage": _empty_disk_usage(),
 		"data_error": None,
 		"is_demo": False,
 	}
@@ -286,6 +290,9 @@ def _get_dashboard_context(include_performance_kpis=False, profiler=None):
 			context["churn_summary"] = _build_recent_churn_summary()
 	except DatabaseError as exc:
 		_add_data_error(context, "churn summary", exc)
+
+	with _profile_section(profiler, "disk_usage"):
+		context["disk_usage"] = _build_disk_usage()
 
 	return DashboardReadModel(
 		context=context,
@@ -491,6 +498,19 @@ def get_demo_dashboard_context():
 			"dust_count": 1,
 			"data_error": None,
 		},
+		"disk_usage": {
+			"available": True,
+			"filesystem": "/",
+			"total_bytes": 100 * 1024 ** 3,
+			"used_bytes": 42 * 1024 ** 3,
+			"free_bytes": 58 * 1024 ** 3,
+			"used_percent": Decimal("42"),
+			"free_gb": Decimal("58"),
+			"status": "ok",
+			"status_label": "OK",
+			"status_icon": "🟢",
+			"badge_class": "badge-success",
+		},
 		"inventory_scope": {
 			"spot_assets_count": None,
 			"bot_managed_lot_symbols_count": 3,
@@ -621,6 +641,57 @@ def _empty_bot_status():
 		"badge_label": "unknown",
 		"badge_class": "badge-secondary",
 	}
+
+
+def _build_disk_usage(filesystem=DISK_USAGE_FILESYSTEM):
+	try:
+		usage = shutil.disk_usage(filesystem)
+	except OSError:
+		return _empty_disk_usage(filesystem=filesystem)
+
+	total = Decimal(usage.total)
+	used = Decimal(usage.used)
+	free = Decimal(usage.free)
+	used_percent = Decimal("0") if total == 0 else used / total * Decimal("100")
+	status, status_label, status_icon, badge_class = _disk_usage_status(used_percent)
+
+	return {
+		"available": True,
+		"filesystem": filesystem,
+		"total_bytes": usage.total,
+		"used_bytes": usage.used,
+		"free_bytes": usage.free,
+		"used_percent": used_percent,
+		"free_gb": free / BYTES_PER_GB,
+		"status": status,
+		"status_label": status_label,
+		"status_icon": status_icon,
+		"badge_class": badge_class,
+	}
+
+
+def _empty_disk_usage(filesystem=DISK_USAGE_FILESYSTEM):
+	return {
+		"available": False,
+		"filesystem": filesystem,
+		"total_bytes": None,
+		"used_bytes": None,
+		"free_bytes": None,
+		"used_percent": None,
+		"free_gb": None,
+		"status": "unavailable",
+		"status_label": "Unavailable",
+		"status_icon": "",
+		"badge_class": "badge-secondary",
+	}
+
+
+def _disk_usage_status(used_percent):
+	if used_percent < Decimal("70"):
+		return "ok", "OK", "🟢", "badge-success"
+	if used_percent <= Decimal("85"):
+		return "warning", "Warning", "🟡", "badge-warning"
+	return "critical", "Critical", "🔴", "badge-danger"
 
 
 def _bot_health_badge(status, row, is_stale):
@@ -1671,6 +1742,7 @@ def _important_queries():
 		"bot.position_lots: SUM(quantity_open) WHERE quantity_open > 0 GROUP BY symbol",
 		"bot.sell_decision_events: latest persisted SELL diagnostic per open-lot symbol, read-only",
 		"bot.dust_detections: operational dust summary and top detections, read-only",
+		"filesystem /: live Django-process disk usage via shutil.disk_usage",
 	]
 
 
@@ -1683,4 +1755,5 @@ def _assumptions():
 		"Missing current_price values are counted and excluded from value totals.",
 		"Performance KPIs are operational read-only metrics, not audited accounting statements.",
 		"Non-USDT or unnormalized fees are excluded from normalized USDT fee totals.",
+		"Disk usage is calculated on demand from the Django host filesystem and is not persisted.",
 	]

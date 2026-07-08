@@ -1737,6 +1737,34 @@ class DashboardEndpointTests(TestCase):
         self.assertContains(response, 'Inventory Integrity')
 
     @patch('dashboard.views.get_dashboard_context')
+    def test_dashboard_renders_disk_usage_section(self, mock_get_dashboard_context):
+        context = self.empty_dashboard_context()
+        context['disk_usage'] = {
+            'available': True,
+            'filesystem': '/',
+            'total_bytes': 100 * 1024 ** 3,
+            'used_bytes': 72 * 1024 ** 3,
+            'free_bytes': 28 * 1024 ** 3,
+            'used_percent': Decimal('72'),
+            'free_gb': Decimal('28'),
+            'status': 'warning',
+            'status_label': 'Warning',
+            'status_icon': '🟡',
+            'badge_class': 'badge-warning',
+        }
+        mock_get_dashboard_context.return_value.context = context
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.dashboard_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Disk Usage')
+        self.assertContains(response, 'Filesystem: <strong>/</strong>', html=True)
+        self.assertContains(response, 'Used: <strong>72.0%</strong>', html=True)
+        self.assertContains(response, 'Free: <strong>28.00 GB</strong>', html=True)
+        self.assertContains(response, '🟡 Warning')
+
+    @patch('dashboard.views.get_dashboard_context')
     def test_dashboard_loads_with_sample_read_model_data(self, mock_get_dashboard_context):
         context = self.empty_dashboard_context()
         context.update({
@@ -3259,6 +3287,41 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(status['badge_label'], 'error')
         self.assertEqual(status['badge_class'], 'badge-danger')
 
+    def test_disk_usage_classifies_ok_warning_and_critical_states(self):
+        import dashboard.dashboard_read_model as read_model
+
+        usage_cases = [
+            (1000, 690, 310, 'ok', 'badge-success', 'OK'),
+            (1000, 700, 300, 'warning', 'badge-warning', 'Warning'),
+            (1000, 850, 150, 'warning', 'badge-warning', 'Warning'),
+            (1000, 851, 149, 'critical', 'badge-danger', 'Critical'),
+        ]
+
+        for total, used, free, status, badge_class, label in usage_cases:
+            with self.subTest(status=status, used=used):
+                with patch('dashboard.dashboard_read_model.shutil.disk_usage') as disk_usage:
+                    disk_usage.return_value = SimpleNamespace(total=total, used=used, free=free)
+
+                    result = read_model._build_disk_usage()
+
+                self.assertEqual(result['filesystem'], '/')
+                self.assertEqual(result['used_percent'], Decimal(used) / Decimal(total) * Decimal('100'))
+                self.assertEqual(result['status'], status)
+                self.assertEqual(result['badge_class'], badge_class)
+                self.assertEqual(result['status_label'], label)
+                self.assertTrue(result['available'])
+
+    def test_disk_usage_unavailable_does_not_raise(self):
+        import dashboard.dashboard_read_model as read_model
+
+        with patch('dashboard.dashboard_read_model.shutil.disk_usage', side_effect=OSError('no stat')):
+            result = read_model._build_disk_usage()
+
+        self.assertFalse(result['available'])
+        self.assertEqual(result['status'], 'unavailable')
+        self.assertEqual(result['status_label'], 'Unavailable')
+        self.assertIsNone(result['used_percent'])
+
     def test_fee_summary_uses_trade_operations_fee_fields(self):
         class FakeTradeOperationQuery:
             def __init__(self):
@@ -4468,6 +4531,19 @@ class DashboardEndpointTests(TestCase):
             },
             'data_error': None,
             'is_demo': False,
+            'disk_usage': {
+                'available': False,
+                'filesystem': '/',
+                'total_bytes': None,
+                'used_bytes': None,
+                'free_bytes': None,
+                'used_percent': None,
+                'free_gb': None,
+                'status': 'unavailable',
+                'status_label': 'Unavailable',
+                'status_icon': '',
+                'badge_class': 'badge-secondary',
+            },
         }
 
 

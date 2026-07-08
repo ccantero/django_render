@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.10
+doc_version: 1.1.11
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-26
+last_verified_at: 2026-07-08
 source_repo: django_render
 ---
 
@@ -18,7 +18,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 ## Current Scope
 
 - Authenticated dashboard overview
-- Compact operator console homepage with Bot Health, Inventory Integrity, and Performance Snapshot cards
+- Compact operator console homepage with Bot Health, Disk Usage, Inventory Integrity, and Performance Snapshot cards
 - Valuation consistency between `bot.portfolio` projection value and open `bot.position_lots` accounting value
 - Recent operations/latest trade, capped to the latest four operations on the homepage
 - Fees by asset
@@ -48,6 +48,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Manual correction list/detail views
 - Staff-only correction request creation
 - Public app liveness endpoint at `/health/` for Render keepalive/cron pings
+- On-demand dashboard Disk Usage visibility for the Django host filesystem
 
 ---
 
@@ -335,6 +336,11 @@ curl https://<your-render-host>/health/
 ```
 
 The endpoint returns `{"status":"ok"}` when the Django web process is reachable. It does not check bot health or database state.
+
+Dashboard Disk Usage is separate from the public liveness endpoint. It is
+calculated on demand with Python's filesystem APIs for `/`, shows used percent
+and free GB, and degrades to `Unavailable` if the filesystem data cannot be
+collected. It does not run shell commands, persist data, or read bot tables.
 
 ## Detected Stack
 

@@ -1,13 +1,47 @@
 ---
 doc_id: changelog
-doc_version: 1.1.27
+doc_version: 1.1.28
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-29
+last_verified_at: 2026-07-08
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-07-08 - Dashboard Disk Usage Health
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/CHANGELOG.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Added an authenticated dashboard Disk Usage card for the Django host
+  filesystem `/`, collected on demand through `shutil.disk_usage()`.
+- The card shows filesystem, used percent, free GB, and status.
+- Disk status is OK below 70% used, warning from 70% through 85%, critical
+  above 85%, and `Unavailable` when collection fails.
+- No shell command, background job, persistence, database table, bot runtime
+  change, or shared healthcheck payload change was added.
+
+Operator impact:
+- Operators can see host disk pressure in the normal dashboard health view
+  before artifact growth becomes an operational problem.
+- If filesystem information cannot be collected, the dashboard keeps loading
+  and the disk section reports `Unavailable`.
+
+Validation:
+- Added failing tests first for OK/warning/critical classification,
+  unavailable fallback, and dashboard rendering.
+- Focused disk usage tests passed.
+- `core.tests.DashboardEndpointTests` passed.
 
 ## 2026-06-29 - Portfolio Status 24h Equity Drivers
 

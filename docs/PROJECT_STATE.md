@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.17
+doc_version: 1.1.18
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-29
+last_verified_at: 2026-07-08
 source_repo: django_render
 ---
 
@@ -27,7 +27,7 @@ Detected Django apps:
 Implemented capabilities:
 
 - Authenticated dashboard pages
-- Main dashboard as a concise operator console: normalized Bot Health badge, Inventory Integrity, compact Analytics link card, active issues, informational residual counts, and latest activity
+- Main dashboard as a concise operator console: normalized Bot Health badge, Disk Usage, Inventory Integrity, compact Analytics link card, active issues, informational residual counts, and latest activity
 - Main dashboard does not compute full-history KPI data during initial render; KPI calculations are deferred to the Analytics dashboard
 - Main dashboard uses bounded homepage read paths: recent operations are fetched in a small capped window, SELL diagnostics are disabled by default, and dust overview loads only a capped recent candidate set without a homepage `COUNT(*)`
 - Full exit-status diagnostics live on `/dashboard/exit-status/`, which uses a bounded recent global SELL-event window and degrades to open-lot rows marked `Diagnostics unavailable` when diagnostics cannot be read
@@ -152,6 +152,7 @@ Implemented capabilities:
 - Project-level environment validation for required settings
 - Optional Telegram diagnostics allowlists through `TELEGRAM_ALLOWED_CHAT_IDS` and `TELEGRAM_ALLOWED_USER_IDS`
 - Public Django app liveness endpoint at `/health/` for external keepalive checks
+- On-demand Disk Usage card on the authenticated dashboard, sourced from `shutil.disk_usage("/")`, with OK below 70%, warning from 70% through 85%, critical above 85%, and `Unavailable` fallback when collection fails
 
 2026-05-19 inventory mismatch follow-up:
 
@@ -267,7 +268,7 @@ deployment metrics.
   data before Django should display them.
 - Alerting is not implemented in dashboard and should likely be bot-owned.
 - More filters/pagination may be needed as dust detections grow.
-- `/health/` only confirms that the Django web process is reachable; it is not a bot/database health check.
+- `/health/` only confirms that the Django web process is reachable; it is not a bot/database health check. Dashboard Disk Usage is separate on-demand host filesystem visibility and does not persist data.
 - Historical dust/drift rows remain visible after correction, so views must keep making active/latest state and linked correction status clear.
 - Reviewed/ignored/external-or-Earn dust signals suppress repeated paging only; their detections remain visible in history and do not alter bot accounting.
 

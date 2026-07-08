@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.19
+doc_version: 1.1.20
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-29
+last_verified_at: 2026-07-08
 source_repo: django_render
 ---
 
@@ -44,6 +44,7 @@ Dashboard operator pages are implemented in the `dashboard` Django app.
 Home dashboard responsibility: concise operator console for health, urgent action, reconciliation, performance, and latest activity.
 
 - Compact Bot Health card with normalized health badge, status, heartbeat age, read-only state, and latest message
+- Compact Disk Usage card for the Django host filesystem `/`, showing used percent, free GB, and OK/warning/critical status from on-demand `shutil.disk_usage()` data
 - Compact Inventory Integrity card with material positions, portfolio-vs-lots drift, reconciliation status, and muted tolerance/missing-price details
 - Compact Analytics card that links to deferred KPI detail instead of computing full-history metrics on the homepage
 - Detailed PnL-by-symbol and PnL-by-day history is intentionally deferred to Analytics rather than built for the homepage
@@ -118,6 +119,12 @@ Analytics read-model output may be cached briefly because the page is read-only 
 - Public app liveness endpoint at `/health/`
 - About-me page at `/me`
 - Thanks page at `/thanks/`
+
+Dashboard Disk Usage is an authenticated operator-console diagnostic, not a
+public liveness check and not a bot-owned healthcheck payload. It classifies
+the Django host filesystem as OK below 70% used, warning from 70% through 85%,
+and critical above 85%. If filesystem information cannot be collected, the card
+renders `Unavailable` and the dashboard should continue loading normally.
 
 ### Dust / Residuals
 

@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.8
+doc_version: 1.1.9
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-26
+last_verified_at: 2026-07-08
 source_repo: django_render
 ---
 
@@ -99,6 +99,7 @@ Additional pending visibility work:
 - Main dashboard dust UX now shows compact Active Operational Issues from unresolved critical/warning signals only, with info-only residuals summarized as counts/exposure while the dedicated Dust / Residuals page carries the full grouped table with filters and 25-row pagination.
 - Dust correction request links are disabled in the UI when the latest detection already has a linked `PENDING` or `APPLIED` correction; bot-side duplicate validation remains authoritative.
 - Main dashboard is now a concise operator console with normalized Bot Health status badges, Inventory Integrity, Performance Snapshot, latest four operations, active dust/drift issues, and informational residual counts.
+- Main dashboard now includes on-demand Disk Usage visibility for the Django host filesystem so operators can see used percentage, free GB, and OK/warning/critical status without persistence or shell probes.
 - Main dashboard includes a read-only “Why positions are not selling” table that separates dust/minNotional blockers, strategy holds, and review-needed drift from latest persisted SELL diagnostics.
 - Main dashboard keeps exit-status diagnostics disabled by default for latency and links to `/dashboard/exit-status/`, which uses a bounded recent diagnostics read.
 - Read-only churn observability exists at `/dashboard/churn/`, with homepage summary counts for recent SELL→BUY re-entry under 15 minutes.

@@ -194,6 +194,27 @@
 			<div class="op-card h-100">
 				<div class="op-card-body">
 					<div class="d-flex justify-content-between align-items-start mb-2">
+						<h2 class="section-title">Disk Usage</h2>
+						<span class="badge {{ disk_usage.badge_class|default:'badge-secondary' }}">{{ disk_usage.status_label|default:"Unavailable" }}</span>
+					</div>
+					<p class="mb-1">Filesystem: <strong>{{ disk_usage.filesystem|default:"/" }}</strong></p>
+					{% if disk_usage.available %}
+						<p class="mb-1">Used: <strong>{{ disk_usage.used_percent|floatformat:1 }}%</strong></p>
+						<p class="mb-1">Free: <strong>{{ disk_usage.free_gb|floatformat:2 }} GB</strong></p>
+						<p class="mb-0">Status: <strong>{{ disk_usage.status_icon }} {{ disk_usage.status_label }}</strong></p>
+					{% else %}
+						<p class="mb-1">Used: <strong>Unavailable</strong></p>
+						<p class="mb-1">Free: <strong>Unavailable</strong></p>
+						<p class="mb-0">Status: <strong>Unavailable</strong></p>
+					{% endif %}
+				</div>
+			</div>
+		</div>
+
+		<div class="col-lg-4 col-md-6 mb-3">
+			<div class="op-card h-100">
+				<div class="op-card-body">
+					<div class="d-flex justify-content-between align-items-start mb-2">
 						<h2 class="section-title">Inventory Integrity</h2>
 						{% if reconciliation.status == "ok" and not valuation_consistency.has_missing_prices %}
 							<span class="badge badge-success">reconciled</span>
