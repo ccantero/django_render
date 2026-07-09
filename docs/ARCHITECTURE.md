@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.7
+doc_version: 1.1.8
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-08
+last_verified_at: 2026-07-09
 source_repo: django_render
 ---
 
@@ -22,10 +22,10 @@ It provides visibility, review, and request workflows over bot-owned database ta
 ### Dashboard responsibilities
 
 - Read bot health and trading state.
-- Display lightweight Django-host filesystem usage on demand for operator disk-pressure visibility.
+- Display bot-owned VPS disk usage from latest healthcheck details for operator disk-pressure visibility.
 - Display portfolio, lots, trades, fees, drift, and dust detections.
 - Serve allowlisted read-only Telegram diagnostics for mobile operators,
-  including bot health with Django-host Disk Usage, conservative BUY capacity
+  including bot health with bot-healthcheck VPS Disk Usage, conservative BUY capacity
   status from persisted bot state plus
   runtime-config fallback for max-position limits when the read model omits
   them, and portfolio status with snapshot-backed historical changes plus an
@@ -136,9 +136,12 @@ State-changing dashboard actions are protected with login, staff checks where re
 
 Authenticated dashboard Disk Usage and Telegram `/health` Disk Usage are also
 side-effect-free, but they are not part of the public `/health/` liveness
-endpoint and not part of the shared bot healthcheck contract. They read the
-Django host filesystem `/` with `shutil.disk_usage()` during rendering and
-degrade to unavailable output if collection fails.
+endpoint. They read latest `bot.bot_healthcheck.details.disk_usage`, which the
+bot is expected to produce from the VPS where audit bundles, cron logs,
+retention archives, PostgreSQL, and bot logs live. Django does not measure VPS
+disk directly, does not call the VPS over SSH, and does not label Django/Render
+host filesystem usage as VPS health. Missing or malformed disk payloads degrade
+to unavailable output.
 
 ## 4.2 External Services
 

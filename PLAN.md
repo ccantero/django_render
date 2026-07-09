@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.10
+doc_version: 1.1.11
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-08
+last_verified_at: 2026-07-09
 source_repo: django_render
 ---
 
@@ -80,8 +80,8 @@ Additional pending visibility work:
 - Telegram mobile diagnostics commands read shared bot state through the existing webhook:
   `/help`, `/health`, `/buy_status`, `/portfolio_status`,
   `/position SYMBOL`, `/last_sell SYMBOL`, and `/why_not_sell SYMBOL`.
-- Telegram `/health` includes on-demand Django host Disk Usage using the same
-  OK/warning/critical thresholds as the authenticated dashboard.
+- Telegram `/health` includes bot-healthcheck VPS Disk Usage using the same
+  payload as the authenticated dashboard.
 - Telegram diagnostics expose a compact `/help` guide and present skipped/rejected
   SELL explanations with a mobile-first summary before raw event details.
 - Telegram mobile diagnostics now also support `/buy_status` for conservative
@@ -101,10 +101,12 @@ Additional pending visibility work:
 - Main dashboard dust UX now shows compact Active Operational Issues from unresolved critical/warning signals only, with info-only residuals summarized as counts/exposure while the dedicated Dust / Residuals page carries the full grouped table with filters and 25-row pagination.
 - Dust correction request links are disabled in the UI when the latest detection already has a linked `PENDING` or `APPLIED` correction; bot-side duplicate validation remains authoritative.
 - Main dashboard is now a concise operator console with normalized Bot Health status badges, Inventory Integrity, Performance Snapshot, latest four operations, active dust/drift issues, and informational residual counts.
-- Main dashboard now includes on-demand Disk Usage visibility for the Django host filesystem so operators can see used percentage, free GB, and OK/warning/critical status without persistence or shell probes.
+- Main dashboard now includes Disk Usage visibility from latest
+  `bot.bot_healthcheck.details.disk_usage` so operators can see bot VPS used
+  percentage, free GB, and status when the bot persists that payload.
 - Telegram `/health` now also exposes that Disk Usage visibility for mobile
-  operator review without persistence, shell probes, background jobs, or new
-  endpoints.
+  operator review without Django persistence, shell probes, background jobs, or
+  new endpoints.
 - Main dashboard includes a read-only “Why positions are not selling” table that separates dust/minNotional blockers, strategy holds, and review-needed drift from latest persisted SELL diagnostics.
 - Main dashboard keeps exit-status diagnostics disabled by default for latency and links to `/dashboard/exit-status/`, which uses a bounded recent diagnostics read.
 - Read-only churn observability exists at `/dashboard/churn/`, with homepage summary counts for recent SELL→BUY re-entry under 15 minutes.

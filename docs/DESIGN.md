@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.21
+doc_version: 1.1.22
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-08
+last_verified_at: 2026-07-09
 source_repo: django_render
 ---
 
@@ -44,7 +44,7 @@ Dashboard operator pages are implemented in the `dashboard` Django app.
 Home dashboard responsibility: concise operator console for health, urgent action, reconciliation, performance, and latest activity.
 
 - Compact Bot Health card with normalized health badge, status, heartbeat age, read-only state, and latest message
-- Compact Disk Usage card for the Django host filesystem `/`, showing used percent, free GB, and OK/warning/critical status from on-demand `shutil.disk_usage()` data
+- Compact Disk Usage card for bot VPS disk usage from latest `bot.bot_healthcheck.details.disk_usage`, showing source, filesystem, used percent, free GB, and status when available
 - Compact Inventory Integrity card with material positions, portfolio-vs-lots drift, reconciliation status, and muted tolerance/missing-price details
 - Compact Analytics card that links to deferred KPI detail instead of computing full-history metrics on the homepage
 - Detailed PnL-by-symbol and PnL-by-day history is intentionally deferred to Analytics rather than built for the homepage
@@ -121,11 +121,13 @@ Analytics read-model output may be cached briefly because the page is read-only 
 - Thanks page at `/thanks/`
 
 Dashboard and Telegram `/health` Disk Usage are operator-console diagnostics,
-not public liveness checks and not bot-owned healthcheck payloads. They
-classify the Django host filesystem as OK below 70% used, warning from 70%
-through 85%, and critical above 85%. If filesystem information cannot be
-collected, the output renders `Unavailable` and the rest of the dashboard or
-Telegram health message should continue loading normally.
+not public liveness checks. They prefer latest
+`bot.bot_healthcheck.details.disk_usage` and should label the source, such as
+`Bot VPS`, whenever the payload provides it. If bot-persisted disk information
+is missing or malformed, the output renders `Unavailable` and the rest of the
+dashboard or Telegram health message should continue loading normally. Django
+does not measure VPS disk directly and must not present Django/Render host disk
+usage as VPS health.
 
 ### Dust / Residuals
 
@@ -191,8 +193,8 @@ commands:
 Messages use Telegram HTML parse mode, escape dynamic values before rendering,
 and should stay compact enough for mobile review. `/help` should act as a compact
 operator guide. `/health` should keep bot heartbeat and position counts first,
-then show `Disk Usage` with filesystem `/`, used percent, free GB, and the same
-OK/warning/critical/unavailable status as the dashboard. Skipped/rejected SELL
+then show `Disk Usage` with source, filesystem, used percent, free GB, and the
+same bot-owned available/unavailable state as the dashboard. Skipped/rejected SELL
 diagnostics should lead with a plain
 language interpretation and suggested action before lower-level event fields.
 Dust/drift alerts should use human labels, expose raw reason/event identifiers in

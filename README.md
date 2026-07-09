@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.12
+doc_version: 1.1.13
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-08
+last_verified_at: 2026-07-09
 source_repo: django_render
 ---
 
@@ -48,7 +48,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Manual correction list/detail views
 - Staff-only correction request creation
 - Public app liveness endpoint at `/health/` for Render keepalive/cron pings
-- On-demand dashboard Disk Usage visibility for the Django host filesystem
+- Dashboard Disk Usage visibility from latest bot healthcheck VPS disk data
 
 ---
 
@@ -206,9 +206,9 @@ to match one of those allowlists. The commands use safe HTML formatting and only
 read shared bot tables. Supported commands are `/help`, `/health`, `/buy_status`,
 `/portfolio_status`, `/position SYMBOL`, `/last_sell SYMBOL`, and
 `/why_not_sell SYMBOL`. `/help`
-returns a compact operator guide, `/health` includes the same on-demand Django
-host Disk Usage status as the dashboard, and SELL rejection diagnostics present a short
-human-readable interpretation and suggested action before lower-level event
+returns a compact operator guide, `/health` includes the same bot-healthcheck
+VPS Disk Usage status as the dashboard, and SELL rejection diagnostics present a
+short human-readable interpretation and suggested action before lower-level event
 details for easier mobile review. Dust/drift alert templates are also kept human
 readable: tiny values are labeled as tiny dust, while raw event/reason/stage
 fields remain available for debugging.
@@ -339,10 +339,14 @@ curl https://<your-render-host>/health/
 The endpoint returns `{"status":"ok"}` when the Django web process is reachable. It does not check bot health or database state.
 
 Dashboard Disk Usage is separate from the public liveness endpoint. It is
-calculated on demand with Python's filesystem APIs for `/`, shows used percent
-and free GB, and degrades to `Unavailable` if the filesystem data cannot be
-collected. It does not run shell commands, persist data, or read bot tables.
-Telegram `/health` reuses the same disk status logic for mobile operator review.
+read from the latest `bot.bot_healthcheck.details.disk_usage` payload, shows the
+payload source, filesystem, used percent, free GB, and status, and degrades to
+`Unavailable` when the bot-persisted payload is missing or malformed. Django
+does not measure VPS disk directly, does not run shell commands, does not call
+the VPS over SSH, and must not show Django/Render host filesystem usage as VPS
+health. The bot healthcheck is expected to produce the VPS disk payload.
+Telegram `/health` reuses the same bot-owned disk status for mobile operator
+review.
 
 ## Detected Stack
 

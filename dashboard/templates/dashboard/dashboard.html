@@ -197,6 +197,7 @@
 						<h2 class="section-title">Disk Usage</h2>
 						<span class="badge {{ disk_usage.badge_class|default:'badge-secondary' }}">{{ disk_usage.status_label|default:"Unavailable" }}</span>
 					</div>
+					<p class="mb-1">Source: <strong>{{ disk_usage.source_label|default:"Unavailable" }}</strong></p>
 					<p class="mb-1">Filesystem: <strong>{{ disk_usage.filesystem|default:"/" }}</strong></p>
 					{% if disk_usage.available %}
 						<p class="mb-1">Used: <strong>{{ disk_usage.used_percent|floatformat:1 }}%</strong></p>

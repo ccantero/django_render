@@ -78,6 +78,7 @@ class HealthEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/json')
         self.assertEqual(response.json(), {'status': 'ok'})
+        self.assertNotContains(response, 'Disk Usage')
 
     def test_health_endpoint_is_get_only(self):
         response = self.client.post(self.health_url)
@@ -188,46 +189,43 @@ class TelegramDiagnosticsCommandTests(TestCase):
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
-    def test_health_formats_disk_usage_states(self, mock_health_manager, mock_send_message):
+    def test_health_formats_vps_disk_usage_from_healthcheck_details(self, mock_health_manager, mock_send_message):
         created_at = timezone.now() - timezone.timedelta(minutes=3)
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=7,
             status='healthy',
             created_at=created_at,
-            details={'run_id': 'run-123'},
+            details={
+                'run_id': 'run-123',
+                'disk_usage': {
+                    'filesystem': '/',
+                    'total_bytes': 100 * 1024 ** 3,
+                    'used_bytes': 72 * 1024 ** 3,
+                    'free_bytes': 28 * 1024 ** 3,
+                    'used_pct': 72.0,
+                    'status': 'warning',
+                    'source': 'bot_vps',
+                },
+            },
         )
-        gib = 1024 ** 3
-        usage_cases = [
-            (69, '31.00', '🟢 OK'),
-            (70, '30.00', '🟡 Warning'),
-            (86, '14.00', '🔴 Critical'),
-        ]
 
-        for used_percent, free_gb, status_line in usage_cases:
-            with self.subTest(status=status_line):
-                mock_send_message.reset_mock()
-                with patch('dashboard.dashboard_read_model.shutil.disk_usage') as disk_usage:
-                    disk_usage.return_value = SimpleNamespace(
-                        total=100 * gib,
-                        used=used_percent * gib,
-                        free=(100 - used_percent) * gib,
-                    )
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/health')
 
-                    with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
-                        response = self.post_telegram_message('/health')
-
-                self.assertEqual(response.status_code, 200)
-                message = mock_send_message.call_args[0][0]
-                self.assertIn('<b>Disk Usage</b>', message)
-                self.assertIn('Filesystem: <code>/</code>', message)
-                self.assertIn(f'Used: <code>{used_percent}.0%</code>', message)
-                self.assertIn(f'Free: <code>{free_gb} GB</code>', message)
-                self.assertIn(f'Status:\n<code>{status_line}</code>', message)
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('<b>Disk Usage</b>', message)
+        self.assertIn('Source: <code>Bot VPS</code>', message)
+        self.assertIn('Filesystem: <code>/</code>', message)
+        self.assertIn('Used: <code>72.0%</code>', message)
+        self.assertIn('Free: <code>28.00 GB</code>', message)
+        self.assertIn('Status:\n<code>🟡 Warning</code>', message)
+        self.assertNotIn('Django host', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
-    def test_health_disk_usage_unavailable_does_not_hide_bot_health(self, mock_health_manager, mock_send_message):
+    def test_health_missing_disk_usage_does_not_hide_bot_health(self, mock_health_manager, mock_send_message):
         created_at = timezone.now() - timezone.timedelta(minutes=3)
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=7,
@@ -236,35 +234,53 @@ class TelegramDiagnosticsCommandTests(TestCase):
             details={'run_id': 'run-123'},
         )
 
-        with patch('dashboard.dashboard_read_model.shutil.disk_usage', side_effect=OSError('no stat')):
-            with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
-                response = self.post_telegram_message('/health')
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/health')
 
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
         self.assertIn('<b>🟢 Bot health</b>', message)
         self.assertIn('<b>Disk Usage</b>', message)
+        self.assertIn('Source: <code>Unavailable</code>', message)
         self.assertIn('Status:\n<code>Unavailable</code>', message)
+        self.assertNotIn('Django host', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
     def test_health_disk_usage_renders_when_bot_healthcheck_missing(self, mock_health_manager, mock_send_message):
         mock_health_manager.order_by.return_value.first.return_value = None
-        gib = 1024 ** 3
 
-        with patch('dashboard.dashboard_read_model.shutil.disk_usage') as disk_usage:
-            disk_usage.return_value = SimpleNamespace(total=100 * gib, used=69 * gib, free=31 * gib)
-
-            with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
-                response = self.post_telegram_message('/health')
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/health')
 
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
         self.assertIn('<b>⚪ Bot health</b>', message)
         self.assertIn('Status: <code>unknown</code>', message)
         self.assertIn('<b>Disk Usage</b>', message)
-        self.assertIn('Status:\n<code>🟢 OK</code>', message)
+        self.assertIn('Source: <code>Unavailable</code>', message)
+        self.assertIn('Status:\n<code>Unavailable</code>', message)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    def test_health_malformed_disk_usage_renders_unavailable(self, mock_health_manager, mock_send_message):
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=7,
+            status='healthy',
+            created_at=timezone.now(),
+            details={'run_id': 'run-123', 'disk_usage': {'used_pct': 'not-a-number'}},
+        )
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/health')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('<b>Disk Usage</b>', message)
+        self.assertIn('Source: <code>Unavailable</code>', message)
+        self.assertIn('Status:\n<code>Unavailable</code>', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -1832,6 +1848,8 @@ class DashboardEndpointTests(TestCase):
             'status_label': 'Warning',
             'status_icon': '🟡',
             'badge_class': 'badge-warning',
+            'source': 'bot_vps',
+            'source_label': 'Bot VPS',
         }
         mock_get_dashboard_context.return_value.context = context
         self.client.force_login(self.user)
@@ -1840,6 +1858,7 @@ class DashboardEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Disk Usage')
+        self.assertContains(response, 'Source: <strong>Bot VPS</strong>', html=True)
         self.assertContains(response, 'Filesystem: <strong>/</strong>', html=True)
         self.assertContains(response, 'Used: <strong>72.0%</strong>', html=True)
         self.assertContains(response, 'Free: <strong>28.00 GB</strong>', html=True)
@@ -3368,37 +3387,49 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(status['badge_label'], 'error')
         self.assertEqual(status['badge_class'], 'badge-danger')
 
-    def test_disk_usage_classifies_ok_warning_and_critical_states(self):
+    def test_disk_usage_prefers_healthcheck_details(self):
         import dashboard.dashboard_read_model as read_model
 
-        usage_cases = [
-            (1000, 690, 310, 'ok', 'badge-success', 'OK'),
-            (1000, 700, 300, 'warning', 'badge-warning', 'Warning'),
-            (1000, 850, 150, 'warning', 'badge-warning', 'Warning'),
-            (1000, 851, 149, 'critical', 'badge-danger', 'Critical'),
-        ]
+        result = read_model._build_disk_usage({
+            'disk_usage': {
+                'filesystem': '/',
+                'total_bytes': 1000,
+                'used_bytes': 720,
+                'free_bytes': 280,
+                'used_pct': '72.0',
+                'status': 'warning',
+                'source': 'bot_vps',
+            },
+        })
 
-        for total, used, free, status, badge_class, label in usage_cases:
-            with self.subTest(status=status, used=used):
-                with patch('dashboard.dashboard_read_model.shutil.disk_usage') as disk_usage:
-                    disk_usage.return_value = SimpleNamespace(total=total, used=used, free=free)
+        self.assertTrue(result['available'])
+        self.assertEqual(result['source'], 'bot_vps')
+        self.assertEqual(result['source_label'], 'Bot VPS')
+        self.assertEqual(result['filesystem'], '/')
+        self.assertEqual(result['used_percent'], Decimal('72.0'))
+        self.assertEqual(result['free_gb'], Decimal(280) / Decimal(1024 ** 3))
+        self.assertEqual(result['status'], 'warning')
+        self.assertEqual(result['badge_class'], 'badge-warning')
+        self.assertEqual(result['status_label'], 'Warning')
 
-                    result = read_model._build_disk_usage()
+    def test_disk_usage_missing_payload_is_unavailable(self):
+        import dashboard.dashboard_read_model as read_model
 
-                self.assertEqual(result['filesystem'], '/')
-                self.assertEqual(result['used_percent'], Decimal(used) / Decimal(total) * Decimal('100'))
-                self.assertEqual(result['status'], status)
-                self.assertEqual(result['badge_class'], badge_class)
-                self.assertEqual(result['status_label'], label)
-                self.assertTrue(result['available'])
+        result = read_model._build_disk_usage({})
+
+        self.assertFalse(result['available'])
+        self.assertEqual(result['source_label'], 'Unavailable')
+        self.assertEqual(result['status'], 'unavailable')
+        self.assertEqual(result['status_label'], 'Unavailable')
+        self.assertIsNone(result['used_percent'])
 
     def test_disk_usage_unavailable_does_not_raise(self):
         import dashboard.dashboard_read_model as read_model
 
-        with patch('dashboard.dashboard_read_model.shutil.disk_usage', side_effect=OSError('no stat')):
-            result = read_model._build_disk_usage()
+        result = read_model._build_disk_usage({'disk_usage': {'used_pct': 'bad'}})
 
         self.assertFalse(result['available'])
+        self.assertEqual(result['source_label'], 'Unavailable')
         self.assertEqual(result['status'], 'unavailable')
         self.assertEqual(result['status_label'], 'Unavailable')
         self.assertIsNone(result['used_percent'])
@@ -4624,6 +4655,8 @@ class DashboardEndpointTests(TestCase):
                 'status_label': 'Unavailable',
                 'status_icon': '',
                 'badge_class': 'badge-secondary',
+                'source': None,
+                'source_label': 'Unavailable',
             },
         }
 

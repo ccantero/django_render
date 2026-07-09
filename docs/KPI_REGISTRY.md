@@ -1,9 +1,9 @@
 ---
 doc_id: kpi-registry
-doc_version: 1.0.35
+doc_version: 1.0.36
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-29
+last_verified_at: 2026-07-09
 source_repo: binanceBot
 ---
 
@@ -186,6 +186,15 @@ position classification from portfolio projection.
 | `material_position_unrealized_pnl_usdt` | Diagnostic | Approximate current unrealized PnL shown beside each displayed material `/buy_status` position. | `(current_price - entry_price) * quantity` for each displayed material portfolio row | `portfolio` valuation projection | Django `/buy_status` formatter | `/buy_status` | USDT | Render `PnL unavailable` when entry price is missing, invalid, or non-positive, or when quantity/current price cannot be used. | realized PnL, lot-backed unrealized PnL | Display-only projection; does not read `position_lots`, does not affect BUY capacity, and only applies to material rows already shown. |
 | `material_position_unrealized_pnl_pct` | Diagnostic | Approximate current unrealized PnL percent shown beside each displayed material `/buy_status` position. | `((current_price - entry_price) / entry_price) * 100` for each displayed material portfolio row | `portfolio` valuation projection | Django `/buy_status` formatter | `/buy_status` | percent | Render `PnL unavailable` when entry price is missing, invalid, or non-positive, or when quantity/current price cannot be used. | realized PnL percent, lot-backed unrealized PnL percent | Display-only projection; two-decimal signed percentage for mobile readability. |
 | `dust_exposure_usdt` | Diagnostic | Current USDT value of dust portfolio exposure in BUY status. | `sum(quantity * current_price for dust positions)` | `portfolio` valuation projection in healthcheck details | `BotRunner` | `/buy_status`, dust review | USDT | Unknown valuation excluded. | `dust_open_capital_usdt` | Dust exposure is visible but not BUY-capacity blocking. |
+
+## Operational Health Diagnostics
+
+Source family: latest `bot_healthcheck.details`, dashboard health cards, and
+Telegram `/health` consumers.
+
+| Canonical name | Category | Purpose | Formula | Source of truth | Current producer | Current consumers | Units | Null/unavailable behavior | Do not confuse with | Notes / caveats |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `disk_usage` | Diagnostic | Show VPS disk pressure for bot-owned operational storage. | Bot-produced payload with filesystem, total/used/free bytes, used percent, status, thresholds, and source. | `bot_healthcheck.details.disk_usage` | Bot healthcheck | Django dashboard, Telegram `/health` | bytes, percent, enum | Missing or malformed payload renders unavailable. | Django/Render host disk usage | Django must not measure VPS disk directly, call SSH, or label Django host disk as VPS health. |
 
 ## BUY Decision Analysis
 

@@ -1,13 +1,47 @@
 ---
 doc_id: changelog
-doc_version: 1.1.29
+doc_version: 1.1.30
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-08
+last_verified_at: 2026-07-09
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-07-09 - Bot Healthcheck VPS Disk Usage
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/CHANGELOG.md
+- docs/DATA_CONTRACT.md
+- docs/DESIGN.md
+- docs/KPI_REGISTRY.md
+- docs/PROJECT_STATE.md
+
+Summary:
+- Changed dashboard and Telegram `/health` Disk Usage to read latest
+  `bot.bot_healthcheck.details.disk_usage`.
+- Missing or malformed bot-persisted disk data now renders `Unavailable`.
+- Django no longer measures `shutil.disk_usage("/")` for this operator surface
+  and must not label Django/Render host disk usage as VPS health.
+
+Operator impact:
+- Disk Usage now represents bot VPS health only when the bot healthcheck
+  persisted a valid payload.
+- Public `/health/` remains Django liveness only and unchanged.
+
+Validation:
+- Added failing tests first for dashboard VPS disk rendering, Telegram VPS disk
+  rendering, missing/malformed disk payloads, and public `/health/` liveness.
+- Python compile validation passed for edited `dashboard` and `core` modules.
+- Django test execution is blocked in this environment because Django is not
+  installed in the available Python interpreter.
 
 ## 2026-07-08 - Telegram Health Disk Usage
 

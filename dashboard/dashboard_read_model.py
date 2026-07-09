@@ -4,7 +4,6 @@ from decimal import Decimal, InvalidOperation
 from contextlib import nullcontext
 import logging
 import os
-import shutil
 from time import perf_counter
 from types import SimpleNamespace
 from typing import List
@@ -215,11 +214,11 @@ def _get_dashboard_context(include_performance_kpis=False, profiler=None):
 	try:
 		with _profile_section(profiler, "healthcheck"):
 			context["bot_status"] = _build_bot_status()
-			context["buy_status_summary"] = _build_buy_status_summary(
-				getattr(context["bot_status"].get("row"), "details", None) or {}
-			)
+			healthcheck_details = getattr(context["bot_status"].get("row"), "details", None) or {}
+			context["buy_status_summary"] = _build_buy_status_summary(healthcheck_details)
 	except DatabaseError as exc:
 		_add_data_error(context, "bot status", exc)
+		healthcheck_details = {}
 
 	if include_performance_kpis:
 		try:
@@ -292,7 +291,7 @@ def _get_dashboard_context(include_performance_kpis=False, profiler=None):
 		_add_data_error(context, "churn summary", exc)
 
 	with _profile_section(profiler, "disk_usage"):
-		context["disk_usage"] = _build_disk_usage()
+		context["disk_usage"] = _build_disk_usage(healthcheck_details)
 
 	return DashboardReadModel(
 		context=context,
@@ -510,6 +509,8 @@ def get_demo_dashboard_context():
 			"status_label": "OK",
 			"status_icon": "🟢",
 			"badge_class": "badge-success",
+			"source": "bot_vps",
+			"source_label": "Bot VPS",
 		},
 		"inventory_scope": {
 			"spot_assets_count": None,
@@ -643,30 +644,45 @@ def _empty_bot_status():
 	}
 
 
-def _build_disk_usage(filesystem=DISK_USAGE_FILESYSTEM):
-	try:
-		usage = shutil.disk_usage(filesystem)
-	except OSError:
-		return _empty_disk_usage(filesystem=filesystem)
+def _build_disk_usage(healthcheck_details=None):
+	if not isinstance(healthcheck_details, dict):
+		return _empty_disk_usage()
 
-	total = Decimal(usage.total)
-	used = Decimal(usage.used)
-	free = Decimal(usage.free)
-	used_percent = Decimal("0") if total == 0 else used / total * Decimal("100")
-	status, status_label, status_icon, badge_class = _disk_usage_status(used_percent)
+	disk_usage = healthcheck_details.get("disk_usage")
+	if not isinstance(disk_usage, dict):
+		return _empty_disk_usage()
+
+	try:
+		total_bytes = _non_negative_decimal(disk_usage.get("total_bytes"))
+		used_bytes = _non_negative_decimal(disk_usage.get("used_bytes"))
+		free_bytes = _non_negative_decimal(disk_usage.get("free_bytes"))
+		used_percent = _used_percent_decimal(disk_usage.get("used_pct"))
+	except (InvalidOperation, TypeError, ValueError):
+		return _empty_disk_usage()
+
+	if total_bytes is None or used_bytes is None or free_bytes is None or used_percent is None:
+		return _empty_disk_usage()
+
+	status, status_label, status_icon, badge_class = _disk_usage_status_from_payload(
+		disk_usage.get("status"),
+		used_percent,
+	)
+	source = str(disk_usage.get("source") or "").strip() or "bot_healthcheck"
 
 	return {
 		"available": True,
-		"filesystem": filesystem,
-		"total_bytes": usage.total,
-		"used_bytes": usage.used,
-		"free_bytes": usage.free,
+		"filesystem": str(disk_usage.get("filesystem") or DISK_USAGE_FILESYSTEM),
+		"total_bytes": int(total_bytes),
+		"used_bytes": int(used_bytes),
+		"free_bytes": int(free_bytes),
 		"used_percent": used_percent,
-		"free_gb": free / BYTES_PER_GB,
+		"free_gb": free_bytes / BYTES_PER_GB,
 		"status": status,
 		"status_label": status_label,
 		"status_icon": status_icon,
 		"badge_class": badge_class,
+		"source": source,
+		"source_label": _disk_usage_source_label(source),
 	}
 
 
@@ -683,6 +699,8 @@ def _empty_disk_usage(filesystem=DISK_USAGE_FILESYSTEM):
 		"status_label": "Unavailable",
 		"status_icon": "",
 		"badge_class": "badge-secondary",
+		"source": None,
+		"source_label": "Unavailable",
 	}
 
 
@@ -692,6 +710,39 @@ def _disk_usage_status(used_percent):
 	if used_percent <= Decimal("85"):
 		return "warning", "Warning", "🟡", "badge-warning"
 	return "critical", "Critical", "🔴", "badge-danger"
+
+
+def _disk_usage_status_from_payload(status, used_percent):
+	normalized = str(status or "").strip().lower()
+	if normalized == "ok":
+		return "ok", "OK", "🟢", "badge-success"
+	if normalized == "warning":
+		return "warning", "Warning", "🟡", "badge-warning"
+	if normalized == "critical":
+		return "critical", "Critical", "🔴", "badge-danger"
+	return _disk_usage_status(used_percent)
+
+
+def _disk_usage_source_label(source):
+	if source == "bot_vps":
+		return "Bot VPS"
+	return "Bot healthcheck"
+
+
+def _non_negative_decimal(value):
+	if value is None:
+		return None
+	parsed = Decimal(str(value))
+	if parsed < 0:
+		return None
+	return parsed
+
+
+def _used_percent_decimal(value):
+	parsed = _non_negative_decimal(value)
+	if parsed is None or parsed > Decimal("100"):
+		return None
+	return parsed
 
 
 def _bot_health_badge(status, row, is_stale):
@@ -1742,7 +1793,7 @@ def _important_queries():
 		"bot.position_lots: SUM(quantity_open) WHERE quantity_open > 0 GROUP BY symbol",
 		"bot.sell_decision_events: latest persisted SELL diagnostic per open-lot symbol, read-only",
 		"bot.dust_detections: operational dust summary and top detections, read-only",
-		"filesystem /: live Django-process disk usage via shutil.disk_usage",
+		"bot.bot_healthcheck.details.disk_usage: bot-owned VPS disk usage payload",
 	]
 
 
@@ -1755,5 +1806,5 @@ def _assumptions():
 		"Missing current_price values are counted and excluded from value totals.",
 		"Performance KPIs are operational read-only metrics, not audited accounting statements.",
 		"Non-USDT or unnormalized fees are excluded from normalized USDT fee totals.",
-		"Disk usage is calculated on demand from the Django host filesystem and is not persisted.",
+		"Disk usage is read from latest bot healthcheck details; missing or malformed payloads render unavailable.",
 	]

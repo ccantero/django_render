@@ -1,9 +1,9 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.22
+doc_version: 1.0.23
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-06-20
+last_verified_at: 2026-07-09
 source_repo: binanceBot
 ---
 
@@ -508,6 +508,13 @@ classification and BUY diagnostic fields:
 - `latest_buy_state`
 - `latest_buy_reason`
 - `latest_buy_symbol`
+- `disk_usage`: additive VPS disk diagnostic produced by the bot healthcheck.
+  Expected keys include `filesystem`, `total_bytes`, `used_bytes`,
+  `free_bytes`, `used_pct`, `status`, `warning_threshold_pct`,
+  `critical_threshold_pct`, and `source`. Dashboard and Telegram consumers
+  should treat missing or malformed disk payloads as unavailable. Django must
+  not call the VPS or measure its own host filesystem as a substitute for VPS
+  health.
 - `latest_buy_error_class`
 - `latest_buy_error_code`
 - `scanner_candidates_available`: scanner candidate count visible to the BUY

@@ -143,7 +143,7 @@ def format_health():
 			"",
 			"Status: <code>unknown</code>",
 		]
-		lines.extend(_format_health_disk_usage())
+		lines.extend(_format_health_disk_usage(None))
 		return "\n".join(lines)
 
 	now = timezone.now()
@@ -186,15 +186,16 @@ def format_health():
 			"raw/material/dust/unknown: "
 			f"<code>{h('/'.join(fmt_count(value) for value in counts))}</code>"
 		)
-	lines.extend(_format_health_disk_usage())
+	lines.extend(_format_health_disk_usage(details))
 	return "\n".join(lines)
 
 
-def _format_health_disk_usage():
-	disk_usage = _build_disk_usage()
+def _format_health_disk_usage(healthcheck_details):
+	disk_usage = _build_disk_usage(healthcheck_details)
 	lines = [
 		"",
 		"<b>Disk Usage</b>",
+		f"Source: <code>{h(disk_usage.get('source_label') or 'Unavailable')}</code>",
 		f"Filesystem: <code>{h(disk_usage.get('filesystem') or 'Unavailable')}</code>",
 	]
 
