@@ -1,9 +1,9 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.23
+doc_version: 1.0.25
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-09
+last_verified_at: 2026-07-10
 source_repo: binanceBot
 ---
 
@@ -508,13 +508,6 @@ classification and BUY diagnostic fields:
 - `latest_buy_state`
 - `latest_buy_reason`
 - `latest_buy_symbol`
-- `disk_usage`: additive VPS disk diagnostic produced by the bot healthcheck.
-  Expected keys include `filesystem`, `total_bytes`, `used_bytes`,
-  `free_bytes`, `used_pct`, `status`, `warning_threshold_pct`,
-  `critical_threshold_pct`, and `source`. Dashboard and Telegram consumers
-  should treat missing or malformed disk payloads as unavailable. Django must
-  not call the VPS or measure its own host filesystem as a substitute for VPS
-  health.
 - `latest_buy_error_class`
 - `latest_buy_error_code`
 - `scanner_candidates_available`: scanner candidate count visible to the BUY
@@ -550,6 +543,18 @@ classification and BUY diagnostic fields:
   - `portfolio_rows_without_open_lots_count`
   - `quantity_drift_count`
   - `inventory_warnings[]`
+- `disk_usage`, which is bot-produced VPS operational health data:
+  - `filesystem`: measured filesystem path, default `/`
+  - `total_bytes`
+  - `used_bytes`
+  - `free_bytes`
+  - `used_pct`
+  - `status`: `ok`, `warning`, `critical`, or `unavailable`
+  - `warning_threshold_pct`, default `70`
+  - `critical_threshold_pct`, default `85`
+  - `source`: `bot_vps` for bot-cycle collection, or `bot_watchdog` when the
+    external watchdog measures directly because the latest healthcheck lacks
+    disk data
 
 These fields are healthcheck JSON details only. They do not add or modify
 database columns, and they do not change the accounting source-of-truth model.
@@ -559,6 +564,13 @@ Dust positions remain excluded from BUY gating because they are non-material
 exposure, even though they may remain latent inventory and possible future
 reusable liquidity. `portfolio` remains a projection and `position_lots`
 remains the FIFO accounting truth.
+
+Dashboard and Telegram consumers must treat `details.disk_usage` as the VPS
+disk-health source when present. Django must not call `shutil.disk_usage("/")`
+or otherwise present its own host filesystem as VPS disk health. Missing or
+`unavailable` disk data means disk health is unknown, not healthy. Disk usage
+health is operational observability only and must not affect trading decisions,
+BUY/SELL behavior, Binance calls, accounting, or schema.
 
 Potential future exposure-oriented metrics such as deployed-capital percentage,
 cash-reserve percentage, or material exposure in USDT are roadmap ideas only;
@@ -691,6 +703,10 @@ equity metadata in `notes` from `source = "bot_cycle"` snapshots:
 - `notes.free_usdt`: free USDT observed by the bot at snapshot time.
 - `notes.open_value_usdt`: sum of open-position value from known positive
   `quantity * current_price` rows at snapshot time.
+- `notes.symbols`: optional compact per-symbol valuation read model for
+  historical equity attribution. Each entry is keyed by symbol and includes
+  `quantity`, `current_price`, and `value_usdt` from the bot-cycle portfolio
+  projection at snapshot time.
 
 `portfolio_equity_usdt` must equal `free_usdt + open_value_usdt`. If
 `portfolio_equity_usdt` is absent, non-numeric, non-positive, or invalid, the
@@ -699,10 +715,20 @@ per-symbol-only rows remain valid snapshots but unavailable for equity history.
 Consumers must not backfill, invent, or substitute `open_value_usdt` or
 `sum(quantity * current_price)` as account equity.
 
+`notes.symbols` is observational valuation evidence only. It is intended for
+future dashboard readers to compare two canonical bot-cycle snapshots and
+attribute historical equity movement by symbol when both snapshots expose the
+symbol payload. It is not accounting truth, does not replace
+`position_lots`, must not be used for SELL coverage, must not be interpreted as
+realized PnL, and must not be fabricated for historical rows where it is
+missing. Symbols with missing, null, non-positive price, or non-positive value
+remain unavailable for symbol attribution rather than being forced to zero.
+
 `source = "portfolio_sync_from_api"` rows are operational sync/diff snapshots.
 They may use a different price freshness path from the final bot-cycle
 snapshot, so they are not canonical Portfolio Status equity-history rows and
-must not be consumed through `notes.portfolio_equity_usdt`.
+must not be consumed through `notes.portfolio_equity_usdt` or
+`notes.symbols`.
 
 Dashboard usage:
 
@@ -733,8 +759,9 @@ estimated, or backfilled.
 Smallest recommended bot-side producer: persist periodic
 `bot.portfolio_snapshots` rows with `source = "bot_cycle"`, `created_at`,
 canonical `notes.portfolio_equity_usdt`, `notes.free_usdt`, and
-`notes.open_value_usdt` decimal strings, plus enough freshness/version metadata
-to let consumers detect stale history.
+`notes.open_value_usdt` decimal strings, optional `notes.symbols` valuation
+entries, plus enough freshness/version metadata to let consumers detect stale
+history.
 
 ---
 
