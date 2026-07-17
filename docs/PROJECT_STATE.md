@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.20
+doc_version: 1.1.21
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-09
+last_verified_at: 2026-07-17
 source_repo: django_render
 ---
 
@@ -59,6 +59,18 @@ Implemented capabilities:
   - `/position SYMBOL`
   - `/last_sell SYMBOL`
   - `/why_not_sell SYMBOL`
+- Telegram webhook resilience: static allowlisted `/help` avoids importing
+  database-backed diagnostics, non-text/malformed updates are handled without
+  a 500, audit-message persistence is non-blocking, duplicate message IDs are
+  ignored, and outbound Telegram delivery has a bounded timeout plus safe
+  HTTP/API outcome logging.
+- `/portfolio_status` limits snapshot materialization to the configured
+  `PORTFOLIO_STATUS_MAX_SNAPSHOTS` cap (512 by default); chart-render failure
+  remains text-only fallback behavior.
+- Production guidance is captured in the tracked `Procfile` as one Gunicorn
+  worker with two threads and a 30-second timeout for the 512 MB Render
+  service. Actual Render command, boot RSS, and webhook readiness still need
+  deployment verification.
 - Telegram diagnostics include a compact command guide and format skipped/rejected
   SELL diagnostics with status, interpretation, suggested action, and raw event details for mobile review.
 - Telegram `/health` includes Disk Usage from latest

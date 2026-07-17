@@ -1,4 +1,4 @@
-from django.test import TestCase, TransactionTestCase, Client
+from django.test import TestCase, TransactionTestCase, Client, override_settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.urls import reverse
@@ -10,6 +10,7 @@ import inspect
 import json
 import logging
 import os
+import requests
 from pathlib import Path
 from unittest.mock import patch
 
@@ -111,6 +112,99 @@ class TelegramWebhookTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         mock_send_message.assert_called()
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.views.TelegramMessage.objects.create', side_effect=DatabaseError('database unavailable'))
+    @patch('core.views.TelegramMessage.objects.filter')
+    @patch('core.views.diagnostic_response', side_effect=AssertionError('help must not dispatch diagnostics'))
+    def test_help_continues_after_audit_persistence_failure_without_diagnostics(
+        self,
+        mock_diagnostic_response,
+        mock_message_filter,
+        mock_message_create,
+        mock_send_message,
+    ):
+        payload = {
+            'update_id': 42,
+            'message': {
+                'text': '/help',
+                'message_id': 123,
+                'chat': {'id': 1},
+                'from': {'id': 2, 'username': 'operator'},
+            },
+        }
+
+        mock_message_filter.return_value.exists.return_value = False
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='1'):
+            response = self.client.post(
+                self.webhook_url,
+                data=json.dumps(payload),
+                content_type='application/json',
+                HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN='test-webhook-token',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        mock_send_message.assert_called_once()
+        self.assertIn('Bot commands', mock_send_message.call_args.args[0])
+        mock_diagnostic_response.assert_not_called()
+        mock_message_filter.assert_called_once_with(chat_id='1', message_id=123)
+        mock_message_create.assert_called_once_with(
+            message='/help',
+            message_id=123,
+            from_username='operator',
+            chat_id='1',
+        )
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    def test_listener_rejects_malformed_json_without_server_error(self):
+        response = self.client.post(
+            self.webhook_url,
+            data='{not-json',
+            content_type='application/json',
+            HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN='test-webhook-token',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {'ok': False, 'error': 'invalid_update'})
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    def test_listener_accepts_update_without_message_text(self):
+        response = self.client.post(
+            self.webhook_url,
+            data=json.dumps({'update_id': 43, 'callback_query': {'id': 'callback'}}),
+            content_type='application/json',
+            HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN='test-webhook-token',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'ok': True, 'ignored': 'no_text_message'})
+
+    @patch('core.views.requests.post', side_effect=requests.Timeout('timed out'))
+    def test_send_message_uses_timeout_and_reports_timeout_failure(self, mock_post):
+        from core.views import send_message
+
+        self.assertFalse(send_message('hello', 1))
+        self.assertEqual(mock_post.call_args.kwargs['timeout'], 10)
+
+    @patch('core.views.requests.post')
+    def test_send_message_rejects_telegram_ok_false(self, mock_post):
+        from core.views import send_message
+
+        mock_post.return_value = SimpleNamespace(
+            ok=True,
+            json=lambda: {'ok': False, 'error_code': 403, 'description': 'Forbidden'},
+        )
+
+        self.assertFalse(send_message('hello', 1))
+
+    @patch('core.views.requests.post')
+    def test_send_message_reports_confirmed_telegram_success(self, mock_post):
+        from core.views import send_message
+
+        mock_post.return_value = SimpleNamespace(ok=True, json=lambda: {'ok': True, 'result': {}})
+
+        self.assertTrue(send_message('hello', 1))
 
 
 class TelegramDiagnosticsCommandTests(TestCase):
@@ -5104,6 +5198,115 @@ class TelegramPortfolioStatusTests(TestCase):
 
     def _snapshot(self, created_at, equity):
         return self._canonical_snapshot(created_at, equity)
+
+    def _snapshot_row(self, created_at, row_id, equity='100'):
+        row = self._canonical_snapshot(created_at, equity)
+        row.id = row_id
+        return row
+
+    def _snapshot_manager(self, rows):
+        class SnapshotQuery:
+            def __init__(self, source_rows):
+                self.rows = source_rows
+                self.filter_kwargs = None
+                self.ordering = None
+                self.slice = None
+
+            def filter(self, **kwargs):
+                self.filter_kwargs = kwargs
+                return self
+
+            def order_by(self, *fields):
+                self.ordering = fields
+                reverse = fields[0].startswith('-')
+                self.rows = sorted(
+                    self.rows,
+                    key=lambda row: (row.created_at, row.id),
+                    reverse=reverse,
+                )
+                return self
+
+            def __getitem__(self, value):
+                self.slice = value
+                return self.rows[value]
+
+        return SnapshotQuery(rows)
+
+    def test_bounded_snapshot_query_returns_all_fewer_than_limit_in_chronological_order(self):
+        from core.telegram_diagnostics import _bounded_portfolio_snapshot_rows
+
+        now = timezone.now()
+        query = self._snapshot_manager([
+            self._snapshot_row(now - timezone.timedelta(minutes=5), 3),
+            self._snapshot_row(now - timezone.timedelta(minutes=15), 1),
+            self._snapshot_row(now - timezone.timedelta(minutes=10), 2),
+        ])
+        with patch('core.telegram_diagnostics.Snapshot.objects', query):
+            rows = _bounded_portfolio_snapshot_rows(now, limit=5)
+
+        self.assertEqual([row.id for row in rows], [1, 2, 3])
+        self.assertEqual(query.ordering, ('-created_at', '-id'))
+        self.assertEqual(query.slice, slice(None, 5, None))
+
+    def test_bounded_snapshot_query_keeps_newest_rows_and_restores_chronology(self):
+        from core.telegram_diagnostics import _bounded_portfolio_snapshot_rows
+
+        now = timezone.now()
+        query = self._snapshot_manager([
+            self._snapshot_row(now - timezone.timedelta(minutes=index), index)
+            for index in range(6)
+        ])
+        with patch('core.telegram_diagnostics.Snapshot.objects', query):
+            rows = _bounded_portfolio_snapshot_rows(now, limit=3)
+
+        self.assertEqual([row.id for row in rows], [2, 1, 0])
+        self.assertNotIn(3, [row.id for row in rows])
+        self.assertEqual(query.slice, slice(None, 3, None))
+
+    def test_bounded_snapshot_query_uses_id_for_equal_timestamp_ordering(self):
+        from core.telegram_diagnostics import _bounded_portfolio_snapshot_rows
+
+        now = timezone.now()
+        query = self._snapshot_manager([
+            self._snapshot_row(now, 2),
+            self._snapshot_row(now, 1),
+            self._snapshot_row(now, 3),
+        ])
+        with patch('core.telegram_diagnostics.Snapshot.objects', query):
+            rows = _bounded_portfolio_snapshot_rows(now, limit=2)
+
+        self.assertEqual([row.id for row in rows], [2, 3])
+
+    @override_settings(PORTFOLIO_STATUS_MAX_SNAPSHOTS=3)
+    def test_portfolio_status_uses_fresh_snapshot_when_rows_exceed_limit(self):
+        from core.telegram_diagnostics import format_portfolio_status
+
+        now = timezone.now()
+        query = self._snapshot_manager([
+            self._snapshot_row(now - timezone.timedelta(days=10) + timezone.timedelta(minutes=index), index)
+            for index in range(4)
+        ] + [
+            self._snapshot_row(now - timezone.timedelta(minutes=10), 9, '110'),
+            self._snapshot_row(now - timezone.timedelta(minutes=5), 10, '120'),
+        ])
+        with patch('core.telegram_diagnostics.Snapshot.objects', query), \
+             patch('core.telegram_diagnostics.BotHealthcheck.objects') as health, \
+             patch('core.telegram_diagnostics.PositionLot.objects') as lots, \
+             patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0')), \
+             patch('core.telegram_diagnostics._safe_realized_pnl_by_symbol_today', return_value=[]), \
+             patch('core.telegram_diagnostics.timezone.now', return_value=now):
+            health.order_by.return_value.first.return_value = None
+            lots.filter.return_value.order_by.return_value = []
+            result = format_portfolio_status()
+
+        self.assertNotIn('Chart: unavailable, not enough history', result['text'])
+        self.assertEqual(query.slice, slice(None, 3, None))
+
+    @override_settings(PORTFOLIO_STATUS_MAX_SNAPSHOTS=0)
+    def test_non_positive_snapshot_limit_falls_back_to_default_bound(self):
+        from core.telegram_diagnostics import _portfolio_status_snapshot_limit
+
+        self.assertEqual(_portfolio_status_snapshot_limit(), 512)
 
     def _canonical_snapshot(self, created_at, equity):
         return SimpleNamespace(

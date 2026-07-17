@@ -353,6 +353,37 @@ def format_buy_status():
 	)
 
 
+DEFAULT_PORTFOLIO_STATUS_MAX_SNAPSHOTS = 512
+
+
+def _portfolio_status_snapshot_limit():
+	limit = getattr(
+		settings,
+		"PORTFOLIO_STATUS_MAX_SNAPSHOTS",
+		DEFAULT_PORTFOLIO_STATUS_MAX_SNAPSHOTS,
+	)
+	if type(limit) is not int or limit <= 0:
+		return DEFAULT_PORTFOLIO_STATUS_MAX_SNAPSHOTS
+	return limit
+
+
+def _bounded_portfolio_snapshot_rows(now, *, limit=None):
+	"""Fetch newest snapshots at SQL level, then restore chronological order."""
+	limit = _portfolio_status_snapshot_limit() if limit is None else limit
+	rows = list(
+		Snapshot.objects
+		.filter(
+			source="bot_cycle",
+			created_at__gte=now - timedelta(days=35),
+			created_at__lte=now,
+		)
+		.order_by("-created_at", "-id")
+		[:limit]
+	)
+	rows.reverse()
+	return rows
+
+
 def format_portfolio_status():
 	realized_today = _safe_realized_pnl_today()
 	realized_drivers = _safe_realized_pnl_by_symbol_today()
@@ -397,15 +428,7 @@ def format_portfolio_status():
 
 	equity_history = {"changes": {"24h": None, "7d": None, "30d": None}, "chart_points": []}
 	try:
-		snapshot_rows = list(
-			Snapshot.objects
-			.filter(
-				source="bot_cycle",
-				created_at__gte=now - timedelta(days=35),
-				created_at__lte=now,
-			)
-			.order_by("created_at", "id")
-		)
+		snapshot_rows = _bounded_portfolio_snapshot_rows(now)
 		equity_history = PortfolioEquityHistoryBuilder(as_of=now).build(snapshot_rows)
 	except DatabaseError:
 		logger.debug("Could not read snapshots for Telegram portfolio status")

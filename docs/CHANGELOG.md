@@ -1,13 +1,72 @@
 ---
 doc_id: changelog
-doc_version: 1.1.30
+doc_version: 1.1.34
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-09
+last_verified_at: 2026-07-17
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-07-17 - Harden Telegram Webhook Recovery Path
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/ARCHITECTURE.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Made allowlisted `/help` a static lightweight path independent of diagnostic
+  imports and non-critical Telegram audit persistence.
+- Added safe malformed/non-text update handling, duplicate message suppression,
+  lazy diagnostics, bounded outbound Telegram delivery, and a cap on portfolio
+  snapshot materialization.
+- The snapshot cap now selects the newest matching snapshots at SQL level and
+  restores ascending chronological order before history/chart processing, so
+  fresh snapshots are retained when the 35-day window exceeds the cap.
+- Added a conservative one-worker/two-thread Gunicorn `Procfile` for the 512
+  MB Render service.
+
+Operator impact:
+- Render recovery must be verified with webhook and outbound delivery evidence;
+  a generic service-recovered event remains insufficient proof.
+
+Validation:
+- Added a `/help` audit-persistence-failure regression test that forces the
+  actual `TelegramMessage.objects.create(...)` call to raise `DatabaseError`,
+  then verified focused webhook and existing Telegram command tests.
+- Added portfolio snapshot-cap regression tests for newest-row selection,
+  deterministic equal-timestamp ordering, chronological presentation, and
+  fresh-history availability above the cap.
+- Python compile validation and whitespace validation passed.
+
+## 2026-07-10 - Synchronize Shared Data Contract Copies
+
+Type: docs
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- DATA_CONTRACT.md
+- docs/DATA_CONTRACT.md
+- docs/CHANGELOG.md
+
+Summary:
+- Merged the newer shared-contract additions into the dashboard documentation
+  copy and synchronized both copies at data-contract version 1.0.25.
+- Clarified bot-produced VPS disk-health payload semantics and optional
+  per-symbol snapshot valuation evidence.
+
+Operator impact:
+- No runtime, database schema, or trading behavior changed.
+
+Validation:
+- Verified both contract copies are byte-identical.
+- Ran Markdown/reference and whitespace validation.
 
 ## 2026-07-09 - Bot Healthcheck VPS Disk Usage
 

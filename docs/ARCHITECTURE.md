@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.8
+doc_version: 1.1.9
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-09
+last_verified_at: 2026-07-17
 source_repo: django_render
 ---
 
@@ -123,11 +123,15 @@ Local development defaults to SQLite through `dj_database_url`. Production-style
 Browser dashboard pages -> django_render.urls -> dashboard.urls -> dashboard.views -> read model/forms -> templates
 Browser core pages/bot controls -> django_render.urls -> core.urls -> core.views
 External keepalive cron -> /health/ -> core.views.health -> JSON liveness response
-Telegram diagnostics -> /telegramapi/listener/ -> allowlist check -> read-only bot table queries -> Telegram HTML response
+Telegram webhook -> /telegramapi/listener/ -> secret validation -> safe update parsing -> best-effort audit persistence/deduplication -> static `/help` or lazy diagnostic dispatch -> bounded outbound Telegram API call -> HTTP acknowledgement
 Telegram portfolio chart -> read-only `bot.portfolio_snapshots` rows with `source = "bot_cycle"` and `notes.portfolio_equity_usdt` -> transport-agnostic PNG bytes -> Telegram photo or text fallback
 API client -> django_render.urls -> currencyconverter/profile routers -> DRF viewsets -> serializers/models
 Swagger UI -> /api/docs -> drf-spectacular schema at /api/schema
-Telegram -> /telegramapi/listener/ -> token check -> TelegramMessage row and optional Telegram response
+Telegram message auditing is diagnostic-only: a database failure is logged with
+safe context and does not block `/help` or a command response. `/help` checks
+the allowlist in the lightweight listener and does not import the
+database-backed diagnostics module. Other commands load that module lazily;
+individual command failures use an operator-safe fallback response.
 ```
 
 State-changing dashboard actions are protected with login, staff checks where required, POST-only decorators where present, and Django CSRF except for the Telegram webhook listener, which uses the Telegram secret-token header.
@@ -148,6 +152,17 @@ to unavailable output.
 Detected external calls:
 
 - Telegram Bot API in `core.views.send_message`.
+
+Outbound Telegram calls use the configured timeout (10 seconds by default),
+require both a successful HTTP response and Telegram JSON `ok: true`, and log
+safe command/update/chat/stage context for delivery failures. Tokens, webhook
+secrets, full payloads, and token-bearing URLs are not logged.
+
+The tracked `Procfile` defines the intended 512 MB Render process model:
+Gunicorn with one worker, two threads, and a 30-second timeout. `preload` is
+not enabled and request recycling is not configured because no local evidence
+establishes retained-memory growth. Render's configured start command remains
+an external deployment fact that must be verified after release.
 - Banco Ciudad quote endpoint in `currencyconverter.views.get_ARSUVA_rate`.
 - dolarapi.com quote endpoint in `currencyconverter.views.update_ARSUSD_rate`.
 

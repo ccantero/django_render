@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.13
+doc_version: 1.1.14
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-09
+last_verified_at: 2026-07-17
 source_repo: django_render
 ---
 
@@ -212,6 +212,21 @@ short human-readable interpretation and suggested action before lower-level even
 details for easier mobile review. Dust/drift alert templates are also kept human
 readable: tiny values are labeled as tiny dust, while raw event/reason/stage
 fields remain available for debugging.
+
+Webhook resilience and Render deployment:
+
+- `/help` is a static, allowlisted response and remains available when
+  diagnostic database reads or Telegram message-audit persistence are unavailable.
+- The webhook safely ignores non-text updates and returns a controlled `400`
+  for malformed JSON; it never logs secrets or full update payloads.
+- Outbound Telegram calls use `TELEGRAM_DELIVERY_TIMEOUT_SECONDS` (default
+  `10`) and log safe HTTP/API failure context instead of reporting an
+  unconfirmed delivery as successful.
+- `PORTFOLIO_STATUS_MAX_SNAPSHOTS` (default `512`) bounds snapshot rows
+  materialized for `/portfolio_status` history.
+- The tracked `Procfile` uses one Gunicorn worker, two threads, and a
+  30-second timeout. Confirm Render uses it before increasing workers on the
+  512 MB instance.
 
 `/portfolio_status` is separate from BUY capacity. It uses open
 `bot.position_lots` for quantity and cost basis, `bot.portfolio.current_price`
