@@ -1,13 +1,36 @@
 ---
 doc_id: changelog
-doc_version: 1.1.34
+doc_version: 1.1.35
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-17
+last_verified_at: 2026-08-28
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-08-28 - Synchronize Shared Data Contract Copy
+
+Type: docs
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- DATA_CONTRACT.md
+- docs/DATA_CONTRACT.md
+- docs/CHANGELOG.md
+
+Summary:
+- Synchronized `docs/DATA_CONTRACT.md` byte-for-byte with the canonical bot
+  contract at `../binanceBot/docs/DATA_CONTRACT.md`.
+- Preserved contract version `1.0.40` and verification date `2026-08-26`.
+
+Operator impact:
+- No runtime, database schema, or trading behavior changed.
+- Dashboard consumers now have the same documented contract semantics as the
+  bot repository.
+
+Validation:
+- Verified byte-for-byte equality with the paired contract.
 
 ## 2026-08-28 - Add Calculadora UVA PWA
 

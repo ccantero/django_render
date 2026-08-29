@@ -1,13 +1,167 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.25
+doc_version: 1.0.40
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-10
+last_verified_at: 2026-08-26
 source_repo: binanceBot
 ---
 
+## Runtime fee-accounting contract
+
+Future Binance fee identity is `BINANCE|order_id|trade_id|commission_asset`;
+missing `tradeId` is unresolved and never replaced with a fill-array index.
+Migration `100_runtime_fee_accounting.sql` is additive and performs no
+historical population. Runtime allocation is active only when
+`RUNTIME_FEE_ACCOUNTING_ENABLED=true`; it is disabled by default. The runtime
+path uses one caller-owned transaction across operation, aggregate lot
+accounting, physical fill provenance, and fee inventory mutation. Production
+activation remains disabled pending required PostgreSQL validation.
+
+## Capital release attribution
+
+`CapitalReleaseAttribution` is an additive version `1.0` immutable JSON evidence
+contract emitted through `bot.event_log`. Same-cycle BUY boundaries may be
+linked exactly by the canonical release attribution ID. The current runtime
+records pre-SELL free USDT when an existing balance read is available; it does
+not add a Binance call solely for attribution, so post-SELL balance and balance
+delta remain unavailable unless an existing runtime read supplies them.
+Missing or malformed attribution is fail-open and never changes order execution
+or accounting. USDT remains fungible: selected or filled BUY evidence is not
+causal proof that a specific SELL funded it. Incomplete legacy payloads preserve
+`release_at = null`; deserialization never invents wall-clock timestamps.
+The offline redeployment analyzer resolves persisted release attribution before
+scanner fallback. It uses candidate operation/run identity when available; when
+those fields are absent, it permits only a unique same-symbol attribution whose
+release timestamp is strictly after the candidate boundary and no more than five
+minutes later. Multiple eligible attributions remain unavailable rather than
+being guessed. Exact filled BUY evidence takes precedence over exact selected
+BUY evidence, which takes precedence over scanner opportunity evidence. An
+observed release is not redeployment evidence; selected or filled BUY evidence
+remains separately evaluated and does not establish causal funding.
+`position_lots` and FIFO closures remain accounting truth. Production evidence
+validates reconstruction of an exact persisted release-to-filled-BUY chain,
+but USDT remains fungible and this does not establish causal funding or
+strategy outcomes. This remains a read-only diagnostic and does not change
+live BUY/SELL behavior.
+
+## Offline Recommendation Learning Report
+
+`RecommendationLearningAnalyzer` consumes canonical validated
+`RecommendationCoverageReport` and `RecommendationOutcomeEvaluationReport`
+contracts (serialized inputs are reconstructed through `from_dict()`). Its frozen
+`RecommendationLearningReport` deterministically describes reason-code
+frequencies, outcome distributions by reason code, evidence sufficiency,
+abstention causes, reason-code combinations, combinations ending in
+unavailable outcomes or matched executed BUY observations, and unsupported
+comparison patterns. Coverage and outcome replay metadata must agree on any
+shared replay identifier, schema, advisor, policy, and recommendation-count
+fields. These are descriptive observations only: the contract
+contains no causal inference, strategy recommendation, score, rank,
+profitability prediction, or advisor-input field. It is read-only and is not a
+database or dashboard contract. Replay metadata is reconciled strictly: both
+reports must contain matching `replay_id`, schema, advisor, policy, and
+recommendation-count fields when those fields are part of the canonical
+contract; merged metadata preserves fields from both reports.
+
+Serialized learning reports must be reconstructed through
+`RecommendationLearningReport.from_dict()`, which requires the complete
+canonical field set and applies the same validation as direct construction.
+Coverage/outcome report contracts own shared input validation; the learning
+analyzer owns only replay reconciliation and learning-specific aggregation.
+
+`RecommendationOutcomeEvaluationReport` owns comparison, evaluator metadata,
+replay metadata, timestamp, warning, category, and nested immutability
+validation. `RecommendationOutcomeEvaluator` returns this contract directly.
+Its `RecommendationOutcomeEvaluationSummary` owns category counts, comparison
+totals, unmatched counts, and derived unavailable/unsupported/inconsistent/
+ambiguous counts; malformed summaries are rejected before learning analysis.
+The outcome report additionally recalculates all derived summary counts from
+its canonical stored comparisons. `unmatched_recommendation_count` is the
+number of comparisons whose `historical_outcome` is `None`, matching evaluator
+semantics; mismatches are hard contract errors.
+`recommendation_counts` uses the canonical BUY/SKIP/INSUFFICIENT_EVIDENCE
+vocabulary, and `abstention_rate` is the evaluator's four-decimal rounded
+INSUFFICIENT_EVIDENCE count divided by `recommendation_count`. The summary's
+`ambiguous_match_count` counts ambiguous comparison records, not ambiguous
+outcome identifiers.
+
 # DATA_CONTRACT.md — Binance Bot Shared Database Contract (v2)
+
+## Offline Recommendation Coverage Report
+
+`RecommendationCoverageAnalyzer` consumes completed replay recommendations and
+metadata only. Its immutable `RecommendationCoverageReport` contains replay
+metadata, coverage summary, recommendation statistics, reason-code statistics,
+bounded deterministic validation warnings, and observational `generated_at`.
+Every input is validated against the canonical recommendation contract before
+duplicate detection. All records for an ambiguous recommendation ID are
+excluded; `ambiguous_recommendation_id_count` counts IDs while
+`excluded_ambiguous_recommendation_count` counts excluded records. Upstream
+replay metadata remains separate from analyzer metadata. Warnings are the only
+bounded output; validated distributions retain all symbols and reason-code
+values without silent truncation.
+Malformed recommendations are reported independently and never participate in
+duplicate detection, so a valid record is not made ambiguous by an invalid
+record sharing its ID. The report contract is self-validating: analyzer
+metadata fields, timezone-aware `generated_at`, mapping key types, warning
+sequence/type/order/uniqueness/bound, canonical category counts, and matching
+percentages are rejected when invalid rather than normalized.
+Reason-code frequencies, co-occurrences, combinations, missing-code, and
+multiple-code counts are descriptive only; no causality, score, rank,
+profitability, or strategy quality is inferred. It cannot influence runtime
+BUY/SELL decisions and is not a database contract.
+
+Outcome evaluator hardening: `available` historical outcome labels must carry
+string `executed_side` (`BUY` or `SELL`) and string `executed_status`
+(`FILLED`, `CANCELED`, or `REJECTED`). Every outcome is validated before
+duplicate detection. Recommendation enum values reuse the canonical
+`DecisionRecommendation` set.
+
+Evaluator contract note: replay outcome labels require `decision_id` and
+`status` (`available`, `censored`, or `unavailable`). Optional metadata is
+validated; legacy `executed_buy` is rejected. Ambiguous duplicate matches
+retain no historical outcome. `generated_at` is observational time and fixed
+values are required for reproducible serialization.
+
+Offline recommendation outcome evaluation is a separate immutable contract:
+`RecommendationOutcomeEvaluator` emits descriptive comparison categories and
+counts only. It does not infer profitability or feed outcomes to the advisor.
+The canonical input is the replay `outcome_label` mapping. `decision_id` is the
+primary key; optional metadata must agree when present. Duplicate IDs are
+ambiguous. Warnings are sorted, deduplicated, and bounded.
+
+# BUY decision attribution extension
+
+## Attribution coverage audit
+
+`attribution_coverage.json` and `.txt` are canonical, read-only Daily Audit
+artifacts. They classify each eligible FILLED BUY into exactly one coverage
+category using existing `trade_operations` and `event_log` evidence. The JSON
+contains `total_eligible_buys`, `category_counts`, `category_percentages`,
+`unknown_count`, explanations, and row-level category evidence. The report
+does not add tables, write database state, call Binance, or alter BUY/SELL
+behavior.
+
+`missing_attribution_payload` means only that the persisted context lacks a
+usable payload; it does not claim that the builder failed or identify a root
+cause.
+
+The experiment-neutral `buy_decision_attribution` contract is version `1.1`.
+It adds an optional `selection_counterfactual` object with `AVAILABLE` or
+`UNAVAILABLE` status, baseline/experiment selected-candidate metadata, and a
+compact selection classification. It is observational only and never changes
+BUY selection, sizing, execution, or accounting; it does not measure
+profitability or alternate order fills.
+
+When `status` is `AVAILABLE`, normalized fields include baseline and experiment
+selected symbols, original/final ranks, rejection counts before selection,
+`selection_changed`, and a stable classification. Supported classifications
+are `SAME_SELECTED_CANDIDATE` and `SELECTED_CANDIDATE_CHANGED`. The shared
+candidate set and snapshot make one-selected/one-none and neither-selected
+outcomes unreachable for persisted planned BUYs in this milestone. An
+unavailable record has `status: UNAVAILABLE` and a bounded machine-readable
+`reason`.
 
 This document defines the shared database contract between the **Binance Python Bot** and external consumers such as a **Django Dashboard**.
 
@@ -16,6 +170,37 @@ dashboard repository keeps a local copy for implementation convenience, that
 copy should be synchronized from this contract rather than evolving
 independently; dashboard-only implementation notes may be additive, but they
 must not redefine bot-owned table semantics here.
+
+## Offline Decision Recommendation Contract
+
+`DecisionRecommendation` is a bot-local, immutable, canonical JSON contract
+for offline recommendation output; it is not a database table or dashboard
+read model. Recommendations are limited to `BUY`, `SKIP`, and
+`INSUFFICIENT_EVIDENCE`. The current `DecisionContext` exposes no canonical
+positive BUY signal, so the deterministic advisor returns
+`INSUFFICIENT_EVIDENCE` unless a future reviewed context contract adds such
+evidence. Confidence is bounded from 0 to 1 and describes evidence sufficiency,
+not profitability. Reason codes are enumerable and recommendation evidence
+collections are bounded. Replay output is read-only, excludes outcomes during
+generation, and reports execution status plus bounded recommendation data.
+
+## Daily Audit Bundle Contract
+
+`src/scripts/audit_artifact_validation.py` owns the versioned Daily Audit
+artifact registry and final `manifest.json`. The manifest records report/file
+requiredness, format, status, size, digest, and sanitized validation reasons.
+Schema version `2` is an integer. It also preserves creation/start/completion
+timestamps, duration, relative and absolute run paths, and optional git commit
+metadata. The registry contains 22 logical reports and 42 expected files;
+optional reports are explicitly marked and do not make a bundle fatal.
+`ready`, `ready_with_warnings`, and `failed` respectively mean all artifacts
+valid, only optional/unexpected problems, or at least one required problem.
+Telegram renders this manifest and must not infer success from directory
+existence, file count, or process exit code alone.
+Each report also carries structured execution evidence (`invoked`, `exit_code`,
+`timed_out`, and `signal`). Missing evidence is invalid; required execution
+failure makes the bundle `failed`, while optional execution failure produces a
+warning. The validator recomputes aggregate counts and status from entries.
 
 Current operational policy: if a paired dashboard repository keeps its own
 copy of this contract, set `DASHBOARD_DATA_CONTRACT` to that file path during
@@ -828,6 +1013,9 @@ bot emits them:
 - `time_based_exit_min_hours`
 - `time_based_exit_min_pnl_pct`
 - `time_based_exit_max_pnl_pct`
+- `time_based_exit_global_max_pnl_pct`
+- `time_based_exit_effective_max_pnl_pct`
+- `time_based_exit_max_pnl_override_applied`
 - `time_based_exit_material_only`
 - `time_based_exit_live_mode`
 - `time_based_exit_symbol_allowlist`
@@ -1053,6 +1241,20 @@ Current metadata keys:
 - `extra_spot_dust_quantity`
 - `extra_spot_dust_estimated_value_usdt`
 - `dust_cleanup_policy = "append_same_asset_spot_dust_to_normal_sell"`
+
+Future SELL payloads may include additive `residual_provenance` evidence with
+SELL identity, pre/post lot/portfolio/Spot quantities, quantity path, exchange
+filters, Spot excess, and `residual_classification`. Classification is one of
+`NO_RESIDUAL`, `BOT_OWNED_RESIDUAL`, `SPOT_ONLY_RESIDUAL`,
+`BOT_AND_SPOT_RESIDUAL`, or `UNKNOWN_BOUNDARY`. A Spot quantity equal to or
+within canonical tolerance of bot-owned lots is one `BOT_OWNED_RESIDUAL`, not
+independent Spot inventory. `BOT_AND_SPOT_RESIDUAL` requires positive Spot
+excess beyond tolerance; materially lower Spot quantity and missing Spot
+evidence produce `UNKNOWN_BOUNDARY`. The existing post-trade refresh is reused,
+but the Spot boundary is marked partial-freshness evidence because a cached
+balance fallback remains possible. Spot excess never creates a synthetic FIFO
+lot. Historical payloads without this object remain valid and unavailable for
+this analysis.
 
 Stable `dust_cleanup_reason` values may include:
 
