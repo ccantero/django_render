@@ -1,6 +1,6 @@
 ---
 doc_id: architecture
-doc_version: 1.1.9
+doc_version: 1.1.10
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-07-17
@@ -101,6 +101,13 @@ bot_control/
 Moving bot-owned models out of `core` remains P2 tech debt, not an immediate blocker.
 
 ---
+
+## 4.0 Public PWA Boundary
+
+The public UVA calculator and exchange-rate pages share one PWA scope:
+`/currencyconverter/`, with the calculator as its start URL. The authenticated
+`/dashboard/` route is outside that scope. The service worker handles public
+GET requests only and does not cache authenticated dashboard data.
 
 ## 4. Data Access Pattern
 

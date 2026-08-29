@@ -9,6 +9,28 @@ source_repo: django_render
 
 # Changelog
 
+## 2026-08-28 - Add Calculadora UVA PWA
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/ARCHITECTURE.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Added a PWA manifest and service worker scoped to `/currencyconverter/`.
+- Kept the authenticated `/dashboard/` route outside the PWA scope and cache.
+
+Operator impact:
+- Users may install the calculator/converter independently from the dashboard.
+
+Validation:
+- Added focused PWA endpoint and template tests.
+- Test execution is blocked in the current environment because pytest is unavailable.
+
 ## 2026-07-17 - Harden Telegram Webhook Recovery Path
 
 Type: behavior

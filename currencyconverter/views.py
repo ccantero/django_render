@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from django.http import HttpResponse, JsonResponse
 from django.views import generic
 
 from currencyconverter.models import Currency,ExchangeRate
@@ -7,6 +8,57 @@ from currencyconverter.serializers import CurrencySerializer,ExchangeRateSeriali
 
 from rest_framework import viewsets
 from rest_framework import permissions
+
+
+def pwa_manifest(request):
+    return JsonResponse({
+        "name": "Calculadora UVA",
+        "short_name": "UVA",
+        "description": "Calculadora UVA y cotizaciones de monedas.",
+        "start_url": "/currencyconverter/calculadora_uva/",
+        "scope": "/currencyconverter/",
+        "display": "standalone",
+        "background_color": "#ffffff",
+        "theme_color": "#343a40",
+        "icons": [{
+            "src": "/static/favicon.ico",
+            "sizes": "32x32",
+            "type": "image/x-icon",
+        }],
+    }, content_type="application/manifest+json")
+
+
+def pwa_service_worker(request):
+    script = """const CACHE = 'calculadora-uva-v1';
+const PUBLIC_PAGES = [
+  '/currencyconverter/calculadora_uva/',
+  '/currencyconverter/exchangerates/'
+];
+
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(PUBLIC_PAGES)));
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin || event.request.method !== 'GET') return;
+  event.respondWith(
+    fetch(event.request).then(response => {
+      if (response.ok && url.pathname.startsWith('/currencyconverter/')) {
+        const copy = response.clone();
+        caches.open(CACHE).then(cache => cache.put(event.request, copy));
+      }
+      return response;
+    }).catch(() => caches.match(event.request))
+  );
+});
+"""
+    return HttpResponse(script, content_type="application/javascript")
 
 class UVAFormView(generic.FormView):
     template_name = 'currencyconverter/uvaform.html'

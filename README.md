@@ -1,6 +1,6 @@
 ---
 doc_id: readme
-doc_version: 1.1.14
+doc_version: 1.1.15
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-07-17
@@ -170,6 +170,14 @@ Binance = not called by the correction
 ---
 
 ## Local Development
+
+### Public Calculadora UVA PWA
+
+The public currency-converter pages provide one installable PWA. The start
+page is `/currencyconverter/calculadora_uva/`, and
+`/currencyconverter/exchangerates/` shares its scope. The authenticated
+`/dashboard/` route remains outside the PWA scope. Its service worker handles
+public currency-converter GET requests only and does not cache dashboard data.
 
 ```bash
 python -m venv .venv

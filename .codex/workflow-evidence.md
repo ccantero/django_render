@@ -1,13 +1,16 @@
 phases_completed: planner, implementer, tester, documentator
-impact: docs_only, operations
-tests_executed: .codex/hooks/self-check.sh
-pending_issues: manual review required before committing protected workflow infrastructure changes
+impact: behavior, logging, operations
+tests_created: core/tests.py::TelegramWebhookTests.test_help_continues_after_audit_persistence_failure_without_diagnostics; core/tests.py::TelegramWebhookTests.test_listener_rejects_malformed_json_without_server_error; core/tests.py::TelegramWebhookTests.test_listener_accepts_update_without_message_text; core/tests.py::TelegramWebhookTests.test_send_message_uses_timeout_and_reports_timeout_failure; core/tests.py::TelegramWebhookTests.test_send_message_rejects_telegram_ok_false; core/tests.py::TelegramWebhookTests.test_send_message_reports_confirmed_telegram_success; core/tests.py::TelegramPortfolioStatusTests.test_bounded_snapshot_query_returns_all_fewer_than_limit_in_chronological_order; core/tests.py::TelegramPortfolioStatusTests.test_bounded_snapshot_query_keeps_newest_rows_and_restores_chronology; core/tests.py::TelegramPortfolioStatusTests.test_bounded_snapshot_query_uses_id_for_equal_timestamp_ordering; core/tests.py::TelegramPortfolioStatusTests.test_portfolio_status_uses_fresh_snapshot_when_rows_exceed_limit; core/tests.py::TelegramPortfolioStatusTests.test_non_positive_snapshot_limit_falls_back_to_default_bound
+failing_test_proof: Before the webhook hardening implementation, the actual Telegram audit persistence path was unguarded and a DatabaseError from persistence produced a 500 before /help dispatch; the corrected regression test now forces the TelegramMessage manager create call to raise DatabaseError while the duplicate check returns false. .venv/bin/pytest -q core/tests.py::TelegramPortfolioStatusTests --disable-warnings --maxfail=1 failed before the snapshot-limit fix with ImportError because _bounded_portfolio_snapshot_rows did not yet exist.
+tests_executed: .venv/bin/pytest -q core/tests.py::TelegramWebhookTests::test_help_continues_after_audit_persistence_failure_without_diagnostics core/tests.py::TelegramWebhookTests core/tests.py::TelegramPortfolioStatusTests core/tests.py::TelegramDiagnosticsCommandTests --disable-warnings --maxfail=1 (122 passed); .venv/bin/pytest -q django_render/tests.py investments/tests.py currencyconverter/tests.py profile/tests.py --disable-warnings --maxfail=1 (33 passed); .venv/bin/python -m compileall -q core django_render dashboard; git diff --check
+pending_issues: Render start command, webhook reachability, production RSS, and complete-suite execution remain to be verified; full pytest exceeded the local execution window after 22 percent and is not claimed as passed.
 docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md
-docs_updated: AGENTS.md, .codex/hooks/README.md, docs/CHANGELOG.md
+docs_updated: README.md, docs/ARCHITECTURE.md, docs/PROJECT_STATE.md, docs/CHANGELOG.md
 changelog: updated
 schema_der: not_applicable: no schema, migration, index, constraint, or DB contract changed
 data_contract_sync: not_applicable: no shared data contract semantics changed
-logging_observability: not_applicable: no runtime logs, Telegram output, healthcheck payloads, CLI output, KPI, or operator diagnostics changed
-kpi_registry_reviewed: not-needed
+logging_observability: webhook and outbound Telegram logs now add safe command/update/chat/stage and delivery outcome context; no tokens, webhook secrets, payloads, or token-bearing URLs are logged
+kpi_registry_reviewed: no
+kpi_registry_note: reviewed, no update needed: no KPI or diagnostic metric semantics changed
 kpi_registry_updated: not-needed
 kpi_registry_sync_checked: not-available

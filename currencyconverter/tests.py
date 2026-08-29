@@ -13,6 +13,30 @@ from currencyconverter.serializers import CurrencySerializer, CurrencyDetailSeri
 
 # Create your tests here.
 class PublicTestViews(TestCase):
+    def test_pwa_manifest_is_scoped_to_currencyconverter(self):
+        response = self.client.get('/currencyconverter/manifest.json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/manifest+json')
+        self.assertEqual(response.json()['scope'], '/currencyconverter/')
+        self.assertEqual(
+            response.json()['start_url'],
+            '/currencyconverter/calculadora_uva/',
+        )
+
+    def test_pwa_service_worker_is_scoped_and_does_not_cache_dashboard(self):
+        response = self.client.get('/currencyconverter/service-worker.js')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/javascript')
+        self.assertNotIn("'/dashboard/'", response.content.decode())
+
+    def test_public_currency_pages_link_to_pwa_manifest(self):
+        response = self.client.get(reverse('currencyconverter:calculadora'))
+
+        self.assertContains(response, 'rel="manifest"')
+        self.assertContains(response, '/currencyconverter/manifest.json')
+
     def test_calculadora_uva_no_authentication(self):
         self.client = APIClient()
         res = self.client.get(

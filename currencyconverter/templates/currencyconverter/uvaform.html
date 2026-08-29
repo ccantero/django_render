@@ -2,6 +2,12 @@
 {% load static %}
 {% load bootstrap3 %}
 
+{% block extra_head %}
+  <link rel="manifest" href="{% url 'currencyconverter:pwa-manifest' %}">
+  <meta name="theme-color" content="#343a40">
+  <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('{% url 'currencyconverter:pwa-service-worker' %}');</script>
+{% endblock %}
+
 {% block pregroup %}
 
 <div class="col">

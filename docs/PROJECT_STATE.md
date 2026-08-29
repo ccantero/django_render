@@ -11,6 +11,10 @@ source_repo: django_render
 
 ## Current State
 
+The public Calculadora UVA and exchange-rate pages expose a PWA scoped to
+`/currencyconverter/`; the authenticated dashboard remains a regular route
+outside that PWA scope.
+
 The Django dashboard is operational as a DB consumer for the Binance Python Bot.
 The current product focus is shifting from infrastructure stabilization toward
 capital-efficiency and exit-quality observability, while preserving the
