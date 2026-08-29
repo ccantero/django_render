@@ -36,7 +36,6 @@ class PublicTestViews(TestCase):
 
         self.assertContains(response, 'rel="manifest"')
         self.assertContains(response, '/currencyconverter/manifest.json')
-        self.assertContains(response, 'id="install-pwa"')
 
     def test_calculadora_uva_no_authentication(self):
         self.client = APIClient()

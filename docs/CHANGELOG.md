@@ -31,6 +31,22 @@ Validation:
 - Added focused PWA endpoint and template tests.
 - Test execution is blocked in the current environment because pytest is unavailable.
 
+
+## 2026-08-28 - Use Browser PWA Installation Control
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+
+Summary:
+- Removed the in-page PWA installation button.
+- Kept installation available through the browser address-bar control.
+
+Validation:
+- Focused currencyconverter tests passed in `.venv`.
+
 ## 2026-07-17 - Harden Telegram Webhook Recovery Path
 
 Type: behavior
