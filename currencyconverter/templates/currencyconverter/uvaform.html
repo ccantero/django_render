@@ -12,6 +12,7 @@
 
 <div class="col">
   <div class="content">
+    <button id="install-pwa" type="button" class="btn btn-secondary mb-3" hidden>Instalar Calculadora UVA</button>
     <form action="" method="POST">
       {% csrf_token %}
       {% bootstrap_form form %}
@@ -47,6 +48,19 @@
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
 <script type="text/javascript" src="{% static 'currencyconverter/js/master.js' %}"></script>
 <script>
+  let deferredInstallPrompt;
+  window.addEventListener('beforeinstallprompt', function (event) {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    document.getElementById('install-pwa').hidden = false;
+  });
+  document.getElementById('install-pwa').addEventListener('click', async function () {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    this.hidden = true;
+  });
 
   function calculate() {
     var cuota = $("#id_amount_cuota").val();

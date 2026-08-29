@@ -20,11 +20,20 @@ def pwa_manifest(request):
         "display": "standalone",
         "background_color": "#ffffff",
         "theme_color": "#343a40",
-        "icons": [{
-            "src": "/static/favicon.ico",
-            "sizes": "32x32",
-            "type": "image/x-icon",
-        }],
+        "icons": [
+            {
+                "src": "/static/currencyconverter/icons/app-icon-192.png",
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "any maskable",
+            },
+            {
+                "src": "/static/currencyconverter/icons/app-icon-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any maskable",
+            },
+        ],
     }, content_type="application/manifest+json")
 
 
