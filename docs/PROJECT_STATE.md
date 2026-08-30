@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.21
+doc_version: 1.1.22
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-17
+last_verified_at: 2026-08-29
 source_repo: django_render
 ---
 
@@ -14,6 +14,9 @@ source_repo: django_render
 The public Calculadora UVA and exchange-rate pages expose a PWA scoped to
 `/currencyconverter/`; the authenticated dashboard remains a regular route
 outside that PWA scope.
+The calculator includes the shared site navigation in regular browsers and a
+standalone-only mobile presentation that hides navigation, uses one column,
+and respects iOS safe-area insets.
 
 The Django dashboard is operational as a DB consumer for the Binance Python Bot.
 The current product focus is shifting from infrastructure stabilization toward

@@ -5,12 +5,16 @@
 {% block extra_head %}
   <link rel="manifest" href="{% url 'currencyconverter:pwa-manifest' %}">
   <meta name="theme-color" content="#343a40">
+  <link rel="stylesheet" href="{% static 'core/css/calculator.css' %}">
   <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('{% url 'currencyconverter:pwa-service-worker' %}');</script>
 {% endblock %}
 
+{% block body_class %}calculator-page{% endblock %}
+{% block layout_class %}calculator-layout{% endblock %}
+
 {% block pregroup %}
 
-<div class="col">
+<div class="col calculator-inputs">
   <div class="content">
     <form action="" method="POST">
       {% csrf_token %}
@@ -25,7 +29,7 @@
 
 {% block postgroup %}
 
-<div class="col order-1">
+<div class="col order-1 calculator-results">
   </br>
   <div class="alert alert-success" id="amount_ars" role="alert">
     ARS:

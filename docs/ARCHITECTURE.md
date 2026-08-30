@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.10
+doc_version: 1.1.11
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-17
+last_verified_at: 2026-08-29
 source_repo: django_render
 ---
 
@@ -108,6 +108,10 @@ The public UVA calculator and exchange-rate pages share one PWA scope:
 `/currencyconverter/`, with the calculator as its start URL. The authenticated
 `/dashboard/` route is outside that scope. The service worker handles public
 GET requests only and does not cache authenticated dashboard data.
+The calculator template reuses the shared base and calculation view, but adds
+page-scoped responsive CSS: ordinary browsers retain the shared navigation;
+standalone display mode hides it and presents the calculator as a padded,
+single-column touch interface.
 
 ## 4. Data Access Pattern
 

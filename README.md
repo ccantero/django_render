@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.15
+doc_version: 1.1.16
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-17
+last_verified_at: 2026-08-29
 source_repo: django_render
 ---
 
@@ -178,6 +178,9 @@ page is `/currencyconverter/calculadora_uva/`, and
 `/currencyconverter/exchangerates/` shares its scope. The authenticated
 `/dashboard/` route remains outside the PWA scope. Its service worker handles
 public currency-converter GET requests only and does not cache dashboard data.
+The calculator keeps the normal site navigation in regular browsers, while
+standalone display mode hides that navigation and uses a single-column,
+touch-sized layout with iOS safe-area padding.
 
 ```bash
 python -m venv .venv

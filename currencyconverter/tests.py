@@ -37,6 +37,18 @@ class PublicTestViews(TestCase):
         self.assertContains(response, 'rel="manifest"')
         self.assertContains(response, '/currencyconverter/manifest.json')
 
+    def test_calculadora_has_responsive_pwa_shell(self):
+        response = self.client.get(reverse('currencyconverter:calculadora'))
+
+        self.assertContains(
+            response,
+            '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        )
+        self.assertContains(response, '<body class="calculator-page">')
+        self.assertContains(response, 'static/core/css/calculator.css')
+        self.assertContains(response, 'calculator-layout')
+        self.assertContains(response, "id='navbar'")
+
     def test_calculadora_uva_no_authentication(self):
         self.client = APIClient()
         res = self.client.get(

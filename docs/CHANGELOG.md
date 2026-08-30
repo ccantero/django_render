@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.35
+doc_version: 1.1.36
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-08-28
@@ -8,6 +8,31 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-08-29 - Improve Standalone Calculator PWA UX
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/ARCHITECTURE.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Added the standard viewport declaration to the shared base template.
+- Added a calculator-scoped responsive layout with touch-sized controls and a
+  single-column small-screen presentation.
+- Hid the shared website navbar only for the calculator in standalone display
+  mode and added iOS safe-area padding.
+
+Operator impact:
+- Installed calculator PWAs focus on the calculator without the website
+  navigation; regular browser pages retain their existing navigation.
+
+Validation:
+- Focused currencyconverter template tests and the Django test suite passed.
 
 ## 2026-08-28 - Synchronize Shared Data Contract Copy
 
