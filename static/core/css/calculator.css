@@ -21,6 +21,30 @@
   align-items: center;
 }
 
+.calculator-page .calculator-rates {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #dee2e6;
+  border-radius: 0.25rem;
+  background: #f8f9fa;
+  color: #343a40;
+}
+
+.calculator-page .calculator-rates-title {
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.calculator-page .calculator-rate {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  line-height: 1.6;
+}
+
 @media (max-width: 767.98px) {
   .calculator-page .calculator-layout {
     display: block;

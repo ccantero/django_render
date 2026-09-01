@@ -1,6 +1,6 @@
 ---
 doc_id: readme
-doc_version: 1.1.16
+doc_version: 1.1.17
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-08-29
@@ -181,6 +181,8 @@ public currency-converter GET requests only and does not cache dashboard data.
 The calculator keeps the normal site navigation in regular browsers, while
 standalone display mode hides that navigation and uses a single-column,
 touch-sized layout with iOS safe-area padding.
+The calculator also shows the current official USD and UVA values used for its
+calculations in the results panel.
 
 ```bash
 python -m venv .venv

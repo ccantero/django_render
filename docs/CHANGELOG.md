@@ -9,6 +9,29 @@ source_repo: django_render
 
 # Changelog
 
+## 2026-09-01 - Show Calculator Input Values
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/ARCHITECTURE.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Added the current official USD and UVA values to the Calculadora UVA PWA
+  results area.
+
+Operator impact:
+- Users can see which stored quotes are being used for the displayed
+  calculation.
+
+Validation:
+- Added a focused regression test; execution is pending a Django-enabled
+  environment.
+
 ## 2026-09-01 - Make BUY Status Classification Coherent
 
 Type: behavior

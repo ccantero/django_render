@@ -30,6 +30,11 @@
 {% block postgroup %}
 
 <div class="col order-1 calculator-results">
+  <div class="calculator-rates" aria-label="Valores usados para calcular">
+    <div class="calculator-rates-title">Valores usados</div>
+    <div class="calculator-rate"><span>USD oficial</span><strong>$ {{ current_usd_quote|floatformat:2 }}</strong></div>
+    <div class="calculator-rate"><span>UVA</span><strong>$ {{ current_uva_quote|floatformat:2 }}</strong></div>
+  </div>
   </br>
   <div class="alert alert-success" id="amount_ars" role="alert">
     ARS:

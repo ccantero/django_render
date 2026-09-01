@@ -70,6 +70,27 @@ class PublicTestViews(TestCase):
         self.assertNotEqual(res.reason_phrase, 'Not Found')
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
+    def test_calculadora_shows_current_usd_and_uva_values(self):
+        ars = Currency.objects.create(key='ARS')
+        usd = Currency.objects.create(key='USD')
+        uva = Currency.objects.create(key='UVA')
+        ExchangeRate.objects.create(
+            key='USD_OFFICIAL', description='Dolar Oficial',
+            numerator=ars, denominator=usd, last_quote=1234.56,
+        )
+        ExchangeRate.objects.create(
+            key='ARS_UVA', description='UVA',
+            numerator=ars, denominator=uva, last_quote=987.65,
+        )
+
+        response = self.client.get(reverse('currencyconverter:calculadora'))
+
+        self.assertContains(response, 'Valores usados')
+        self.assertContains(response, 'USD oficial')
+        self.assertContains(response, '$ 1234.56')
+        self.assertContains(response, 'UVA')
+        self.assertContains(response, '$ 987.65')
+
     def test_get_currencies_no_authentication(self):
         self.client = APIClient()
         res = self.client.get('/currencyconverter/json/currencies/')

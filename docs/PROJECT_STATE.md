@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.23
+doc_version: 1.1.24
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-08-29
@@ -17,6 +17,8 @@ outside that PWA scope.
 The calculator includes the shared site navigation in regular browsers and a
 standalone-only mobile presentation that hides navigation, uses one column,
 and respects iOS safe-area insets.
+The results panel also shows the current official USD and UVA values used by
+the calculator.
 
 The Django dashboard is operational as a DB consumer for the Binance Python Bot.
 The current product focus is shifting from infrastructure stabilization toward

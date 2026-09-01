@@ -95,6 +95,9 @@ class UVAFormView(generic.FormView):
             a_exchangerate = ExchangeRate.objects.filter(key__iexact="ARS_UVA")[0]
             uva_quote = a_exchangerate.last_quote
 
+        context['current_usd_quote'] = green_quote
+        context['current_uva_quote'] = uva_quote
+
         if self.request.GET.get('cuota') :
             # I have receieved on URL
             try:

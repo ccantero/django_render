@@ -1,6 +1,6 @@
 ---
 doc_id: architecture
-doc_version: 1.1.11
+doc_version: 1.1.12
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-08-29
@@ -112,6 +112,8 @@ The calculator template reuses the shared base and calculation view, but adds
 page-scoped responsive CSS: ordinary browsers retain the shared navigation;
 standalone display mode hides it and presents the calculator as a padded,
 single-column touch interface.
+The results area displays the official USD and UVA quotes used by the current
+calculation.
 
 ## 4. Data Access Pattern
 
