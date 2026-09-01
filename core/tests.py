@@ -407,7 +407,7 @@ class TelegramDiagnosticsCommandTests(TestCase):
         mock_trade_manager,
         mock_send_message,
     ):
-        mock_portfolio_manager.filter.return_value = []
+        mock_portfolio_manager.filter.side_effect = DatabaseError('portfolio unavailable')
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=9,
             status='healthy',
@@ -456,7 +456,7 @@ class TelegramDiagnosticsCommandTests(TestCase):
         mock_trade_manager,
         mock_send_message,
     ):
-        mock_portfolio_manager.filter.return_value = []
+        mock_portfolio_manager.filter.side_effect = DatabaseError('portfolio unavailable')
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=10,
             status='healthy',
@@ -495,7 +495,7 @@ class TelegramDiagnosticsCommandTests(TestCase):
         mock_portfolio_manager,
         mock_send_message,
     ):
-        mock_portfolio_manager.filter.return_value = []
+        mock_portfolio_manager.filter.side_effect = DatabaseError('portfolio unavailable')
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=26,
             status='healthy',
@@ -562,7 +562,7 @@ class TelegramDiagnosticsCommandTests(TestCase):
         mock_portfolio_manager,
         mock_send_message,
     ):
-        mock_portfolio_manager.filter.return_value = []
+        mock_portfolio_manager.filter.side_effect = DatabaseError('portfolio unavailable')
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=10,
             status='healthy',
@@ -1107,8 +1107,9 @@ class TelegramDiagnosticsCommandTests(TestCase):
             self.post_telegram_message('/buy_status')
 
         message = mock_send_message.call_args[0][0]
-        self.assertIn('Dust positions: <code>6</code>', message)
-        self.assertIn('Estimated dust exposure: <code>partially unavailable</code>', message)
+        self.assertIn('Dust positions: <code>5</code>', message)
+        self.assertIn('Unknown value: <code>1</code>', message)
+        self.assertIn('Estimated dust exposure: <code>~0.5 USDT</code>', message)
         self.assertNotIn('DUST0USDT, DUST1USDT, DUST2USDT, DUST3USDT, DUST4USDT, DUST5USDT', message)
         self.assertIn('Unknown value', message)
 
@@ -1163,7 +1164,7 @@ class TelegramDiagnosticsCommandTests(TestCase):
         mock_health_manager,
         mock_send_message,
     ):
-        mock_portfolio_manager.filter.return_value = []
+        mock_portfolio_manager.filter.side_effect = DatabaseError('portfolio unavailable')
         mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
             id=16,
             status='healthy',
@@ -1334,6 +1335,93 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertNotIn('WLDUSDT', material_section)
         self.assertIn('Estimated dust exposure: <code>~0.04 USDT</code>', dust_section)
         self.assertIn('Symbols: <code>WLDUSDT</code>', dust_section)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.TradeOperation.objects')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_buy_status_uses_one_current_classification_snapshot(
+        self,
+        mock_portfolio_manager,
+        mock_health_manager,
+        mock_trade_manager,
+        mock_send_message,
+    ):
+        current_rows = [
+            SimpleNamespace(symbol='ZECUSDT', quantity=Decimal('1'), entry_price=Decimal('6'), current_price=Decimal('6.38')),
+            SimpleNamespace(symbol='BNBUSDT', quantity=Decimal('0.02'), entry_price=Decimal('250'), current_price=Decimal('258')),
+            *[
+                SimpleNamespace(symbol=symbol, quantity=Decimal('1'), entry_price=Decimal('1'), current_price=Decimal('0.01'))
+                for symbol in ('ETHUSDT', 'SOLUSDT', 'BTCUSDT', 'UNIUSDT', 'SUIUSDT', 'DOGEUSDT')
+            ],
+        ]
+        mock_portfolio_manager.filter.side_effect = lambda **kwargs: (
+            SimpleNamespace(order_by=lambda *args: current_rows)
+            if kwargs == {'quantity__gt': 0}
+            else current_rows
+        )
+        mock_health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            id=29, status='healthy', created_at=timezone.now(),
+            details={'positions_count': 8, 'material_positions_count': 8,
+                     'dust_positions_count': 0, 'unknown_value_positions_count': 0,
+                     'material_symbols': [row.symbol for row in current_rows],
+                     'max_positions': 8, 'latest_buy_state': 'available'},
+        )
+        mock_trade_manager.filter.return_value.exclude.return_value.order_by.return_value.first.return_value = None
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            response = self.post_telegram_message('/buy_status')
+
+        self.assertEqual(response.status_code, 200)
+        message = mock_send_message.call_args[0][0]
+        self.assertIn('Raw: <code>8</code>', message)
+        self.assertIn('Material: <code>2</code>', message)
+        self.assertIn('Dust: <code>6</code>', message)
+        self.assertIn('Unknown value: <code>0</code>', message)
+        self.assertIn('Effective positions: <code>2 / 8</code>', message)
+        self.assertIn('Remaining slots: <code>6</code>', message)
+        material_section = message.split('<b>Dust exposure</b>', 1)[0]
+        self.assertIn('ZECUSDT', material_section)
+        self.assertIn('BNBUSDT', material_section)
+        for symbol in ('ETHUSDT', 'SOLUSDT', 'BTCUSDT', 'UNIUSDT', 'SUIUSDT', 'DOGEUSDT'):
+            self.assertNotIn(f'- {symbol} ~', material_section)
+
+    def test_buy_classification_accepts_iterable_without_order_by(self):
+        from core.telegram_diagnostics import _buy_classification_from_portfolio
+
+        row = SimpleNamespace(symbol='ZECUSDT', quantity=Decimal('1'), current_price=Decimal('6'))
+        with patch('core.telegram_diagnostics.Portfolio.objects') as manager:
+            manager.filter.return_value = [row]
+            classification = _buy_classification_from_portfolio()
+
+        self.assertEqual(classification['material_count'], 1)
+        self.assertFalse(classification['query_fallback'])
+        self.assertEqual(classification['portfolio_rows'], [row])
+
+    def test_buy_status_does_not_requery_empty_current_portfolio_snapshot(self):
+        from core.telegram_diagnostics import format_buy_status
+
+        empty_query = SimpleNamespace(order_by=lambda *args: [])
+        with patch('core.telegram_diagnostics.Portfolio.objects') as manager, \
+             patch('core.telegram_diagnostics.BotHealthcheck.objects') as health:
+            manager.filter.return_value = empty_query
+            health.order_by.return_value.first.return_value = SimpleNamespace(
+                details={'material_positions_count': 8, 'max_positions': 8}
+            )
+            format_buy_status()
+
+        manager.filter.assert_called_once_with(quantity__gt=0)
+
+    def test_buy_classification_falls_back_on_portfolio_database_error(self):
+        from core.telegram_diagnostics import _buy_classification_from_portfolio
+
+        with patch('core.telegram_diagnostics.Portfolio.objects') as manager:
+            manager.filter.side_effect = DatabaseError('unavailable')
+            classification = _buy_classification_from_portfolio()
+
+        self.assertTrue(classification['query_fallback'])
+        self.assertEqual(classification['portfolio_rows'], [])
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')

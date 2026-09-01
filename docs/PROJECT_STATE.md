@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.22
+doc_version: 1.1.23
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-08-29
@@ -91,6 +91,9 @@ Implemented capabilities:
   dust as non-blocking, falls back to runtime max-position config when the latest
   healthcheck omits it, and keeps optional diagnostic gaps from collapsing the
   whole BUY-capacity answer.
+- `/buy_status` derives current raw/material/dust/unknown counts, capacity, and
+  exposure rows from one current portfolio classification snapshot; persisted
+  healthcheck details remain limited to policy and latest-BUY diagnostics.
 - `/buy_status` accepts either flat healthcheck classification fields or a
   nested `details.position_classification` object, and its material/dust
   exposure display defensively rechecks `quantity * current_price` so tiny

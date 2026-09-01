@@ -9,6 +9,28 @@ source_repo: django_render
 
 # Changelog
 
+## 2026-09-01 - Make BUY Status Classification Coherent
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- `/buy_status` now uses one current portfolio classification for position
+  counts, capacity, and material exposure rows instead of mixing stale
+  healthcheck counts with current exposure.
+
+Operator impact:
+- BUY status consistently reports material, dust, unknown, effective positions,
+  remaining slots, and material symbols from the same read-only snapshot.
+
+Validation:
+- Focused Telegram BUY-status tests passed, including the stale-healthcheck
+  regression and unknown/dust capacity coverage.
+
 ## 2026-08-29 - Improve Standalone Calculator PWA UX
 
 Type: behavior

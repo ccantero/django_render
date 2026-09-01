@@ -262,9 +262,12 @@ def format_buy_status():
 		)
 
 	details = latest.details or {}
-	classification = _buy_classification_from_details(details)
-	if not classification["has_healthcheck_counts"]:
-		classification = _buy_classification_from_portfolio()
+	# Counts, capacity, and exposure must come from the same current portfolio
+	# classification.  Healthcheck details remain the source for the latest BUY
+	# diagnostics and configured policy, but may be stale after recovery.
+	classification = _buy_classification_from_portfolio()
+	if classification["query_fallback"]:
+		classification = _buy_classification_from_details(details)
 
 	raw_count = classification["raw_count"]
 	material_count = classification["material_count"]
@@ -302,8 +305,12 @@ def format_buy_status():
 	)
 
 	exposure_symbols = list(dict.fromkeys(classification["material_symbols"] + classification["dust_symbols"]))
+	portfolio_rows = classification.get("portfolio_rows")
 	try:
-		portfolio_rows = list(Portfolio.objects.filter(symbol__in=exposure_symbols)) if exposure_symbols else []
+		if portfolio_rows is None and exposure_symbols:
+			portfolio_rows = list(Portfolio.objects.filter(symbol__in=exposure_symbols))
+		elif portfolio_rows is None:
+			portfolio_rows = []
 	except DatabaseError:
 		logger.debug("Could not read portfolio rows for Telegram BUY status exposure")
 		portfolio_rows = []
@@ -924,12 +931,22 @@ def _buy_classification_from_details(details):
 				"unknown_value_positions_count",
 			]
 		),
+		"portfolio_rows": None,
+		"query_fallback": True,
 	}
 
 
 def _buy_classification_from_portfolio():
-	rows = Portfolio.objects.filter(quantity__gt=0).order_by("symbol")
-	rows = list(rows)
+	query_fallback = False
+	try:
+		query = Portfolio.objects.filter(quantity__gt=0)
+		if hasattr(query, "order_by"):
+			query = query.order_by("symbol")
+		rows = list(query)
+	except DatabaseError:
+		logger.debug("Could not read portfolio rows for Telegram BUY status classification")
+		rows = []
+		query_fallback = True
 	classification = classify_buy_status_positions(rows)
 	material_symbols = [row["symbol"] for row in classification["material_rows"]]
 	dust_symbols = [row["symbol"] for row in classification["dust_rows"]]
@@ -942,7 +959,9 @@ def _buy_classification_from_portfolio():
 		"material_symbols": material_symbols,
 		"dust_symbols": dust_symbols,
 		"unknown_symbols": unknown_symbols,
+		"portfolio_rows": rows,
 		"has_healthcheck_counts": False,
+		"query_fallback": query_fallback,
 	}
 
 
