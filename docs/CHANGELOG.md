@@ -1,13 +1,36 @@
 ---
 doc_id: changelog
-doc_version: 1.1.36
+doc_version: 1.1.37
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-08-28
+last_verified_at: 2026-09-16
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-09-16 - Synchronize Shared Data Contract
+
+Type: contract
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/DATA_CONTRACT.md
+- docs/CHANGELOG.md
+
+Summary:
+- Synchronized the dashboard data-contract copy with the newer bot contract.
+- Added the documented position-generation, BUY-decision lifecycle retention,
+  read-only accounting-repair evidence/recovery/apply controls, supplemental
+  repair baseline, and dust-retention invariant sections.
+
+Operator impact:
+- Dashboard consumers now have the current upstream contract and its explicit
+  read-only/recovery safety boundaries.
+
+Validation:
+- Compared the dashboard copy against the root bot contract and confirmed
+  both files are byte-for-byte synchronized.
 
 ## 2026-09-01 - Show Calculator Input Values
 

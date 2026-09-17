@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.11
+doc_version: 1.1.12
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-09
+last_verified_at: 2026-09-16
 source_repo: django_render
 ---
 
@@ -161,6 +161,129 @@ Additional pending visibility work:
 20. Verify the paired bot repository documents `source = "bot_cycle"` plus
     `bot.portfolio_snapshots.notes.portfolio_equity_usdt` as the canonical
     dashboard equity-history source and keep the dashboard copy synchronized.
+
+## P1 Future Initiative: Secure Operator Dashboard / PWA
+
+The long-term operator experience should separate asynchronous alerting from
+interactive inspection:
+
+```text
+Telegram = pager / asynchronous alert channel
+PWA      = authenticated operator cockpit / inspection UI
+```
+
+This is a future planning item only. V1 must be read-only and must consume
+the Binance Bot's established accounting, reconciliation, position,
+BUY-status, and diagnostic semantics. Django remains a consumer/read-model
+surface, never a second source of trading or accounting truth.
+
+### Architecture and shared operator read model
+
+Preserve this dependency direction conceptually:
+
+```text
+Binance / bot runtime
+          ↓
+canonical accounting + reconciliation
+          ↓
+shared operator read model
+          ↓
+Django read-only API or equivalent reviewed read boundary
+          ↓
+authenticated responsive PWA
+```
+
+Candidate read-only surfaces are Overview, Portfolio, Positions and position
+detail, Trade History, Realized/Open PnL, BUY Status, Reconciliation Health,
+Accounting/Runtime Health, and Diagnostics drill-down. No frontend framework
+is selected by this plan, and the PWA should consume structured operator state
+rather than reproduce Telegram messages in HTML.
+
+The shared read model may expose upstream-defined capital/equity, free USDT,
+material and dust exposure, `MAX_POSITIONS`, occupied and remaining capacity,
+positions and age, performance windows, current BUY state, reconciliation, and
+runtime/accounting health. This plan does not define accounting formulas.
+Django must not independently reinterpret material position, dust, slot,
+entry price, PnL, BUY blocker, cooldown, reconciliation, or accounting-health
+semantics. Existing Django projections/read models should be reused only where
+their semantics match the upstream contract.
+
+### BUY status and reconciliation
+
+The future dashboard must consume the structured state underlying the
+redesigned `/buy_status`, never parse human-readable Telegram output. The
+read model must preserve the distinction between the current global BUY
+blocker and the latest candidate rejection reason. For example,
+`MAX_POSITIONS = 15` with 15 occupied slots may mean global `CAPACITY_FULL`
+while the latest candidate separately records
+`loss_reentry_cooldown_active`.
+
+Reconciliation is first-class UI state, not an inference from local capacity.
+The UI should show upstream-produced Binance material count, open-lot
+material count, occupied slots, and `CONSISTENT`/`MISMATCH` status. Django must
+display the authoritative reconciliation result and must not invent a local
+truth when sources disagree.
+
+### Read-only V1 and security boundary
+
+V1 must expose no BUY, SELL, manual order, arbitrary Binance API, accounting
+repair, lot modification, reconciliation mutation, strategy or
+`MAX_POSITIONS` change, bot lifecycle control, VPS administration, Binance
+credential management, arbitrary SQL, generic ORM exposure, or generic
+internal-service invocation. No placeholder mutation endpoints should be
+added; any later mutation capability requires a separate architecture and
+security review.
+
+Passkeys/WebAuthn are the preferred authentication direction. Authentication
+answers who the operator is; authorization answers what that identity may
+access or do; application capability defines what Django can technically do.
+Passkeys do not replace authorization or least privilege. The surface remains
+sensitive because it may reveal account value, holdings, position sizes, PnL,
+symbols, timing, BUY eligibility, cooldowns, bot health, and reconciliation
+diagnostics.
+
+The future design must require HTTPS, secure session handling, Secure and
+HttpOnly cookies where appropriate, an explicit SameSite policy, CSRF where
+applicable, abuse/rate limiting controls, security-event logging, and
+authorization independent from authentication. Browser code must never
+receive Binance API secrets; preferably Django has no Binance trading
+credentials. Django Admin exposure must be separately reviewed.
+
+### Data boundary, Telegram relationship, and delivery phases
+
+Implementation must review whether operator state comes from existing Django
+projections, explicit read-only database access, or an upstream API/read-model
+boundary. This plan intentionally selects none. The chosen mechanism must
+preserve least privilege, deterministic upstream contracts, no accidental
+mutation, no credential propagation, and clear ownership of truth.
+
+Telegram is not removed: it remains the asynchronous alert/pager channel for
+events such as executed trades, material drift, unresolved recovery, unhealthy
+bot state, and critical infrastructure issues. The PWA is the interactive
+inspection cockpit. Primary views should emphasize capital, exposure,
+positions, capacity, PnL, current blockers, reconciliation, and runtime
+health; raw provenance and verbose reason chains belong in drill-downs.
+
+Future delivery sequence:
+
+1. Contract alignment: confirm the shared operator read model, `/buy_status`,
+   reconciliation semantics, and reusable Django projections.
+2. Security design: threat-model the surface; define authentication and
+   authorization; evaluate Passkeys/WebAuthn; confirm no trading credentials;
+   review sessions, abuse controls, least privilege, and Django Admin.
+3. Read-only API/boundary: expose only explicit operator read models with
+   authorization and no mutation endpoints.
+4. PWA/operator UI: deliver responsive authenticated views and diagnostics.
+5. Operational review: assess interactive inspection while retaining Telegram
+   alerts.
+
+This initiative depends on bot accounting/reconciliation correctness, then the
+shared operator read model, Django security boundary, and read-only API. It
+must follow active bot work on post-repair runtime/accounting health or
+`/buy_status` reconciliation rather than duplicate it. It does not authorize
+implementation, trading/accounting or strategy changes, Telegram removal,
+browser-side Binance access, repair or lifecycle controls, deployment/schema
+changes, or authentication-library selection without review.
 
 ## P2 Architecture / Tech Debt
 

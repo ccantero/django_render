@@ -1,11 +1,58 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.44
+doc_version: 1.0.58
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-08-31
+last_verified_at: 2026-09-05
 source_repo: binanceBot
 ---
+
+### Position generation lifecycle (Phase 1)
+
+`bot.position_generations` stores durable UUID lifecycle identity. New
+canonical bot BUY FIFO lots reference one active generation per symbol through
+`position_lots.generation_id`; FIFO remains inventory truth and portfolio
+remains a projection. Phase 1 does not infer historical partial TP/RUNNER or
+promote balance-only or ambiguous inventory. Closure requires depleted
+associated FIFO quantity plus the explicit successful post-trade reconciliation
+boundary. Because reconciliation is outside the canonical accounting
+transaction, runtime closure is a second idempotent transaction after
+reconciliation reports `ok`; a failed or missing result leaves the active
+generation unchanged.
+
+### BUY decision lifecycle retention
+
+The future `buy_decision_started`, `buy_decision_attempt`, and
+`buy_decision_terminal` event types use the explicit `buy_decision` retention
+classification with a 30-day online horizon. Retention selection reads the
+durable `buy_decision_id` from the event payload and selects or archives the
+complete identified lifecycle group only when every existing member is past
+the cutoff. Lifecycle events without a valid decision ID are retained
+conservatively. An identified incomplete group may expire after all existing
+members pass 30 days, but retention never treats that expiry as a COMPLETE or
+NO_BUY decision. This is preparatory retention infrastructure; it does not
+emit BUY decision events or backfill historical data.
+
+Normal BUY decision execution now emits prospective `buy_decision_started`,
+`buy_decision_attempt`, and `buy_decision_terminal` events through the existing
+`bot.event_log` path. Every event carries contract version, `buy_decision_id`,
+and `run_id`; order and trade references are included only when already
+available. Missing lifecycle members are evidence degradation, not NO_BUY.
+Pre-contract historical cycles remain `PRE_CONTRACT`; scanner-feature
+completeness and historical alternative-BUY counterfactuals remain separate
+gaps.
+
+### Historical accounting repair contract
+
+The approved 2026-09-05 manifest covers BMTUSDT, XRPUSDT, ETHUSDT, KITEUSDT,
+MMTUSDT, BANKUSDT, WLDUSDT, and SOLUSDT. Binance evidence is authoritative for
+the 424 physical fills and their fees; existing canonical operations, intents,
+trades, order decisions, and manual corrections are preserved. The repair
+reconstructs derived FIFO lots, closures, fee consumptions, and portfolio
+projections transactionally. SOL is an explicitly authorized derived control;
+ALLOUSDT and unrelated symbols are preserved. The repair is recorded by
+`accounting_repair_runs` from migration 102 and is idempotent by `run_id` and
+manifest evidence hash.
 
 ### Durable execution recovery contract
 
@@ -18,6 +65,65 @@ Terminal non-FILLED orders are not resolved from status or order summaries;
 deterministic zero-fill and partial-fill recovery remain outside this bounded
 contract.
 
+## Read-only accounting-repair evidence export
+
+`src/scripts/export_accounting_repair_evidence.py` is a production-read-only
+preparation tool. It requires `DATABASE_URL` only from its caller environment,
+begins and verifies a PostgreSQL `READ ONLY` transaction, verifies the exact
+repository-supported columns, and emits a new local directory containing
+normalized `evidence.json`, `evidence.sha256`, and `summary.txt`. Its scope is
+the seven repair symbols BMTUSDT, XRPUSDT, ETHUSDT, KITEUSDT, MMTUSDT,
+BANKUSDT, and WLDUSDT, with SOLUSDT and ALLOUSDT as controls. It reads no
+Binance API and contains no migration, apply, or production mutation path.
+
+The export records closure-backed and symbol/order-backed SELL-operation
+candidates per physical SELL as `EXACTLY_ONE`, `ZERO`, `MULTIPLE`, or
+`CONFLICT`; it does not assign an operation ID. It records an unbounded query
+provenance and retained row identities, but always sets BUY-retention
+completeness to unproven. A later human review must supply independent
+retention evidence before setting canonical BUY coverage complete.
+
+## Read-only Binance BUY-provenance recovery
+
+`src/scripts/recover_accounting_repair_binance_evidence.py` is a separate
+operator-only recovery-evidence collector. It accepts an immutable local
+accounting-evidence artifact and its normalized source SHA-256, derives only
+the listed unmatched BOT BUY order identities in the approved seven-symbol
+scope, and calls the existing signed `BinanceRESTClient.get_order_trades()`
+path once per `(symbol, order_id)`. It does not open a database connection,
+call Binance order/account/balance endpoints, submit or cancel orders, or
+modify repair/apply state.
+
+The resulting new local artifact retains every requested identity, normalized
+physical Binance trade row, reconciliation outcome, source evidence SHA, a
+non-secret credential-public-identifier fingerprint, and its own normalized
+SHA-256. A row is canonicalized only when `myTrades` proves BUY semantics,
+identity, positive quantity/price, non-negative commission, timestamp, and
+unique trade identity, and when the complete returned set exactly reconciles
+to the corresponding local aggregate BUY operation and raw fill breakdown.
+Zero, incomplete, duplicate, or contradictory results remain `UNRESOLVED`.
+Aggregate-local evidence is never promoted merely because an API response is
+present; only a complete exact reconciliation can establish canonical fills.
+`KITEUSDT`, `MMTUSDT`, `BANKUSDT`, and `WLDUSDT` have separate Class B
+commission assertions bound to their proven historical order IDs. Those
+post-recovery checks inspect only the target canonicalized order; another
+order's matching commission can never satisfy them. A signed-access rejection
+with Binance `-2014`, `-2015`, or `-1022` stops the collector immediately
+rather than fanning out equivalent requests. Timestamp `-1021` and rate-limit
+`-1003` remain client-retried/per-request conditions, not global-stop signals.
+
+Runtime recovery invokes this same FILLED contract once per synchronous bot
+cycle. The recovery-only accounting coordinator may be available even when
+`RUNTIME_FEE_ACCOUNTING_ENABLED=false`; that flag continues to control normal
+runtime fee accounting. Recovery preserves canonical Binance trade identity
+when passing a single canonical physical fill through FIFO persistence and
+keeps unresolved or contradictory evidence unresolved.
+For multi-fill recovery, the aggregate order operation is distinct from the
+physical-fill FIFO records: each canonical trade ID owns its physical fill and
+its corresponding FIFO closure processing.
+The operator-validated disposable PostgreSQL integration tests confirm the
+rollback and forced-replay behavior for this bounded recovery contract.
+
 ## Runtime fee-accounting contract
 
 Future Binance fee identity is `BINANCE|order_id|trade_id|commission_asset`;
@@ -28,6 +134,46 @@ historical population. Runtime allocation is active only when
 path uses one caller-owned transaction across operation, aggregate lot
 accounting, physical fill provenance, and fee inventory mutation. Production
 activation remains disabled pending required PostgreSQL validation.
+
+## Non-production accounting-repair apply contract
+
+Migration `102_accounting_repair_runs.sql` adds a durable repair-run record
+keyed by `run_id` and immutable `evidence_hash`. The transactional repair path
+may update only derived `position_lots`, `lot_closures`, and local `portfolio`
+projection from a validated dry-run manifest. It re-reads manifest baselines
+and canonical physical-fill/operation snapshots before mutation; stale
+evidence rolls back the complete run. Canonical `trade_operations`, physical
+`trade_fills`, execution identity/evidence, and fee-consumption rows remain
+immutable. An identical successfully recorded run is a no-op. This contract is
+validated only against a local disposable PostgreSQL target and authorizes no
+production database access or mutation.
+
+`SUPERSEDE` removes only a stale derived `lot_closures` projection or an
+unreferenced stale `position_lots` projection; it never removes canonical
+operation, fill, or fee evidence. Fee allocations and residual closures block
+lot deletion. The applier requires exact canonical fee-set equality per fill,
+and derives a fully closed lot's `closed_at` from its latest canonical closure,
+never wall-clock apply time. Its local portfolio projection delegates to the
+same lot-row calculation used by `PortfolioRepository`.
+
+An unmatched `position_lots` row may be superseded only when its source is
+`BOT` and its symbol payload carries `canonical_buy_coverage` with
+`complete: true`, `history_boundary: UNBOUNDED`, and non-empty provenance. A
+future read-only extractor for BMTUSDT, XRPUSDT, ETHUSDT, KITEUSDT, MMTUSDT,
+BANKUSDT, and WLDUSDT must select the complete `bot.trade_fills` history for
+each symbol with no time cutoff or pagination truncation, retain only
+`record_role=PHYSICAL` evidence, and record the query/provenance and complete
+row identity set in the manifest. Before declaring this proof, the operator
+must establish that table retention reaches the earliest BOT BUY for the
+symbol; an unbounded query alone cannot prove unretained history. Sources
+`MANUAL_IMPORT`, `MANUAL_CORRECTION`, `AUTO_BOOTSTRAP`, and unknown sources are
+non-physical/legacy inventory: an absent physical BUY fails closed and does
+not authorize deletion.
+
+`AccountingRepairApplier` also requires an explicit `DISPOSABLE` mutation
+authorization and permits only a local PostgreSQL target named
+`accounting_repair_test`. There is no production authorization mode in this
+contract.
 
 ## Capital release attribution
 
@@ -175,6 +321,20 @@ unavailable record has `status: UNAVAILABLE` and a bounded machine-readable
 `reason`.
 
 This document defines the shared database contract between the **Binance Python Bot** and external consumers such as a **Django Dashboard**.
+
+## Supplemental accounting-repair control baseline
+
+The approved repair manifest's `UNRELATED_SYMBOLS: UNCHANGED` value is a
+declarative invariant only; it is not a historical selector or captured
+baseline. A separately approved supplemental artifact is required before any
+future production preflight. Its bounded mutable surface is
+`position_lots`, `lot_closures`, `portfolio`, and `accounting_repair_runs`,
+plus only exact manifest-authorized recovered CREATE identities in
+`trade_fills` and `fee_consumptions`. Existing canonical rows in those tables
+remain immutable; `trade_operations` and `fee_allocations` are fully immutable or
+read-only evidence for this purpose. The artifact is bound to the run, manifest hash, independent
+PostgreSQL identity, capture timestamp, selector version, counts, hashes, and
+checksum; capture cannot self-approve the same artifact.
 
 This file is the canonical contract for the bot/dashboard boundary. If a
 dashboard repository keeps a local copy for implementation convenience, that
@@ -2263,6 +2423,12 @@ Table owned by the bot:
 ```text
 bot.dust_detections
 ```
+
+Retention invariant: a `dust_detections` row referenced by
+`manual_corrections.source_detection_id` is durable historical evidence and is
+excluded from diagnostic retention candidates before archive materialization,
+spool creation, or deletion. The foreign key and the manual-correction row
+remain unchanged.
 
 Fields:
 
