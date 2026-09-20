@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.22
+doc_version: 1.1.23
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-07-09
+last_verified_at: 2026-09-20
 source_repo: django_render
 ---
 
@@ -110,6 +110,16 @@ Analytics read-model output may be cached briefly because the page is read-only 
   classifications explicitly say the cooldown was triggered from negative
   realized PnL, and legacy `sell` / `generic_sell` cooldown types stay
   readable. Django must not infer cooldown decisions independently.
+
+### Planned Position Status / Sell Explainability
+
+The planned PWA Position Status view extends Exit Status with a compact,
+material-first explanation of each effective open position. It should show
+human status, canonical reason, evidence age, and price/PnL freshness while
+summarizing dust separately. Normal strategy holds must be visually healthy;
+SELL pipeline blocks must be visibly distinct. The view consumes bot-owned
+SELL evidence and shared projections, translates reasons for operators, and
+does not reimplement SellService logic or add direct Binance calls.
 
 ### Public and auth pages
 

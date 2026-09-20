@@ -1,15 +1,22 @@
 ---
 doc_id: project-state
-doc_version: 1.1.24
+doc_version: 1.1.25
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-08-29
+last_verified_at: 2026-09-20
 source_repo: django_render
 ---
 
 # Django Dashboard — Project State
 
 ## Current State
+
+The planned Position Status / Sell Explainability capability is not yet
+implemented. It belongs on the existing Exit Status / future Positions
+read-only surface, with material positions first, dust summarized separately,
+and canonical bot evidence translated into operator-facing labels. The current
+bounded SELL diagnostics and projections are useful inputs, but do not yet
+form a complete per-position status/freshness contract.
 
 The public Calculadora UVA and exchange-rate pages expose a PWA scoped to
 `/currencyconverter/`; the authenticated dashboard remains a regular route

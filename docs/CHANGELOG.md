@@ -9,6 +9,33 @@ source_repo: django_render
 
 # Changelog
 
+## 2026-09-20 - Plan Position Status Sell Explainability
+
+Type: docs
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- PLAN.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Documented a material-first Position Status / Sell Explainability capability
+  for the future authenticated PWA.
+- Defined the bot-evidence ownership boundary, status classes, freshness
+  requirements, partial data availability, and future acceptance criteria.
+
+Operator impact:
+- No runtime, trading, schema, production, or Telegram behavior changed.
+- The roadmap now distinguishes normal strategy holds from blocked SELL
+  lifecycle/execution/accounting states and stale valuation evidence.
+
+Validation:
+- Reviewed the existing Exit Status, `/why_not_sell`, shared data-contract,
+  architecture, design, project-state, and KPI documentation paths.
+- Confirmed no runtime files were changed.
+
 ## 2026-09-16 - Synchronize Shared Data Contract
 
 Type: contract

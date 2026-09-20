@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.12
+doc_version: 1.1.13
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-09-16
+last_verified_at: 2026-09-20
 source_repo: django_render
 ---
 
@@ -207,6 +207,76 @@ Django must not independently reinterpret material position, dust, slot,
 entry price, PnL, BUY blocker, cooldown, reconciliation, or accounting-health
 semantics. Existing Django projections/read models should be reused only where
 their semantics match the upstream contract.
+
+### Position Status / Sell Explainability
+
+The PWA roadmap includes a compact, material-first Position Status view so an
+operator can see what is happening with each effective position and why it
+remains open. This extends the existing dashboard Exit Status surface and
+future Positions/position-detail views; it is not a new trading strategy or a
+second SellService.
+
+The primary view should prioritize material positions that consume effective
+BUY capacity, summarize dust separately, and keep forensic evidence in a row
+expansion or detail view. A row may eventually show symbol, estimated USDT
+value, unrealized PnL percentage, authoritative lot age, operator-facing
+status class and label, canonical machine reason, validation/decision stage,
+evidence timestamp and age, valuation price and price freshness,
+material/dust classification, and reconciliation warning.
+
+Status classes are presentation only and must be derived from bot evidence:
+`NORMAL / WAITING`, `ACTION IN PROGRESS`, `WARNING / SAFETY BLOCK`, and
+`ERROR / SELL BLOCKED`. Normal holds such as `take_profit_not_reached` and
+`stop_loss_not_reached` must look healthy. A strategy-approved SELL blocked in
+lifecycle, execution, accounting, or reconciliation must remain distinct from
+a strategy HOLD. Unknown or new reasons fail safely to `Unknown / needs
+review`, never silently to a normal hold.
+
+The authoritative boundary is persisted bot evidence and the shared contract,
+especially `bot.sell_decision_events`, `bot.event_log`, existing
+position/accounting projections, reconciliation/health evidence, and the
+semantics used by `/why_not_sell`. Django may translate canonical reasons into
+operator labels, but must not reproduce SellService thresholds, stop-loss /
+take-profit logic, partial-TP or generation lifecycle rules, balance
+validation, or reconciliation decisions. Overlapping Telegram and PWA reasons
+must retain consistent semantics.
+
+#### Freshness and valuation contract
+
+The future status projection must carry evidence timestamp and freshness, and
+must expose `STALE` or `UNKNOWN` when evidence exceeds an agreed threshold or
+its provenance is unavailable. Displayed price and PnL must include source and
+update age (for example, `Price: 2585.74 · Updated: 42s ago`); a persisted
+projection price must never be presented as current without a valid freshness
+signal. The implementation must first establish whether the bot already
+persists a suitable price/evidence source. Django must not add arbitrary
+Binance calls to conceal a missing contract.
+
+#### Data availability and future acceptance criteria
+
+`DATA_AVAILABLE_NOW = PARTIAL`. Available now: open inventory from
+`bot.position_lots`, display projections from `bot.portfolio`, material/dust
+classification and capacity context where persisted healthcheck/read-model
+data provides it, bounded persisted SELL diagnostics, reconciliation/drift
+signals, and overlapping Telegram reason semantics. Missing or not yet unified:
+an authoritative per-position status projection for every effective position,
+stable evidence timestamps/freshness and price provenance, complete
+validation/decision-stage coverage, authoritative lot-age semantics for every
+row, and a canonical severity mapping for all lifecycle/execution/accounting
+reasons. Resolve these in the bot/shared operator read model, not by duplicating
+Django schema or strategy logic.
+
+Future implementation is accepted only when every material position has a
+status or explicit `UNKNOWN`/`STALE` state; normal TP/SL waits are healthy;
+SELL blocks differ from HOLDs; material drift differs from harmless dust; dust
+does not dominate the default view; evidence and price/PnL freshness are
+visible; Django remains read-only; overlapping Telegram/PWA reasons agree;
+unknown reasons require review; and mapping/projection tests run without
+Binance network access.
+
+No new schema is assumed. A small explicit read model may be considered only
+after contract review proves existing evidence cannot compose the projection;
+that would be separately planned implementation work.
 
 ### BUY status and reconciliation
 
