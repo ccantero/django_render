@@ -4,7 +4,7 @@ from django.utils import timezone
 from django.urls import reverse
 from django.db import DatabaseError, connection
 from decimal import Decimal
-from datetime import timezone as datetime_timezone
+from datetime import timezone as datetime_timezone, timedelta
 from types import SimpleNamespace
 import inspect
 import json
@@ -6483,3 +6483,128 @@ class TelegramPortfolioStatusTests(TestCase):
                 self.fail(f'Unsupported query lookup in test: {lookup}')
         result = all(child_results) if query.connector == 'AND' else any(child_results)
         return not result if query.negated else result
+
+
+class LastOperationsCommandTests(TransactionTestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        with connection.cursor() as cursor:
+            cursor.execute("ATTACH DATABASE ':memory:' AS bot")
+        with connection.schema_editor() as schema_editor:
+            schema_editor.create_model(TradeOperation)
+            schema_editor.create_model(LotClosure)
+
+    @classmethod
+    def tearDownClass(cls):
+        with connection.schema_editor() as schema_editor:
+            schema_editor.delete_model(LotClosure)
+            schema_editor.delete_model(TradeOperation)
+        with connection.cursor() as cursor:
+            cursor.execute("DETACH DATABASE bot")
+        super().tearDownClass()
+
+    def setUp(self):
+        with connection.cursor() as cursor:
+            cursor.execute('DELETE FROM "bot"."lot_closures"')
+            cursor.execute('DELETE FROM "bot"."trade_operations"')
+
+    def _insert_operation(self, symbol, executed_at):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                'INSERT INTO "bot"."trade_operations" (symbol, side, status, executed_at, created_at, raw_payload) VALUES (%s, %s, %s, %s, %s, %s)',
+                [symbol, 'SELL', 'FILLED', executed_at, executed_at, '{}'],
+            )
+            return cursor.lastrowid
+
+    def _insert_closure(self, operation_id, pnl, index):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                'INSERT INTO "bot"."lot_closures" (sell_fill_id, lot_id, symbol, trade_operation_id, quantity_closed, realized_pnl) VALUES (%s, %s, %s, %s, %s, %s)',
+                [index, f'lot-{index}', 'REALUSDT', operation_id, Decimal('1'), pnl],
+            )
+
+    def test_real_orm_multi_lot_sell_is_one_row_and_sums_pnl(self):
+        from core.telegram_diagnostics import format_last_operations
+        when = timezone.now()
+        operation_id = self._insert_operation('REALUSDT', when)
+        self._insert_closure(operation_id, Decimal('-0.50'), 1)
+        self._insert_closure(operation_id, Decimal('-0.75'), 2)
+        result = format_last_operations('10')
+        self.assertEqual(result.count('REALUSDT'), 1)
+        self.assertIn('-1.25', result)
+        self.assertIn('Realized PnL: -1.25 USDT', result)
+
+    def test_real_orm_latest_n_uses_operations_not_closures(self):
+        from core.telegram_diagnostics import format_last_operations
+        base = timezone.now()
+        oldest = self._insert_operation('OLDUSDT', base - timedelta(minutes=2))
+        middle = self._insert_operation('MIDUSDT', base - timedelta(minutes=1))
+        newest = self._insert_operation('NEWUSDT', base)
+        self._insert_closure(oldest, Decimal('1.00'), 3)
+        self._insert_closure(middle, Decimal('2.00'), 4)
+        self._insert_closure(newest, Decimal('3.00'), 5)
+        self._insert_closure(newest, Decimal('4.00'), 6)
+        result = format_last_operations('2')
+        self.assertIn('NEWUSDT', result)
+        self.assertIn('MIDUSDT', result)
+        self.assertNotIn('OLDUSDT', result)
+        self.assertEqual(result.count('NEWUSDT'), 1)
+        self.assertLess(result.index('NEWUSDT'), result.index('MIDUSDT'))
+        self.assertIn('7 USDT', result)
+    def _operation(self, operation_id, symbol, reason=None, when=None):
+        return SimpleNamespace(id=operation_id, symbol=symbol, executed_at=when or timezone.now(), raw_payload=({'sell_reason': reason} if reason else {}))
+
+    @patch('core.telegram_diagnostics.LotClosure.objects')
+    @patch('core.telegram_diagnostics.TradeOperation.objects')
+    def test_latest_bounded_filled_sell_operations_are_aggregated_once(self, trades, closures):
+        from core.telegram_diagnostics import format_last_operations
+        now = timezone.now()
+        trades.filter.return_value.order_by.return_value.__getitem__.return_value = [
+            self._operation(3, 'NEWUSDT', 'take_profit_reached', now),
+            self._operation(2, 'MULTIUSDT', 'stop_loss_reached', now - timezone.timedelta(minutes=1)),
+        ]
+        closures.filter.return_value.values.return_value.annotate.return_value = [
+            {'trade_operation_id': 2, 'realized_pnl': Decimal('-1.25')},
+        ]
+        result = format_last_operations('2')
+        self.assertIn('Last 2 SELL operations', result)
+        self.assertEqual(result.count('MULTIUSDT'), 1)
+        self.assertIn('-1.25', result)
+        self.assertIn('unknown', result)
+        trades.filter.assert_called_once_with(side='SELL', status='FILLED')
+        trades.filter.return_value.order_by.assert_called_once_with('-executed_at', '-created_at', '-id')
+        trades.filter.return_value.order_by.return_value.__getitem__.assert_any_call(slice(None, 2, None))
+        closures.filter.assert_called_once_with(trade_operation_id__in=[3, 2])
+        self.assertEqual(closures.filter.call_count, 1)
+
+    @patch('core.telegram_diagnostics.LotClosure.objects')
+    @patch('core.telegram_diagnostics.TradeOperation.objects')
+    def test_default_and_maximum_limits_and_empty_result(self, trades, closures):
+        from core.telegram_diagnostics import format_last_operations
+        trades.filter.return_value.order_by.return_value.__getitem__.return_value = []
+        closures.filter.return_value.values.return_value.annotate.return_value = []
+        self.assertIn('Last 10', format_last_operations())
+        self.assertIn('Last 50', format_last_operations('999'))
+        self.assertIn('Usage:', format_last_operations('0'))
+        self.assertIn('Usage:', format_last_operations('-1'))
+
+    def test_limit_parser_and_extra_argument_validation(self):
+        from core.telegram_diagnostics import _last_operations_limit, diagnostic_response
+        self.assertEqual(_last_operations_limit(None), 10)
+        self.assertEqual(_last_operations_limit('10'), 10)
+        self.assertEqual(_last_operations_limit('50'), 50)
+        self.assertEqual(_last_operations_limit('999'), 50)
+        self.assertIsNone(_last_operations_limit('0'))
+        self.assertIsNone(_last_operations_limit('-1'))
+        self.assertIsNone(_last_operations_limit('abc'))
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            self.assertIn('Usage:', diagnostic_response('/last_operations 10 extra', '999'))
+
+    @patch('core.telegram_diagnostics.format_last_operations', return_value='ok')
+    def test_command_dispatches_last_operations(self, formatter):
+        from core.telegram_diagnostics import diagnostic_response
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            self.assertEqual(diagnostic_response('/last_operations 10', '999'), 'ok')
+        formatter.assert_called_once_with('10')

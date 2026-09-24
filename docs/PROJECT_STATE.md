@@ -74,6 +74,7 @@ Implemented capabilities:
   - `/portfolio_status`
   - `/position SYMBOL`
   - `/last_sell SYMBOL`
+  - `/last_operations [N]`
   - `/why_not_sell SYMBOL`
 - Telegram webhook resilience: static allowlisted `/help` avoids importing
   database-backed diagnostics, non-text/malformed updates are handled without

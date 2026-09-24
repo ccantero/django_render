@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.37
+doc_version: 1.1.39
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-09-16
@@ -8,6 +8,67 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-09-24 - Clarify Missing SELL Closure Accounting
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+
+Summary:
+- `/last_operations` now displays unavailable realized PnL when a FILLED SELL has no canonical FIFO closure rows.
+- The summary marks realized PnL incomplete without treating missing accounting evidence as zero.
+
+Validation:
+- Focused Django tests added.
+- Python syntax compilation and `git diff --check` passed.
+- Django test execution remains environment-blocked when Django is unavailable.
+
+
+## 2026-09-24 - Telegram Last SELL Operations
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/PROJECT_STATE.md
+- core/views.py
+
+Summary:
+- Added allowlisted read-only `/last_operations [N]` Telegram diagnostics for recent FILLED SELL operations.
+- Aggregates realized PnL from linked FIFO lot closures and displays each physical SELL operation once.
+
+Operator impact:
+- Operators can inspect the newest 1–50 completed SELL operations with normalized reason and summary counts.
+
+Validation:
+- Python syntax compilation passed.
+- Django tests could not run because Django is not installed in the environment.
+
+
+## 2026-09-20 - Copy Documentation Backups Only When Changed
+
+Type: operations
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/CHANGELOG.md
+
+Summary:
+- Updated `bkpdocs.sh` to preserve existing backup files when their content is
+  already identical to the source.
+- Added a regression test covering identical, changed, and missing backups.
+
+Operator impact:
+- Running the documentation backup script no longer rewrites unchanged files.
+
+Validation:
+- `bash tests/test_bkpdocs.sh`
+- `bash -n bkpdocs.sh`
+- `git diff --check`
 
 ## 2026-09-20 - Plan Position Status Sell Explainability
 

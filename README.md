@@ -217,7 +217,7 @@ Optional Telegram diagnostics allowlist settings:
 The mobile diagnostics commands require the incoming Telegram chat ID or user ID
 to match one of those allowlists. The commands use safe HTML formatting and only
 read shared bot tables. Supported commands are `/help`, `/health`, `/buy_status`,
-`/portfolio_status`, `/position SYMBOL`, `/last_sell SYMBOL`, and
+`/portfolio_status`, `/position SYMBOL`, `/last_sell SYMBOL`, `/last_operations [N]`, and
 `/why_not_sell SYMBOL`. `/help`
 returns a compact operator guide, `/health` includes the same bot-healthcheck
 VPS Disk Usage status as the dashboard, and SELL rejection diagnostics present a

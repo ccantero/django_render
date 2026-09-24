@@ -25,6 +25,7 @@ HELP_RESPONSE = "\n".join([
     "• /health — bot heartbeat and position counts",
     "• /buy_status — BUY capacity and blockers",
     "• /portfolio_status — portfolio performance summary",
+    "• /last_operations [N] — recent completed SELL operations (1–50)",
     "• /position SYMBOL — quantity, value, and drift",
     "• /last_sell SYMBOL — latest SELL diagnostic",
     "• /why_not_sell SYMBOL — latest skipped/rejected SELL reason",

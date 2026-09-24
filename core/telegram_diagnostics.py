@@ -48,6 +48,7 @@ DIAGNOSTIC_COMMANDS = {
 	"/why_not_sell",
 	"/buy_status",
 	"/portfolio_status",
+	"/last_operations",
 }
 REJECTED_SELL_EVENTS = [
 	"sell_signal_rejected",
@@ -103,6 +104,12 @@ def diagnostic_response(text, chat_id, user_id=None):
 		return format_buy_status()
 	if command == "/portfolio_status":
 		return format_portfolio_status()
+	if command == "/last_operations":
+		if len(args) > 1:
+			return "Usage: /last_operations [1-50]"
+		if args and _last_operations_limit(args[0]) is None:
+			return "Usage: /last_operations [1-50]"
+		return format_last_operations(args[0] if args else None)
 
 	symbol = args[0] if args else ""
 	if not is_valid_symbol(symbol):
@@ -224,6 +231,7 @@ def format_help():
 		"• /health — bot heartbeat and position counts",
 		"• /buy_status — BUY capacity and blockers",
 		"• /portfolio_status — portfolio performance summary",
+		"• /last_operations [N] — recent completed SELL operations (1–50)",
 		"",
 		"<b>Symbol diagnostics</b>",
 		"• /position SYMBOL — quantity, value, and drift",
@@ -573,6 +581,71 @@ def format_position(symbol):
 		])
 	return "\n".join(lines)
 
+
+def format_last_operations(raw_limit=None):
+	limit = _last_operations_limit(raw_limit)
+	if limit is None:
+		return "Usage: /last_operations [1-50]"
+	operations = list(
+		TradeOperation.objects.filter(side="SELL", status="FILLED")
+		.order_by("-executed_at", "-created_at", "-id")[:limit]
+	)
+	operation_ids = [operation.id for operation in operations]
+	closure_totals = {}
+	if operation_ids:
+		closure_totals = {
+			row["trade_operation_id"]: row["realized_pnl"]
+			for row in LotClosure.objects.filter(trade_operation_id__in=operation_ids)
+			.values("trade_operation_id")
+			.annotate(realized_pnl=Sum("realized_pnl"))
+		}
+	counts = {"stop_loss": 0, "take_profit": 0, "time_exit": 0, "other": 0}
+	total = Decimal("0")
+	missing_pnl = 0
+	rows = []
+	for operation in operations:
+		reason = _last_operation_reason(operation)
+		pnl = closure_totals.get(operation.id)
+		counts[reason if reason in counts else "other"] += 1
+		if operation.id not in closure_totals:
+			missing_pnl += 1
+			pnl_display = "unknown"
+		else:
+			total += pnl or Decimal("0")
+			pnl_display = fmt_usdt(pnl or Decimal("0"))
+		rows.append(f"{format_dt(getattr(operation, 'executed_at', None))} {h(getattr(operation, 'symbol', None))} | {h(pnl_display)} | {h(reason)}")
+	summary_pnl = fmt_usdt(total)
+	if missing_pnl:
+		summary_pnl += f" (incomplete: {missing_pnl} operation(s) lack canonical closure accounting)"
+	return "\n".join(
+		[f"<b>📋 Last {limit} SELL operations</b>", ""]
+		+ (rows or ["No completed SELL operations found."])
+		+ ["", "<b>Summary</b>", f"• Operations: {len(operations)}", f"• Realized PnL: {summary_pnl}", f"• Stop loss: {counts['stop_loss']}", f"• Take profit: {counts['take_profit']}", f"• Time exit: {counts['time_exit']}", f"• Other: {counts['other']}"]
+	)
+
+
+def _last_operations_limit(raw_limit):
+	if raw_limit is None:
+		return 10
+	try:
+		value = int(raw_limit)
+	except (TypeError, ValueError):
+		return None
+	if value < 1:
+		return None
+	return min(value, 50)
+
+
+def _last_operation_reason(operation):
+	payload = getattr(operation, "raw_payload", None) or {}
+	raw = str(payload.get("sell_reason") or payload.get("reason") or "").lower()
+	if "stop_loss" in raw:
+		return "stop_loss"
+	if "take_profit" in raw:
+		return "take_profit"
+	if "time_based" in raw or "time_exit" in raw:
+		return "time_exit"
+	return "unknown"
 
 def format_last_sell(symbol):
 	event = latest_sell_event(symbol)
