@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.13
+doc_version: 1.1.14
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-09-20
+last_verified_at: 2026-09-27
 source_repo: django_render
 ---
 
@@ -25,6 +25,83 @@ the Django data contract synchronized with the bot project copy.
 - P1: operator workflows and dashboard visibility needed for day-to-day use.
 - P2: maintainability, scale, and architecture cleanup.
 - P3: UX polish and convenience improvements.
+
+## Roadmap Reconciliation — 2026-09-27
+
+This roadmap is Django-only. It does not plan bot trading, accounting,
+reconciliation decisions, Binance calls, or changes to the shared contract.
+
+### Current priority ordering
+
+#### P0 — Restore and verify broken operator surfaces
+
+`/portfolio_status` and `/last_operations` are implemented Django Telegram
+diagnostics, not missing features. Their dispatch, bounded/read-only query
+paths, formatting, and focused tests exist in this repository. Production
+behavior is `NEEDS_RUNTIME_VERIFICATION`; this roadmap item is deployment and
+runtime verification, regression triage, and bounded-query monitoring only.
+Do not re-plan either command as implementation work without repository
+evidence of a missing path.
+
+#### P1 — Position Status / Sell Explainability
+
+`PARTIALLY_IMPLEMENTED`. Extend the existing Exit Status and `/why_not_sell`
+surfaces into a material-first, per-position read-only presentation with
+explicit freshness, price/PnL provenance, dust summarization, and distinct
+HOLD, SELL-blocked, dust/unsellable, reconciliation, and stale/unknown states.
+Use persisted bot evidence and existing projections; record
+`BOT_CONTRACT_DEPENDENCY` when authoritative evidence is absent. Django must
+not reproduce SellService logic or make trading decisions.
+
+#### P2 — Authentication security / Passkeys
+
+The repository has a custom email user model, password-backed sessions, DRF
+token authentication, admin, and permissions. No WebAuthn/Passkey support or
+dependency is present. Add a bounded design-and-implementation item for
+optional multiple credentials, registration and authentication, recovery or
+fallback, revocation, device loss, operator/admin bootstrap, CSRF/session
+interaction, HTTPS/RP ID/origin configuration, abuse controls, and tests.
+Do not remove password or token authentication until a separate migration
+decision is approved.
+
+#### P3 — Authenticated Dashboard PWA
+
+The authenticated dashboard already exists and is not currently an
+installable PWA. Evaluate a narrowly scoped PWA layer: manifest,
+service-worker scope, installability, mobile layout, update/version behavior,
+and safe authenticated caching. Default to no offline caching of sensitive or
+bot-owned trading data until an explicit threat-model and stale-data policy
+approve it. The existing public currency-converter PWA remains separate.
+
+### Existing item classification
+
+- `COMPLETED`: dashboard, analytics, Operational Trading KPIs, Exit Status
+  baseline, Telegram command registration/formatting/read paths, public
+  currency-converter PWA, and current dust/manual-correction presentation
+  listed in Completed Work.
+- `PARTIALLY_IMPLEMENTED`: Position Status / Sell Explainability; current
+  Exit Status and `/why_not_sell` are useful inputs but not a complete
+  freshness/provenance read model.
+- `NEEDS_RUNTIME_VERIFICATION`: deployed `/portfolio_status`, deployed
+  `/last_operations`, Render command/boot readiness, and production DB grants.
+- `BOT_CONTRACT_DEPENDENCY`: authoritative evidence timestamps, price
+  provenance, complete per-position lifecycle status, stable BUY decision
+  surfaces, trapped-capital/holding-efficiency inputs, and future Daily
+  Trading Audit inputs.
+- `ACTIVE`: P0 production access/grants review, P1 read-only explainability
+  completion, P2 authentication security/Passkey design, and P3 authenticated
+  PWA evaluation.
+- `SUPERSEDED` / `DUPLICATE`: any proposal to “build the dashboard,” recreate
+  bot BUY/SELL/HOLD or reconciliation logic in Django, or treat the two
+  existing Telegram commands as missing implementation.
+- `STALE`: historical implementation wording that leaves completed dashboard
+  features in an active roadmap bucket; preserve such facts only in
+  Completed Work or changelog history.
+
+Forgotten but retained work includes DB grant/least-privilege verification,
+dashboard performance and bounded-query monitoring, Telegram command health,
+mobile/operator UX, freshness/provenance, reconciliation presentation, shared
+contract synchronization when upstream changes, and deployment verification.
 
 ## Governance / Documentation Wave
 

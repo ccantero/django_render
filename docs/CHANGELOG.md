@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.41
+doc_version: 1.1.42
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-15
@@ -78,6 +78,34 @@ Validation:
 - Focused BUY-status regression tests: 50 passed.
 - `python -m pytest -q`: 324 passed, 33 subtests passed.
 - `git diff --check` passed.
+
+## 2026-09-27 - Reconcile Django Roadmap
+
+Type: docs
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- PLAN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Classified existing Django roadmap items against current repository code,
+  tests, and documentation.
+- Marked `/portfolio_status` and `/last_operations` implemented but requiring
+  deployed runtime verification, and retained the bot/Django boundary.
+- Consolidated partial Position Status / Sell Explainability work and added
+  bounded authentication/Passkey and authenticated-PWA roadmap items.
+
+Operator impact:
+- No runtime, trading, authentication, PWA, schema, or shared-contract
+  behavior changed.
+- The roadmap now prioritizes broken-surface verification before new UX work.
+
+Validation:
+- Reviewed command dispatch, handlers, bounded read paths, tests, Exit Status,
+  authentication configuration, PWA scope, and required documentation.
+- `git diff --check` passed after the documentation edits.
 
 ## 2026-09-24 - Clarify Missing SELL Closure Accounting
 

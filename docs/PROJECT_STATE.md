@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.27
+doc_version: 1.1.28
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-15
@@ -11,16 +11,26 @@ source_repo: django_render
 
 ## Current State
 
-The planned Position Status / Sell Explainability capability is not yet
-implemented. It belongs on the existing Exit Status / future Positions
-read-only surface, with material positions first, dust summarized separately,
-and canonical bot evidence translated into operator-facing labels. The current
-bounded SELL diagnostics and projections are useful inputs, but do not yet
-form a complete per-position status/freshness contract.
+Position Status / Sell Explainability is partially implemented. The existing
+Exit Status page, dashboard summary, and `/why_not_sell` diagnostics provide
+bounded read-only reason mappings, interpretations, suggested actions, and
+dust/minNotional separation. The remaining Django-owned work is a
+material-first per-position presentation with explicit evidence freshness,
+price/PnL provenance, reconciliation/stale/unknown states, and dust
+summarization. Missing authoritative evidence remains a bot/shared-contract
+dependency; Django must not reproduce SellService logic.
+
+`/portfolio_status` and `/last_operations` are implemented in this repository:
+they have command registration, handlers/formatters, bounded read paths, and
+focused tests. The repository cannot establish deployed production behavior,
+so both remain runtime-verification items rather than missing-feature items.
 
 The public Calculadora UVA and exchange-rate pages expose a PWA scoped to
 `/currencyconverter/`; the authenticated dashboard remains a regular route
 outside that PWA scope.
+The authenticated dashboard already exists as a substantial operator console,
+but it is not currently an installable PWA; authenticated PWA work is a
+separate future security/product item.
 The calculator includes the shared site navigation in regular browsers and a
 standalone-only mobile presentation that hides navigation, uses one column,
 and respects iOS safe-area insets.
