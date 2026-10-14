@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.25
+doc_version: 1.1.26
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-09-20
+last_verified_at: 2026-10-14
 source_repo: django_render
 ---
 
@@ -101,6 +101,14 @@ Implemented capabilities:
   dust as non-blocking, falls back to runtime max-position config when the latest
   healthcheck omits it, and keeps optional diagnostic gaps from collapsing the
   whole BUY-capacity answer.
+- `/buy_status` keeps current portfolio position counts and exposure visible
+  when the latest healthcheck is missing. A stale, timestamp-less, or
+  future-dated healthcheck is visibly marked; its free-USDT and latest BUY
+  blocker data are not used to assert current availability. Remaining slots
+  derive from the current position classification.
+- BUY-status formatting treats non-finite decimal inputs as unavailable,
+  compacts symbol lists, and keeps generated messages within Telegram's
+  4096-character text limit with valid HTML.
 - `/buy_status` derives current raw/material/dust/unknown counts, capacity, and
   exposure rows from one current portfolio classification snapshot; persisted
   healthcheck details remain limited to policy and latest-BUY diagnostics.
