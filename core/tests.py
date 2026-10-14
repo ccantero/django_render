@@ -552,6 +552,79 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertIn('<b>⚪ BUY status</b>', message)
         self.assertIn('⚪ Diagnostic unavailable: latest healthcheck missing', message)
 
+    @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
+    @patch('core.telegram_diagnostics.latest_buy_rejection_reason', return_value=None)
+    def test_buy_status_keeps_current_positions_when_healthcheck_is_missing(
+        self, _mock_rejection, _mock_realized,
+    ):
+        from core.telegram_diagnostics import format_buy_status
+
+        row = SimpleNamespace(
+            symbol='BTCUSDT', quantity=Decimal('1'), entry_price=Decimal('9'),
+            current_price=Decimal('10'),
+        )
+        with patch('core.telegram_diagnostics.BotHealthcheck.objects') as health, \
+             patch('core.telegram_diagnostics.Portfolio.objects') as portfolio:
+            health.order_by.return_value.first.return_value = None
+            portfolio.filter.return_value = SimpleNamespace(order_by=lambda *args: [row])
+            with self.settings(MAX_POSITIONS=8):
+                message = format_buy_status()
+
+        self.assertIn('Effective positions: <code>1 / 8</code>', message)
+        self.assertIn('Material: <code>1</code>', message)
+        self.assertIn('- BTCUSDT ~ 10 USDT', message)
+        self.assertIn('- Open positions: <code>+1.00 USDT</code>', message)
+        self.assertIn('Diagnostic unavailable: latest healthcheck missing', message)
+
+    @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
+    @patch('core.telegram_diagnostics.latest_buy_rejection_reason', return_value=None)
+    def test_buy_status_does_not_treat_stale_healthcheck_values_as_current(
+        self, _mock_rejection, _mock_realized,
+    ):
+        from core.telegram_diagnostics import format_buy_status
+
+        row = SimpleNamespace(
+            symbol='BTCUSDT', quantity=Decimal('1'), entry_price=Decimal('9'),
+            current_price=Decimal('10'),
+        )
+        stale = SimpleNamespace(
+            created_at=timezone.now() - timezone.timedelta(minutes=45),
+            details={
+                'max_positions': 8, 'free_usdt': '100',
+                'latest_buy_decision': 'blocked_by_usdt',
+                'latest_buy_reason': 'free_usdt_below_buy_amount',
+            },
+        )
+        with patch('core.telegram_diagnostics.BotHealthcheck.objects') as health, \
+             patch('core.telegram_diagnostics.Portfolio.objects') as portfolio:
+            health.order_by.return_value.first.return_value = stale
+            portfolio.filter.return_value = SimpleNamespace(order_by=lambda *args: [row])
+            message = format_buy_status()
+
+        self.assertIn('Free USDT: <code>diagnostic unavailable</code>', message)
+        self.assertIn('healthcheck stale', message.lower())
+        self.assertIn('- Reason: <code>free_usdt_below_buy_amount</code>', message)
+        self.assertNotIn('Insufficient free USDT for next BUY', message)
+        self.assertIn('✅ Capacity available', message)
+
+    @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
+    @patch('core.telegram_diagnostics.latest_buy_rejection_reason', return_value=None)
+    def test_buy_status_with_healthcheck_without_timestamp_marks_freshness_unknown(
+        self, _mock_rejection, _mock_realized,
+    ):
+        from core.telegram_diagnostics import format_buy_status
+
+        with patch('core.telegram_diagnostics.BotHealthcheck.objects') as health, \
+             patch('core.telegram_diagnostics.Portfolio.objects') as portfolio:
+            health.order_by.return_value.first.return_value = SimpleNamespace(
+                created_at=None, details={'max_positions': 8, 'free_usdt': '20'},
+            )
+            portfolio.filter.return_value = SimpleNamespace(order_by=lambda *args: [])
+            message = format_buy_status()
+
+        self.assertIn('Healthcheck freshness unavailable', message)
+        self.assertIn('Free USDT: <code>diagnostic unavailable</code>', message)
+
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.Portfolio.objects')
@@ -5089,6 +5162,68 @@ class BuyStatusPnlSummaryTests(TestCase):
 
         self.assertIn('- Open positions: <code>+0.00 USDT</code>', message)
 
+    def test_buy_status_invalid_and_non_positive_prices_are_unavailable(self):
+        from dashboard.services.telegram_buy_status_formatter import classify_buy_status_positions
+
+        rows = [
+            SimpleNamespace(symbol='ZEROUSDT', quantity=Decimal('1'), current_price=Decimal('0')),
+            SimpleNamespace(symbol='BADUSDT', quantity=Decimal('1'), current_price='not-a-price'),
+            SimpleNamespace(symbol='NANUSDT', quantity=Decimal('1'), current_price=Decimal('NaN')),
+            SimpleNamespace(symbol='INFUSDT', quantity=Decimal('1'), current_price=Decimal('Infinity')),
+        ]
+
+        classification = classify_buy_status_positions(rows)
+
+        self.assertEqual(classification['material_rows'], [])
+        self.assertEqual(classification['dust_rows'], [])
+        self.assertEqual(
+            classification['unknown_symbols'],
+            ['ZEROUSDT', 'BADUSDT', 'NANUSDT', 'INFUSDT'],
+        )
+
+    def test_buy_status_telegram_message_stays_within_limit_and_keeps_valid_html(self):
+        from html.parser import HTMLParser
+        from dashboard.services.telegram_buy_status_formatter import (
+            build_open_positions_pnl,
+            render_buy_status_message,
+        )
+
+        symbols = [f'ASSET{index:04d}USDT' for index in range(700)]
+        exposure = build_buy_status_exposure([], [], [])
+        message = render_buy_status_message(
+            emoji='🟢', raw_count=700, material_count=0, dust_count=0,
+            unknown_count=700, effective_positions=700, max_positions=8,
+            remaining_capacity=0, free_usdt=Decimal('0'),
+            latest_buy_state='unavailable', latest_buy_reason='unavailable',
+            latest_buy_symbol=None, read_only=False, exposure=exposure,
+            status_lines=['⚠️ ' + 'details ' * 900], open_positions_pnl=Decimal('0'),
+            realized_today=Decimal('0'), unknown_value_symbols=symbols,
+        )
+
+        class TagTracker(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.stack = []
+
+            def handle_starttag(self, tag, attrs):
+                self.stack.append(tag)
+
+            def handle_endtag(self, tag):
+                self.assert_tag = tag
+                if self.stack and self.stack[-1] == tag:
+                    self.stack.pop()
+                else:
+                    raise AssertionError(f'unbalanced HTML closing tag: {tag}')
+
+        parser = TagTracker()
+        parser.feed(message)
+        parser.close()
+        self.assertLessEqual(len(message), 4096)
+        self.assertEqual(parser.stack, [])
+        self.assertIn('Additional diagnostics omitted', message)
+        self.assertIn('<b>Latest BUY</b>', message)
+        self.assertIn('… +688 more', message)
+
     def test_open_positions_pnl_includes_material_rows_beyond_display_cap(self):
         rows = [
             SimpleNamespace(
@@ -5138,6 +5273,19 @@ class BuyStatusPnlSummaryTests(TestCase):
                 symbol='BTCUSDT',
                 quantity=Decimal('1'),
                 entry_price=None,
+                current_price=Decimal('10'),
+            ),
+        ])
+
+        self.assertIn('- BTCUSDT ~ 10 USDT | PnL unavailable', message)
+        self.assertIn('- Open positions: <code>unavailable</code>', message)
+
+    def test_open_positions_pnl_is_unavailable_when_entry_price_is_non_finite(self):
+        message = self._render(portfolio_rows=[
+            SimpleNamespace(
+                symbol='BTCUSDT',
+                quantity=Decimal('1'),
+                entry_price=Decimal('NaN'),
                 current_price=Decimal('10'),
             ),
         ])
