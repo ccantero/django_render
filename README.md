@@ -312,13 +312,15 @@ diagnostic gaps hide useful information:
   falls back to runtime config/env aliases such as `MAX_POSITIONS`.
 - If free USDT cannot be read, the command shows
   `Free USDT: diagnostic unavailable` while still reporting capacity.
-- Position counts and exposure remain available from the current portfolio
-  classification when no healthcheck exists. Missing, stale, timestamp-less,
-  or future-dated healthchecks cannot supply current free USDT or block status;
-  the command marks that diagnostic context unavailable or stale.
-- Remaining slots are recalculated from the same current material + unknown
-  classification used for effective positions. Persisted remaining-capacity
-  values are not mixed into the current snapshot.
+- Position classification and BUY capacity come from the bot-persisted
+  healthcheck details, which are the authoritative classification snapshot in
+  `docs/DATA_CONTRACT.md`. `bot.portfolio` only enriches approximate exposure
+  values for symbols in those persisted material/dust buckets; Django does not
+  reclassify projection rows or infer capacity from them.
+- Missing healthchecks or missing position-classification counts are displayed
+  as unavailable. Stale healthcheck classifications and BUY diagnostics are
+  labeled as last persisted/historical, and stale values do not produce a
+  current BUY availability claim.
 - If the latest BUY reason is absent, the command shows
   `Latest BUY reason: unavailable`; that alone does not block BUY status.
 - Active re-entry cooldown reasons render as human-readable blocked states and,
@@ -326,9 +328,10 @@ diagnostic gaps hide useful information:
 - Persisted reconciliation `inventory_warnings` from the latest healthcheck are
   shown only when they contain `WARNING`/`CRITICAL` diagnostics; `/buy_status`
   does not reconstruct those warnings from accounting tables.
-- Long symbol lists are compacted and a response that still exceeds Telegram's
-  4096-character text limit is shortened at complete lines with a note; HTML
-  tags remain balanced.
+- Long symbol lists are compacted. If the response exceeds Telegram's
+  4096-character text limit, a compact fallback preserves capacity, position
+  counts, PnL, latest BUY details, and status; secondary detail is omitted.
+  Dynamic multiline text is escaped before rendering so HTML stays balanced.
 
 These inventory warnings are intentionally read-only display diagnostics: the
 dashboard and Telegram commands render bot-persisted reconciliation output,

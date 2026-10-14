@@ -55,7 +55,8 @@ def build_buy_status_exposure(material_symbols, dust_symbols, portfolio_rows):
 
 	material_unavailable = []
 	dust_unavailable = []
-	classified_rows = []
+	material_rows = []
+	dust_rows = []
 	for symbol in dict.fromkeys(material_symbols + dust_symbols):
 		source_bucket = "material" if symbol in material_symbols else "dust"
 		row = rows_by_symbol.get(symbol)
@@ -65,15 +66,16 @@ def build_buy_status_exposure(material_symbols, dust_symbols, portfolio_rows):
 			else:
 				dust_unavailable.append(symbol)
 			continue
-		classified_rows.append(row)
-	classification = classify_buy_status_positions(classified_rows)
-	material_rows = classification["material_rows"]
-	dust_rows = classification["dust_rows"]
-	for symbol in classification["unknown_symbols"]:
-		if symbol in material_symbols:
-			material_unavailable.append(symbol)
+		valued_row = _valued_row_from_portfolio(row)
+		if valued_row is None:
+			if source_bucket == "material":
+				material_unavailable.append(symbol)
+			else:
+				dust_unavailable.append(symbol)
+		elif source_bucket == "material":
+			material_rows.append(valued_row)
 		else:
-			dust_unavailable.append(symbol)
+			dust_rows.append(valued_row)
 	material_rows.sort(key=lambda row: row["estimated_value_usdt"], reverse=True)
 
 	return {
@@ -110,7 +112,11 @@ def render_buy_status_message(
 	unknown_value_symbols=None,
 	cooldown_lines=None,
 	inventory_warning_lines=None,
+	classification_stale=False,
+	latest_buy_historical=False,
 ):
+	positions_heading = "Positions (last persisted; stale)" if classification_stale else "Positions"
+	latest_heading = "Last persisted BUY (historical; healthcheck stale)" if latest_buy_historical else "Latest BUY"
 	lines = [
 		f"<b>{escape(str(emoji))} BUY status</b>",
 		"",
@@ -119,13 +125,13 @@ def render_buy_status_message(
 		f"- Remaining slots: <code>{_fmt_count(remaining_capacity)}</code>",
 		f"- Free USDT: <code>{_fmt_usdt(free_usdt) if free_usdt is not None else 'diagnostic unavailable'}</code>",
 		"",
-		"<b>Positions</b>",
+		f"<b>{positions_heading}</b>",
 		f"- Raw: <code>{_fmt_count(raw_count)}</code>",
 		f"- Material: <code>{_fmt_count(material_count)}</code>",
 		f"- Dust: <code>{_fmt_count(dust_count)}</code>",
 		f"- Unknown value: <code>{_fmt_count(unknown_count)}</code>",
 		"",
-		_material_heading(exposure),
+		_material_heading(exposure, stale=classification_stale),
 	]
 
 	if exposure["material_rows"]:
@@ -152,7 +158,7 @@ def render_buy_status_message(
 		f"- Open positions: <code>{_pnl_summary_label(open_positions_pnl)}</code>",
 		f"- Realized today (UTC): <code>{_pnl_summary_label(realized_today)}</code>",
 		"",
-		"<b>Dust exposure</b>",
+		f"<b>{'Dust exposure (last persisted; stale)' if classification_stale else 'Dust exposure'}</b>",
 		f"- Dust positions: <code>{_fmt_count(dust_count)}</code>",
 		f"- Estimated dust exposure: <code>{_dust_total_label(exposure)}</code>",
 	])
@@ -175,40 +181,107 @@ def render_buy_status_message(
 	if inventory_warning_lines:
 		lines.extend([
 			"",
-			"<b>Inventory warnings</b>",
+			f"<b>{'Last persisted inventory warnings (historical; healthcheck stale)' if classification_stale else 'Inventory warnings'}</b>",
 			*inventory_warning_lines,
 		])
 
 	lines.extend([
 		"",
-		"<b>Latest BUY</b>",
-		f"- State: <code>{escape(str(latest_buy_state or 'unavailable'))}</code>",
-		f"- Reason: <code>{escape(str(latest_buy_reason or 'unavailable'))}</code>",
-		f"- Candidate: <code>{escape(str(latest_buy_symbol or 'unavailable'))}</code>",
+		f"<b>{latest_heading}</b>",
+		f"- State: <code>{_safe_html_text(latest_buy_state)}</code>",
+		f"- Reason: <code>{_safe_html_text(latest_buy_reason)}</code>",
+		f"- Candidate: <code>{_safe_html_text(latest_buy_symbol)}</code>",
 	])
 	if latest_buy_error_class:
-		lines.append(f"- Error class: <code>{escape(str(latest_buy_error_class))}</code>")
+		lines.append(f"- Error class: <code>{_safe_html_text(latest_buy_error_class)}</code>")
 	if latest_buy_error_code:
-		lines.append(f"- Error code: <code>{escape(str(latest_buy_error_code))}</code>")
+		lines.append(f"- Error code: <code>{_safe_html_text(latest_buy_error_code)}</code>")
 	if read_only:
 		lines.append("- Read-only: <code>true</code>")
 
 	lines.extend(["", "<b>Status</b>"])
-	lines.extend(status_lines)
+	lines.extend(_safe_html_line(line) for line in status_lines)
 	if cooldown_lines:
 		lines.extend([""] + cooldown_lines)
-	return _fit_telegram_message(lines)
-
-
-def _fit_telegram_message(lines):
 	message = "\n".join(lines)
 	if len(message) <= TELEGRAM_TEXT_LIMIT:
 		return message
+	return _compact_buy_status_message(
+		emoji=emoji,
+		effective_positions=effective_positions,
+		max_positions=max_positions,
+		remaining_capacity=remaining_capacity,
+		free_usdt=free_usdt,
+		raw_count=raw_count,
+		material_count=material_count,
+		dust_count=dust_count,
+		unknown_count=unknown_count,
+		open_positions_pnl=open_positions_pnl,
+		realized_today=realized_today,
+		latest_buy_state=latest_buy_state,
+		latest_buy_reason=latest_buy_reason,
+		latest_buy_symbol=latest_buy_symbol,
+		latest_buy_error_class=latest_buy_error_class,
+		latest_buy_error_code=latest_buy_error_code,
+		read_only=read_only,
+		status_lines=status_lines,
+		classification_stale=classification_stale,
+		latest_buy_historical=latest_buy_historical,
+	)
 
-	suffix = "… Additional diagnostics omitted to fit Telegram's 4096-character limit."
-	while lines and len("\n".join(lines) + "\n" + suffix) > TELEGRAM_TEXT_LIMIT:
-		lines.pop()
-	return "\n".join(lines) + "\n" + suffix
+
+def _compact_buy_status_message(**values):
+	"""Keep operational fields in a bounded fallback; never truncate raw HTML."""
+	def safe(value, fallback="unavailable", limit=160):
+		text = " ".join(str(value or fallback).split())
+		return escape(text[:limit])
+
+	lines = [
+		f"<b>{safe(values['emoji'], limit=8)} BUY status</b>",
+		"",
+		"<b>Capacity</b>",
+		f"- Effective positions: <code>{_bounded_count(values['effective_positions'])} / {_bounded_count(values['max_positions'])}</code>",
+		f"- Remaining slots: <code>{_bounded_count(values['remaining_capacity'])}</code>",
+		f"- Free USDT: <code>{_fmt_usdt(values['free_usdt']) if values['free_usdt'] is not None else 'diagnostic unavailable'}</code>",
+		"",
+		f"<b>{'Positions (last persisted; stale)' if values['classification_stale'] else 'Positions'}</b>",
+		f"- Raw: <code>{_bounded_count(values['raw_count'])}</code>",
+		f"- Material: <code>{_bounded_count(values['material_count'])}</code>",
+		f"- Dust: <code>{_bounded_count(values['dust_count'])}</code>",
+		f"- Unknown value: <code>{_bounded_count(values['unknown_count'])}</code>",
+		"",
+		"<b>PnL</b>",
+		f"- Open positions: <code>{_safe_html_text(_pnl_summary_label(values['open_positions_pnl']), limit=64)}</code>",
+		f"- Realized today (UTC): <code>{_safe_html_text(_pnl_summary_label(values['realized_today']), limit=64)}</code>",
+		"",
+		f"<b>{'Last persisted BUY (historical; healthcheck stale)' if values['latest_buy_historical'] else 'Latest BUY'}</b>",
+		f"- State: <code>{safe(values['latest_buy_state'])}</code>",
+		f"- Reason: <code>{safe(values['latest_buy_reason'])}</code>",
+		f"- Candidate: <code>{safe(values['latest_buy_symbol'])}</code>",
+	]
+	if values['latest_buy_error_class']:
+		lines.append(f"- Error class: <code>{safe(values['latest_buy_error_class'])}</code>")
+	if values['latest_buy_error_code']:
+		lines.append(f"- Error code: <code>{safe(values['latest_buy_error_code'])}</code>")
+	if values['read_only']:
+		lines.append("- Read-only: <code>true</code>")
+	lines.extend(["", "<b>Status</b>"])
+	lines.extend(f"- {safe(line, fallback='', limit=240)}" for line in values['status_lines'][:5])
+	lines.append("… Additional diagnostics omitted to fit Telegram's 4096-character limit.")
+	return "\n".join(lines)
+
+
+def _safe_html_text(value, fallback="unavailable", limit=160):
+	text = " ".join(str(value or fallback).split())
+	return escape(text[:limit])
+
+
+def _safe_html_line(value):
+	return escape(" ".join(str(value or "").split()))
+
+
+def _bounded_count(value):
+	return _fmt_count(value)[:64]
 
 
 def build_inventory_warning_lines(warnings, limit=3):
@@ -397,11 +470,13 @@ def _pnl_summary_label(value):
 	return f"{sign}{format(rounded, 'f')} USDT"
 
 
-def _material_heading(exposure):
+def _material_heading(exposure, stale=False):
 	if exposure["material_total"] is None and exposure["material_unavailable_symbols"]:
-		return "<b>Material exposure (partially unavailable)</b>"
+		label = "Material exposure (partially unavailable)"
+		return f"<b>{label}; last persisted classification is stale</b>" if stale else f"<b>{label}</b>"
 	total = exposure["material_total"] or Decimal("0")
-	return f"<b>Material exposure (~{_fmt_usdt_value(total)} USDT)</b>"
+	label = f"Material exposure (~{_fmt_usdt_value(total)} USDT)"
+	return f"<b>{label}; last persisted classification is stale</b>" if stale else f"<b>{label}</b>"
 
 
 def _dust_total_label(exposure):

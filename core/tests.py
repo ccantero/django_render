@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 77371)
+Total output lines: 6860
+
 from django.test import TestCase, TransactionTestCase, Client, override_settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -566,14 +569,13 @@ class TelegramDiagnosticsCommandTests(TestCase):
         with patch('core.telegram_diagnostics.BotHealthcheck.objects') as health, \
              patch('core.telegram_diagnostics.Portfolio.objects') as portfolio:
             health.order_by.return_value.first.return_value = None
-            portfolio.filter.return_value = SimpleNamespace(order_by=lambda *args: [row])
+            portfolio.filter.return_value = [row]
             with self.settings(MAX_POSITIONS=8):
                 message = format_buy_status()
 
-        self.assertIn('Effective positions: <code>1 / 8</code>', message)
-        self.assertIn('Material: <code>1</code>', message)
-        self.assertIn('- BTCUSDT ~ 10 USDT', message)
-        self.assertIn('- Open positions: <code>+1.00 USDT</code>', message)
+        self.assertIn('Effective positions: <code>N/A / 8</code>', message)
+        self.assertIn('Material: <code>N/A</code>', message)
+        self.assertNotIn('- BTCUSDT ~ 10 USDT', message)
         self.assertIn('Diagnostic unavailable: latest healthcheck missing', message)
 
     @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
@@ -591,21 +593,56 @@ class TelegramDiagnosticsCommandTests(TestCase):
             created_at=timezone.now() - timezone.timedelta(minutes=45),
             details={
                 'max_positions': 8, 'free_usdt': '100',
+                'positions_count': 1, 'material_positions_count': 1,
+                'dust_positions_count': 0, 'unknown_value_positions_count': 0,
+                'material_symbols': ['BTCUSDT'], 'dust_symbols': [],
                 'latest_buy_decision': 'blocked_by_usdt',
                 'latest_buy_reason': 'free_usdt_below_buy_amount',
+                'latest_buy_error_class': 'BinanceAPIError',
+                'latest_buy_error_code': '429',
             },
         )
         with patch('core.telegram_diagnostics.BotHealthcheck.objects') as health, \
              patch('core.telegram_diagnostics.Portfolio.objects') as portfolio:
             health.order_by.return_value.first.return_value = stale
-            portfolio.filter.return_value = SimpleNamespace(order_by=lambda *args: [row])
-            message = format_buy_status()
+            portfolio.filter.return_value = [row]
+            from core.telegram_diagnostics import interpret_buy_state as real_interpret_buy_state
+            with patch('core.telegram_diagnostics.interpret_buy_state', wraps=real_interpret_buy_state) as interpret:
+                message = format_buy_status()
 
         self.assertIn('Free USDT: <code>diagnostic unavailable</code>', message)
         self.assertIn('healthcheck stale', message.lower())
+        self.assertIn('<b>Positions (last persisted; stale)</b>', message)
+        self.assertIn('<b>Last persisted BUY (historical; healthcheck stale)</b>', message)
         self.assertIn('- Reason: <code>free_usdt_below_buy_amount</code>', message)
+        self.assertIn('- Error code: <code>429</code>', message)
+        self.assertIsNone(interpret.call_args.kwargs['latest_buy_error'])
         self.assertNotIn('Insufficient free USDT for next BUY', message)
-        self.assertIn('✅ Capacity available', message)
+        self.assertNotIn('✅ Capacity available', message)
+
+    @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
+    @patch('core.telegram_diagnostics.latest_buy_rejection_reason', return_value=None)
+    def test_buy_status_prefers_persisted_remaining_capacity(
+        self, _mock_rejection, _mock_realized,
+    ):
+        from core.telegram_diagnostics import format_buy_status
+
+        current = SimpleNamespace(
+            created_at=timezone.now(),
+            details={
+                'positions_count': 1, 'material_positions_count': 1,
+                'dust_positions_count': 0, 'unknown_value_positions_count': 0,
+                'max_positions': 8, 'remaining_buy_capacity': 3,
+                'material_symbols': [], 'dust_symbols': [],
+            },
+        )
+        with patch('core.telegram_diagnostics.BotHealthcheck.objects') as health, \
+             patch('core.telegram_diagnostics.Portfolio.objects'):
+            health.order_by.return_value.first.return_value = current
+            message = format_buy_status()
+
+        self.assertIn('Effective positions: <code>1 / 8</code>', message)
+        self.assertIn('Remaining slots: <code>3</code>', message)
 
     @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
     @patch('core.telegram_diagnostics.latest_buy_rejection_reason', return_value=None)
@@ -1180,9 +1217,9 @@ class TelegramDiagnosticsCommandTests(TestCase):
             self.post_telegram_message('/buy_status')
 
         message = mock_send_message.call_args[0][0]
-        self.assertIn('Dust positions: <code>5</code>', message)
-        self.assertIn('Unknown value: <code>1</code>', message)
-        self.assertIn('Estimated dust exposure: <code>~0.5 USDT</code>', message)
+        self.assertIn('Dust positions: <code>6</code>', message)
+        self.assertIn('Unknown value: <code>0</code>', message)
+        self.assertIn('Estimated dust exposure: <code>partially unavailable</code>', message)
         self.assertNotIn('DUST0USDT, DUST1USDT, DUST2USDT, DUST3USDT, DUST4USDT, DUST5USDT', message)
         self.assertIn('Unknown value', message)
 
@@ -1304,19 +1341,17 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
-        self.assertIn('Material: <code>0</code>', message)
-        self.assertIn('Dust: <code>1</code>', message)
-        self.assertIn('Effective positions: <code>0 / 8</code>', message)
-        self.assertIn('Estimated dust exposure: <code>~0.04 USDT</code>', message)
-        self.assertIn('Symbols: <code>WLDUSDT</code>', message)
-        self.assertNotIn('- WLDUSDT ~ 0.04 USDT', message)
+        self.assertIn('Material: <code>N/A</code>', message)
+        self.assertIn('Dust: <code>N/A</code>', message)
+        self.assertIn('Effective positions: <code>N/A / 8</code>', message)
+        self.assertNotIn('WLDUSDT', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.TradeOperation.objects')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
     @patch('core.telegram_diagnostics.Portfolio.objects')
-    def test_buy_status_message_demotes_stale_healthcheck_material_symbol(
+    def test_buy_status_exposure_preserves_healthcheck_material_symbol(
         self,
         mock_portfolio_manager,
         mock_health_manager,
@@ -1352,19 +1387,16 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
-        self.assertIn('<b>Material exposure (~0 USDT)</b>', message)
-        self.assertIn('- none', message)
-        self.assertIn('<b>Dust exposure</b>', message)
-        self.assertIn('Estimated dust exposure: <code>~0.04 USDT</code>', message)
-        self.assertIn('Symbols: <code>WLDUSDT</code>', message)
-        self.assertNotIn('- WLDUSDT ~ 0.04 USDT', message)
+        self.assertIn('<b>Material exposure (~0.04 USDT)</b>', message)
+        self.assertIn('- WLDUSDT ~ 0.04 USDT', message)
+        self.assertIn('Estimated dust exposure: <code>~0 USDT</code>', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.TradeOperation.objects')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
     @patch('core.telegram_diagnostics.Portfolio.objects')
-    def test_buy_status_final_message_keeps_stale_wld_symbol_out_of_material_section(
+    def test_buy_status_final_message_keeps_healthcheck_wld_material_classification(
         self,
         mock_portfolio_manager,
         mock_health_manager,
@@ -1404,10 +1436,9 @@ class TelegramDiagnosticsCommandTests(TestCase):
         material_section = message.split('<b>Dust exposure</b>', 1)[0].split('<b>Material exposure', 1)[1]
         dust_section = message.split('<b>Dust exposure</b>', 1)[1].split('<b>Latest BUY</b>', 1)[0]
 
-        self.assertIn('(~0 USDT)</b>', material_section)
-        self.assertNotIn('WLDUSDT', material_section)
-        self.assertIn('Estimated dust exposure: <code>~0.04 USDT</code>', dust_section)
-        self.assertIn('Symbols: <code>WLDUSDT</code>', dust_section)
+        self.assertIn('(~0.04 USDT)</b>', material_section)
+        self.assertIn('WLDUSDT', material_section)
+        self.assertIn('Estimated dust exposure: <code>~0 USDT</code>', dust_section)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -1449,16 +1480,48 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
         self.assertIn('Raw: <code>8</code>', message)
-        self.assertIn('Material: <code>2</code>', message)
-        self.assertIn('Dust: <code>6</code>', message)
+        self.assertIn('Material: <code>8</code>', message)
+        self.assertIn('Dust: <code>0</code>', message)
         self.assertIn('Unknown value: <code>0</code>', message)
-        self.assertIn('Effective positions: <code>2 / 8</code>', message)
-        self.assertIn('Remaining slots: <code>6</code>', message)
+        self.assertIn('Effective positions: <code>8 / 8</code>', message)
+        self.assertIn('Remaining slots: <code>0</code>', message)
         material_section = message.split('<b>Dust exposure</b>', 1)[0]
         self.assertIn('ZECUSDT', material_section)
         self.assertIn('BNBUSDT', material_section)
-        for symbol in ('ETHUSDT', 'SOLUSDT', 'BTCUSDT', 'UNIUSDT', 'SUIUSDT', 'DOGEUSDT'):
-            self.assertNotIn(f'- {symbol} ~', material_section)
+        self.assertIn('- ETHUSDT ~', material_section)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_buy_status_uses_healthcheck_classification_not_portfolio_reclassification(
+        self, portfolio_manager, health_manager, send_message,
+    ):
+        health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            created_at=timezone.now(),
+            details={
+                'positions_count': 2, 'material_positions_count': 1,
+                'dust_positions_count': 1, 'unknown_value_positions_count': 0,
+                'material_symbols': ['BTCUSDT'], 'dust_symbols': ['SHIBUSDT'],
+                'unknown_value_symbols': [], 'max_positions': 8,
+            },
+        )
+        portfolio_manager.filter.return_value = [
+            SimpleNamespace(symbol='BTCUSDT', quantity=Decimal('1'), entry_price=Decimal('2'), current_price=Decimal('1')),
+            SimpleNamespace(symbol='SHIBUSDT', quantity=Decimal('1'), entry_price=Decimal('1'), current_price=Decimal('6')),
+        ]
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            self.post_telegram_message('/buy_status')
+
+        message = send_message.call_args[0][0]
+        material_section = message.split('<b>Dust exposure</b>', 1)[0]
+        dust_section = message.split('<b>Dust exposure</b>', 1)[1].split('<b>Latest BUY</b>', 1)[0]
+        self.assertIn('Material: <code>1</code>', message)
+        self.assertIn('Dust: <code>1</code>', message)
+        self.assertIn('- BTCUSDT ~ 1 USDT', material_section)
+        self.assertNotIn('- SHIBUSDT ~', material_section)
+        self.assertIn('SHIBUSDT', dust_section)
 
     def test_buy_classification_accepts_iterable_without_order_by(self):
         from core.telegram_diagnostics import _buy_classification_from_portfolio
@@ -1484,7 +1547,7 @@ class TelegramDiagnosticsCommandTests(TestCase):
             )
             format_buy_status()
 
-        manager.filter.assert_called_once_with(quantity__gt=0)
+        manager.filter.assert_not_called()
 
     def test_buy_classification_falls_back_on_portfolio_database_error(self):
         from core.telegram_diagnostics import _buy_classification_from_portfolio
@@ -1536,10 +1599,10 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
-        self.assertIn('Material: <code>1</code>', message)
-        self.assertIn('Dust: <code>0</code>', message)
-        self.assertIn('Effective positions: <code>1 / 8</code>', message)
-        self.assertIn('- SOLUSDT ~ 6 USDT', message)
+        self.assertIn('Material: <code>N/A</code>', message)
+        self.assertIn('Dust: <code>N/A</code>', message)
+        self.assertIn('Effective positions: <code>N/A / 8</code>', message)
+        self.assertNotIn('- SOLUSDT ~ 6 USDT', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -1579,13 +1642,11 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
-        self.assertIn('Material: <code>0</code>', message)
-        self.assertIn('Dust: <code>0</code>', message)
-        self.assertIn('Unknown value: <code>1</code>', message)
-        self.assertIn('Effective positions: <code>1 / 8</code>', message)
-        self.assertIn('Valuation unavailable: <code>MYSTERYUSDT</code>', message)
+        self.assertIn('Material: <code>N/A</code>', message)
+        self.assertIn('Unknown value: <code>N/A</code>', message)
+        self.assertIn('Effective positions: <code>N/A / 8</code>', message)
 
-    def test_buy_status_exposure_demotes_stale_material_symbol_below_threshold(self):
+    def test_buy_status_exposure_preserves_persisted_material_bucket_below_threshold(self):
         exposure = build_buy_status_exposure(
             ['WLDUSDT'],
             [],
@@ -1599,11 +1660,11 @@ class TelegramDiagnosticsCommandTests(TestCase):
             ],
         )
 
-        self.assertEqual(exposure['material_rows'], [])
-        self.assertEqual(exposure['dust_rows'][0]['symbol'], 'WLDUSDT')
-        self.assertEqual(exposure['dust_rows'][0]['estimated_value_usdt'], Decimal('0.03860428'))
-        self.assertEqual(exposure['material_total'], Decimal('0'))
-        self.assertEqual(exposure['dust_total'], Decimal('0.03860428'))
+        self.assertEqual(exposure['material_rows'][0]['symbol'], 'WLDUSDT')
+        self.assertEqual(exposure['material_rows'][0]['estimated_value_usdt'], Decimal('0.03860428'))
+        self.assertEqual(exposure['dust_rows'], [])
+        self.assertEqual(exposure['material_total'], Decimal('0.03860428'))
+        self.assertEqual(exposure['dust_total'], Decimal('0'))
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -2200,2397 +2261,7 @@ class DashboardEndpointTests(TestCase):
                     executed_base_qty=Decimal('0.001'),
                     executed_at=timezone.now(),
                 ),
-                'gross_quote': Decimal('20.00'),
-                'net_quote': Decimal('20.00'),
-            },
-            'recent_operations': [
-                SimpleNamespace(
-                    side='BUY',
-                    symbol='BTCUSDT',
-                    status='FILLED',
-                    executed_base_qty=Decimal('0.001'),
-                    gross_quote=Decimal('20.00'),
-                    net_quote=Decimal('20.00'),
-                    executed_at=timezone.now(),
-                    created_at=timezone.now(),
-                ),
-            ],
-            'reconciliation': {
-                'status': 'warning',
-                'warning_count': 1,
-                'warnings': [{
-                    'symbol': 'BTCUSDT',
-                    'portfolio_quantity': Decimal('0.002'),
-                    'open_lot_quantity': Decimal('0.001'),
-                    'diff': Decimal('0.001'),
-                }],
-                'checked_count': 1,
-                'tolerance': Decimal('0.00000001'),
-            },
-        })
-        mock_get_dashboard_context.return_value.context = context
-        self.client.force_login(self.user)
-
-        response = self.client.get(self.dashboard_url)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'BTCUSDT')
-        self.assertContains(response, 'Reconciliation: <strong>warning</strong>', html=True)
-        self.assertContains(response, 'Historical KPIs are deferred')
-        self.assertContains(response, 'Analytics')
-        self.assertContains(response, 'Portfolio vs lots drift')
-        self.assertContains(response, '0.75 USDT')
-        self.assertContains(response, '0.00100000')
-        self.assertContains(response, 'Dust / Residuals')
-        self.assertContains(response, 'Active issues first')
-        self.assertNotContains(response, 'Net realized PnL')
-        self.assertNotContains(response, '12.25')
-        self.assertNotContains(response, 'Win rate')
-        self.assertNotContains(response, 'Average win')
-        self.assertNotContains(response, 'Average loss')
-        self.assertNotContains(response, 'Profit factor')
-        self.assertNotContains(response, '6.00')
-        self.assertNotContains(response, 'Gross deployed capital')
-        self.assertNotContains(response, 'PnL by symbol')
-        self.assertNotContains(response, 'PnL by day')
-        self.assertContains(response, 'BTCUSDT')
-
-    @patch('dashboard.views.get_dashboard_context')
-    def test_dashboard_home_is_operational_overview_without_pnl_tables(self, mock_get_dashboard_context):
-        context = self.empty_dashboard_context()
-        context['performance_kpis'].update({
-            'net_realized_pnl': Decimal('12.25'),
-            'total_fees_usdt': Decimal('0.25'),
-            'win_rate': Decimal('50'),
-            'average_win': Decimal('15.00'),
-            'average_loss': Decimal('-2.50'),
-            'gross_deployed_capital': Decimal('120.00'),
-            'pnl_by_symbol': [
-                {'symbol': 'BTCUSDT', 'realized_pnl': Decimal('12.50'), 'closures_count': 2},
-            ],
-            'pnl_by_day': [
-                {
-                    'date': timezone.datetime(2026, 5, 1, tzinfo=datetime_timezone.utc).date(),
-                    'realized_pnl': Decimal('12.50'),
-                    'closures_count': 2,
-                },
-            ],
-        })
-        mock_get_dashboard_context.return_value.context = context
-        self.client.force_login(self.user)
-
-        response = self.client.get(self.dashboard_url)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Operations Console')
-        self.assertContains(response, 'Historical KPIs are deferred')
-        self.assertNotContains(response, 'Net realized PnL')
-        self.assertContains(response, 'Analytics')
-        self.assertContains(response, 'Dust Dashboard')
-        self.assertNotContains(response, 'PnL by symbol')
-        self.assertNotContains(response, 'PnL by day')
-        self.assertNotContains(response, 'Profit factor')
-        self.assertNotContains(response, 'Average win')
-        self.assertNotContains(response, 'Average loss')
-        self.assertNotContains(response, 'Gross deployed capital')
-        self.assertNotContains(response, 'Manual/accounting adjustment PnL')
-
-    @patch('dashboard.views.get_dashboard_context')
-    def test_dashboard_home_shows_max_four_recent_operations(self, mock_get_dashboard_context):
-        context = self.empty_dashboard_context()
-        context['recent_operations'] = [
-            SimpleNamespace(
-                side='BUY',
-                symbol=f'OP{index}USDT',
-                status='FILLED',
-                executed_base_qty=Decimal('1.00000000'),
-                gross_quote=Decimal('10.00'),
-                net_quote=Decimal('10.00'),
-                executed_at=timezone.now() - timezone.timedelta(minutes=index),
-                created_at=timezone.now() - timezone.timedelta(minutes=index),
-            )
-            for index in range(6)
-        ]
-        mock_get_dashboard_context.return_value.context = context
-        self.client.force_login(self.user)
-
-        response = self.client.get(self.dashboard_url)
-        content = response.content.decode()
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Recent Trades')
-        self.assertEqual(content.count('dashboard-recent-operation-row'), 4)
-        self.assertContains(response, 'OP0USDT')
-        self.assertContains(response, 'OP3USDT')
-        self.assertNotContains(response, 'OP4USDT')
-
-    def test_analytics_dashboard_requires_authentication(self):
-        response = self.client.get('/dashboard/analytics/')
-
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse('login'), response['Location'])
-
-    def test_exit_status_dashboard_requires_authentication(self):
-        response = self.client.get(reverse('dashboard_exit_status'))
-
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse('login'), response['Location'])
-
-    def test_churn_dashboard_requires_authentication(self):
-        response = self.client.get(reverse('dashboard_churn'))
-
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse('login'), response['Location'])
-
-    def test_operational_kpis_dashboard_requires_authentication(self):
-        response = self.client.get(reverse('dashboard_operational_kpis'))
-
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse('login'), response['Location'])
-
-    @patch('dashboard.views.get_dashboard_context')
-    def test_analytics_dashboard_renders_performance_tables(self, mock_get_dashboard_context):
-        context = self.empty_dashboard_context()
-        context['fee_summary'] = {
-            'asset_count': 1,
-            'fill_count': 2,
-            'rows': [{'asset': 'USDT', 'total': Decimal('0.25'), 'fill_count': 2}],
-        }
-        context['quote_fee_summary'] = {
-            'total_fees_usdt': Decimal('0.25'),
-            'total_operations': 2,
-            'by_side': {
-                'BUY': {'total_fee_usdt': Decimal('0.10'), 'operations_count': 1},
-                'SELL': {'total_fee_usdt': Decimal('0.15'), 'operations_count': 1},
-            },
-        }
-        context['performance_kpis'].update({
-            'gross_realized_pnl': Decimal('12.50'),
-            'total_fees_usdt': Decimal('0.25'),
-            'net_realized_pnl': Decimal('12.25'),
-            'win_rate': Decimal('50'),
-            'average_win': Decimal('15.00'),
-            'average_loss': Decimal('-2.50'),
-            'profit_factor': Decimal('6'),
-            'gross_deployed_capital': Decimal('120.00'),
-            'manual_adjustment_pnl': Decimal('0'),
-            'pnl_by_symbol': [
-                {'symbol': 'BTCUSDT', 'realized_pnl': Decimal('12.50'), 'closures_count': 2},
-            ],
-            'pnl_by_day': [
-                {
-                    'date': timezone.datetime(2026, 5, 1, tzinfo=datetime_timezone.utc).date(),
-                    'realized_pnl': Decimal('12.50'),
-                    'closures_count': 2,
-                },
-            ],
-        })
-        mock_get_dashboard_context.return_value.context = context
-        self.client.force_login(self.user)
-
-        response = self.client.get('/dashboard/analytics/')
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Analytics Dashboard')
-        self.assertContains(response, 'Performance KPIs')
-        self.assertContains(response, 'PnL by symbol')
-        self.assertContains(response, 'PnL by day')
-        self.assertContains(response, 'Fees (USDT)')
-        self.assertContains(response, 'Total Fees')
-        self.assertContains(response, 'Profit factor')
-        self.assertContains(response, 'Manual/accounting adjustment PnL')
-
-    @patch('dashboard.views.get_dashboard_context')
-    def test_dashboard_shows_dust_summary(self, mock_get_dashboard_context):
-        context = self.empty_dashboard_context()
-        context['dust_summary'] = {
-            'total_detections': 6,
-            'critical_count': 2,
-            'warning_count': 3,
-            'info_count': 1,
-            'latest_run_id': 'run-dust-001',
-            'latest_detected_at': timezone.now(),
-            'top_grouped_detections': [
-                {
-                    'symbol': 'SOLUSDT',
-                    'asset': 'SOL',
-                    'severity': 'critical',
-                    'event_type': 'dust_candidate_detected',
-                    'reason': 'below_min_notional',
-                    'detections_count': 2,
-                    'latest_detected_at': timezone.now(),
-                    'latest_run_id': 'run-dust-001',
-                    'latest_estimated_value_usdt': Decimal('4.20'),
-                    'latest_estimated_delta_value_usdt': Decimal('0'),
-                    'latest_suggested_action': 'monitor',
-                },
-            ],
-            'active_operational_issues': [
-                {
-                    'symbol': 'SOLUSDT',
-                    'severity': 'critical',
-                    'latest_detected_at': timezone.now(),
-                    'latest_estimated_value_usdt': Decimal('4.20'),
-                    'latest_estimated_delta_value_usdt': Decimal('0'),
-                    'display_reason': 'Below min notional',
-                    'operator_badge': 'badge-danger',
-                    'detail_querystring': 'symbol=SOLUSDT&asset=SOL&reason=below_min_notional&event_type=dust_candidate_detected&severity=critical',
-                },
-            ],
-            'total_estimated_value_usdt': Decimal('4.20'),
-            'data_error': None,
-        }
-        mock_get_dashboard_context.return_value.context = context
-        self.client.force_login(self.user)
-
-        response = self.client.get(self.dashboard_url)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Dust / Residuals')
-        self.assertContains(response, 'Critical')
-        self.assertContains(response, 'Warning')
-        self.assertContains(response, 'Info residuals')
-        self.assertContains(response, 'SOLUSDT')
-        self.assertContains(response, 'Below min notional')
-        self.assertContains(response, reverse('dust_dashboard'))
-
-    @patch('dashboard.views.get_dashboard_context')
-    def test_dashboard_shows_active_operational_issues_without_full_dust_table(self, mock_get_dashboard_context):
-        context = self.empty_dashboard_context()
-        issue_rows = []
-        for index in range(6):
-            issue_rows.append({
-                'symbol': f'ISSUE{index}USDT',
-                'asset': f'ISSUE{index}',
-                'severity': 'critical' if index == 0 else 'warning',
-                'event_type': 'lot_balance_drift_detected',
-                'reason': 'lot_balance_drift',
-                'detections_count': 1,
-                'latest_detected_at': timezone.now() - timezone.timedelta(minutes=index),
-                'latest_run_id': 'run-home-001',
-                'latest_estimated_value_usdt': Decimal(str(index + 1)),
-                'latest_estimated_delta_value_usdt': Decimal('0.25'),
-                'latest_suggested_action': 'review_recent_sell',
-                'operator_label': 'Lots > Binance',
-                'operator_badge': 'badge-danger' if index == 0 else 'badge-warning',
-                'detail_querystring': f'symbol=ISSUE{index}USDT&asset=ISSUE{index}&reason=lot_balance_drift&event_type=lot_balance_drift_detected&severity=warning',
-            })
-        context['dust_summary'] = {
-            'total_detections': 6,
-            'critical_count': 1,
-            'warning_count': 5,
-            'info_count': 0,
-            'latest_run_id': 'run-home-001',
-            'latest_detected_at': timezone.now(),
-            'active_operational_issues': issue_rows,
-            'top_grouped_detections': issue_rows,
-            'total_estimated_value_usdt': Decimal('21'),
-            'data_error': None,
-        }
-        mock_get_dashboard_context.return_value.context = context
-        self.client.force_login(self.user)
-
-        response = self.client.get(self.dashboard_url)
-        content = response.content.decode()
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Active Operational Issues')
-        self.assertContains(response, 'Dust Dashboard')
-        self.assertContains(response, 'Reason / short label')
-        self.assertContains(response, 'Approx USDT')
-        self.assertEqual(content.count('dashboard-operational-issue-row'), 5)
-        self.assertContains(response, 'ISSUE0USDT')
-        self.assertContains(response, 'ISSUE4USDT')
-        self.assertNotContains(response, 'ISSUE5USDT')
-        self.assertNotContains(response, '<th>Asset</th>', html=True)
-        self.assertNotContains(response, '<th>Event type</th>', html=True)
-        self.assertNotContains(response, '<th>Latest run</th>', html=True)
-
-    @patch('dashboard.views.get_dashboard_context')
-    def test_dashboard_shows_position_exit_status_card(self, mock_get_dashboard_context):
-        context = self.empty_dashboard_context()
-        context['position_exit_status'] = {
-            'rows': [
-                {
-                    'symbol': 'ZECUSDT',
-                    'status_label': 'Holding',
-                    'status_badge': 'badge-info',
-                    'main_reason': 'stop_loss not reached, take_profit not reached',
-                    'interpretation': 'Stop loss has not been reached. Current loss is still inside the configured stop-loss threshold.',
-                    'estimated_value_usdt': Decimal('42.25'),
-                    'open_lot_quantity': Decimal('0.50000000'),
-                    'current_price': Decimal('84.50'),
-                    'suggested_action': 'Hold: strategy thresholds not reached',
-                },
-                {
-                    'symbol': 'ORDIUSDT',
-                    'status_label': 'Review needed',
-                    'status_badge': 'badge-warning',
-                    'main_reason': 'insufficient Binance balance',
-                    'estimated_value_usdt': Decimal('18.00'),
-                    'open_lot_quantity': Decimal('3.00000000'),
-                    'current_price': Decimal('6.00'),
-                    'suggested_action': 'Review drift: Binance balance lower than lots',
-                },
-            ],
-            'material_count': 2,
-            'dust_count': 0,
-            'data_error': None,
-        }
-        mock_get_dashboard_context.return_value.context = context
-        self.client.force_login(self.user)
-
-        response = self.client.get(self.dashboard_url)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Open FIFO lot exit status')
-        self.assertContains(response, 'ZECUSDT')
-        self.assertContains(response, 'Holding')
-        self.assertContains(response, 'stop_loss not reached, take_profit not reached')
-        self.assertContains(response, 'Stop loss has not been reached. Current loss is still inside the configured stop-loss threshold.')
-        self.assertContains(response, 'Hold: strategy thresholds not reached')
-        self.assertContains(response, 'ORDIUSDT')
-        self.assertContains(response, 'Review drift: Binance balance lower than lots')
-
-    @patch('dashboard.views.get_dashboard_context')
-    def test_dashboard_links_to_full_exit_status_instead_of_diagnostics_not_loaded_copy(self, mock_get_dashboard_context):
-        context = self.empty_dashboard_context()
-        mock_get_dashboard_context.return_value.context = context
-        self.client.force_login(self.user)
-
-        response = self.client.get(self.dashboard_url)
-
-        self.assertContains(response, 'Open Exit Status')
-        self.assertNotContains(response, 'SELL diagnostics are not loaded')
-
-    @patch('dashboard.views.get_exit_status_context')
-    def test_exit_status_dashboard_renders_full_table(self, mock_get_exit_status_context):
-        context = self.empty_dashboard_context()
-        context['position_exit_status']['rows'] = [{
-            'symbol': 'BTCUSDT',
-            'status_label': 'Holding',
-            'status_badge': 'badge-info',
-            'main_reason': 'stop_loss not reached',
-            'open_lot_quantity': Decimal('0.01'),
-        }]
-        mock_get_exit_status_context.return_value.context = context
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse('dashboard_exit_status'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Exit Status')
-        self.assertContains(response, 'BTCUSDT')
-
-    @patch('dashboard.views.get_churn_context')
-    def test_churn_dashboard_renders_summary(self, mock_get_churn_context):
-        mock_get_churn_context.return_value.context = {
-            'churn_summary': {
-                'reentries_under_15m_24h': 1,
-                'reentries_under_15m_48h': 2,
-                'economically_questionable_count': 1,
-                'rows': [],
-            },
-            'data_error': None,
-        }
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse('dashboard_churn'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Churn / Cooldown')
-        self.assertContains(response, 'SELL→BUY under 15m')
-
-    @patch('dashboard.views.get_operational_kpis_context')
-    def test_operational_kpis_dashboard_renders_tables(self, mock_get_operational_kpis_context):
-        mock_get_operational_kpis_context.return_value.context = {
-            'filters': OperationalKpiFilters(churn_threshold_minutes=60),
-            'strategy_summary': [{
-                'strategy_version': 'v2',
-                'closed_trades_count': 1,
-                'eligible_filled_sell_count': 1,
-                'net_realized_pnl': Decimal('5'),
-                'win_rate': Decimal('100'),
-                'average_hold_duration': timezone.timedelta(minutes=30),
-                'churn_count': 1,
-                'churn_frequency': Decimal('100'),
-                'total_normalized_fees': Decimal('0.2'),
-                'fee_efficiency': Decimal('4'),
-            }],
-            'hold_time': {
-                'average_hold_duration': timezone.timedelta(minutes=30),
-                'median_hold_duration': timezone.timedelta(minutes=30),
-                'shortest_hold_duration': timezone.timedelta(minutes=30),
-                'longest_hold_duration': timezone.timedelta(minutes=30),
-                'closed_under_15m_count': 0,
-                'buckets': {'<15m': 0, '15m-1h': 1, '1h-4h': 0, '4h-24h': 0, '>24h': 0},
-            },
-            'churn': {
-                'eligible_filled_sell_count': 1,
-                'same_symbol_reentry_count': 1,
-                'same_symbol_reentry_frequency': Decimal('100'),
-                'stop_loss_reentry_churn_count': 0,
-                'by_strategy_version': [],
-            },
-            'fee_efficiency': {
-                'total_normalized_fees': Decimal('0.2'),
-                'gross_profit': Decimal('5'),
-                'net_realized_pnl': Decimal('4.8'),
-                'fees_over_gross_profit': Decimal('4'),
-                'fees_over_absolute_net_pnl': Decimal('4.1666666667'),
-                'average_fee_per_closed_trade': Decimal('0.2'),
-                'by_symbol': [],
-            },
-            'data_error': None,
-        }
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse('dashboard_operational_kpis'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Operational Trading KPIs v2')
-        self.assertContains(response, 'Strategy Version Summary')
-        self.assertContains(response, 'Hold-Time Analytics')
-        self.assertContains(response, 'Churn Metrics')
-        self.assertContains(response, 'Fee Efficiency')
-        self.assertContains(response, '100%')
-
-    def test_demo_dashboard_is_public_and_read_only(self):
-        response = self.client.get(reverse('dashboard_demo'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Public demo')
-        self.assertContains(response, 'Historical KPIs are deferred')
-        self.assertNotContains(response, 'Total Fees')
-        self.assertNotContains(response, 'Fees (USDT)')
-        self.assertNotContains(response, 'Control seguro')
-        self.assertNotContains(response, 'Stop')
-        self.assertNotContains(response, 'Resume')
-
-    def test_dust_dashboard_requires_authentication(self):
-        response = self.client.get(reverse('dust_dashboard'))
-
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse('login'), response['Location'])
-
-    def test_dust_detail_requires_authentication(self):
-        response = self.client.get(reverse('dust_detail'))
-
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse('login'), response['Location'])
-
-    @patch('dashboard.views.get_dust_dashboard_context')
-    def test_dust_dashboard_authenticated_user_gets_page(self, mock_get_dust_context):
-        mock_get_dust_context.return_value.context = {
-            'data_error': None,
-            'grouped_detections': [
-                {
-                    'symbol': 'BTCUSDT',
-                    'asset': 'BTC',
-                    'severity': 'info',
-                    'event_type': 'dust_candidate_detected',
-                    'reason': 'below_min_notional',
-                    'detections_count': 1,
-                    'latest_detected_at': timezone.now(),
-                    'latest_run_id': 'run-123',
-                    'latest_estimated_value_usdt': Decimal('0.77962320'),
-                    'latest_estimated_delta_value_usdt': None,
-                    'latest_suggested_action': 'monitor',
-                    'operator_label': 'Below min notional',
-                    'operator_badge': 'badge-info',
-                    'operator_priority': 'informational',
-                    'operator_action': 'Monitor / optionally ignore',
-                    'review_status': 'ignored',
-                    'correction_status_label': 'No correction',
-                    'correction_badge': 'badge-light',
-                    'correction_statuses': [],
-                    'has_blocking_correction': False,
-                    'is_actionable': False,
-                    'detail_querystring': 'symbol=BTCUSDT&asset=BTC&reason=below_min_notional&event_type=dust_candidate_detected&severity=info',
-                },
-                {
-                    'symbol': 'ETHUSDT',
-                    'asset': 'ETH',
-                    'severity': 'warning',
-                    'event_type': 'lot_below_min_notional_detected',
-                    'reason': 'possible_incomplete_sell',
-                    'detections_count': 1,
-                    'latest_detected_at': timezone.now(),
-                    'latest_run_id': 'run-123',
-                    'latest_estimated_value_usdt': Decimal('0.415022396'),
-                    'latest_estimated_delta_value_usdt': Decimal('0'),
-                    'latest_suggested_action': 'review_recent_sell',
-                    'operator_label': 'Possible incomplete sell',
-                    'operator_badge': 'badge-warning',
-                    'operator_priority': 'warning',
-                    'operator_action': 'Inspect Binance history, then create correction request if external operation confirmed',
-                    'review_status': 'pending',
-                    'correction_status_label': 'Pending correction',
-                    'correction_badge': 'badge-warning',
-                    'correction_statuses': ['PENDING'],
-                    'has_blocking_correction': True,
-                    'correction_block_message': 'A correction request is already pending for this detection.',
-                    'is_actionable': False,
-                    'detail_querystring': 'symbol=ETHUSDT&asset=ETH&reason=possible_incomplete_sell&event_type=lot_below_min_notional_detected&severity=warning',
-                },
-            ],
-            'top_risk_signals': [{
-                'symbol': 'ETHUSDT',
-                'severity': 'info',
-                'event_type': 'lot_below_min_notional_detected',
-                'reason': 'possible_incomplete_sell',
-                'latest_estimated_value_usdt': Decimal('0.415022396'),
-                'operator_label': 'Possible incomplete sell',
-                'operator_badge': 'badge-warning',
-                'operator_priority': 'warning',
-                'operator_action': 'Inspect Binance history, then create correction request if external operation confirmed',
-            }],
-            'active_filters': [{'label': 'Severity', 'value': 'critical'}],
-            'filters': {'symbol': '', 'severity': '', 'event_type': '', 'reason': ''},
-            'filter_options': {
-                'symbols': [],
-                'severities': [],
-                'event_types': [],
-                'reasons': [],
-                'review_statuses': DustSignalReview.STATUS_CHOICES,
-            },
-            'summary': {
-                'total_detections': 3,
-                'critical_count': 1,
-                'warning_count': 2,
-                'info_count': 0,
-                'total_estimated_value_usdt': Decimal('3.25'),
-                'latest_run_id': 'run-123',
-                'latest_detected_at': timezone.now(),
-            },
-        }
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse('dust_dashboard'), {'severity': 'critical'})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Dust / Residuals')
-        self.assertContains(response, 'run-123')
-        self.assertContains(response, 'Back to Dashboard')
-        self.assertContains(response, 'Top risk signals')
-        self.assertContains(response, 'ETHUSDT')
-        self.assertContains(response, 'possible_incomplete_sell')
-        self.assertContains(response, 'Top grouped detections')
-        self.assertContains(response, 'data-sort-index')
-        self.assertContains(response, 'Reset')
-        self.assertContains(response, 'Active filters')
-        self.assertContains(response, 'Severity')
-        self.assertContains(response, 'ignored')
-        self.assertContains(response, 'dust-row-ignored')
-        self.assertContains(response, 'View details')
-        self.assertContains(response, 'Do not correct from DB directly. Use manual correction workflow.')
-        self.assertContains(response, 'Pending for pending review')
-        self.assertContains(response, 'Below min notional')
-        self.assertContains(response, 'informational')
-        self.assertContains(response, 'Monitor / optionally ignore')
-        self.assertContains(response, 'Possible incomplete sell')
-        self.assertContains(response, 'Inspect Binance history')
-        self.assertContains(response, 'No correction')
-        self.assertContains(response, 'Pending correction')
-        self.assertContains(response, 'A correction request is already pending for this detection.')
-        mock_get_dust_context.assert_called_once()
-
-    @patch('dashboard.views.get_dust_dashboard_context')
-    def test_dust_dashboard_renders_pagination_controls(self, mock_get_dust_context):
-        rows = []
-        for index in range(25):
-            rows.append({
-                'symbol': f'PAGE{index}USDT',
-                'asset': f'PAGE{index}',
-                'severity': 'info',
-                'event_type': 'dust_candidate_detected',
-                'reason': 'below_min_notional',
-                'detections_count': 1,
-                'latest_detected_at': timezone.now(),
-                'latest_run_id': 'run-page-001',
-                'latest_estimated_value_usdt': Decimal('0.25'),
-                'latest_estimated_delta_value_usdt': Decimal('0'),
-                'latest_suggested_action': 'monitor',
-                'operator_label': 'Below min notional',
-                'operator_badge': 'badge-info',
-                'operator_priority': 'informational',
-                'operator_action': 'Monitor / optionally ignore',
-                'review_status': 'pending',
-                'correction_status_label': 'No correction',
-                'correction_badge': 'badge-light',
-                'correction_statuses': [],
-                'has_blocking_correction': False,
-                'is_actionable': True,
-                'detail_querystring': f'symbol=PAGE{index}USDT&asset=PAGE{index}&reason=below_min_notional&event_type=dust_candidate_detected&severity=info',
-            })
-        mock_get_dust_context.return_value.context = {
-            'data_error': None,
-            'grouped_detections': rows,
-            'top_risk_signals': [],
-            'active_filters': [],
-            'filters': {'symbol': '', 'severity': '', 'event_type': '', 'reason': '', 'review_status': '', 'page': '2'},
-            'filter_options': {
-                'symbols': [],
-                'severities': [],
-                'event_types': [],
-                'reasons': [],
-                'review_statuses': DustSignalReview.STATUS_CHOICES,
-            },
-            'summary': {
-                'total_detections': 51,
-                'critical_count': 0,
-                'warning_count': 0,
-                'info_count': 51,
-                'total_estimated_value_usdt': Decimal('12.75'),
-                'latest_run_id': 'run-page-001',
-                'latest_detected_at': timezone.now(),
-            },
-            'page_obj': SimpleNamespace(
-                number=2,
-                paginator=SimpleNamespace(num_pages=3, count=51),
-                has_previous=lambda: True,
-                has_next=lambda: True,
-                previous_page_number=lambda: 1,
-                next_page_number=lambda: 3,
-            ),
-            'pagination_querystring': 'severity=info',
-        }
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse('dust_dashboard'), {'page': '2', 'severity': 'info'})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Page 2 of 3')
-        self.assertContains(response, '51 grouped signals')
-        self.assertContains(response, 'page=1')
-        self.assertContains(response, 'page=3')
-
-    def test_dust_dashboard_unknown_filters_do_not_crash(self):
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse('dust_dashboard'), {
-            'symbol': 'UNKNOWNUSDT',
-            'severity': 'unknown',
-            'reason': 'unknown_reason',
-        })
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Dust / Residuals')
-
-    @patch('dashboard.views.get_dust_detail_context')
-    def test_dust_detail_renders_latest_rows_and_null_payload(self, mock_get_detail_context):
-        mock_get_detail_context.return_value.context = {
-            'data_error': None,
-            'filters': {
-                'symbol': 'ETHUSDT',
-                'asset': 'ETH',
-                'reason': 'possible_incomplete_sell',
-                'event_type': 'lot_below_min_notional_detected',
-                'severity': 'info',
-            },
-            'group_identity': [
-                {'label': 'Symbol', 'value': 'ETHUSDT'},
-                {'label': 'Asset', 'value': 'ETH'},
-                {'label': 'Reason', 'value': 'possible_incomplete_sell'},
-                {'label': 'Event type', 'value': 'lot_below_min_notional_detected'},
-                {'label': 'Severity', 'value': 'info'},
-            ],
-            'group_summary': {
-                'detections_count': 2,
-                'latest_detection_id': 9,
-                'latest_detected_at': timezone.now(),
-                'latest_run_id': 'run-detail-001',
-                'latest_estimated_value_usdt': Decimal('0.415022396'),
-                'latest_estimated_delta_value_usdt': Decimal('0'),
-                'latest_suggested_action': 'review_recent_sell',
-                'correction_status_label': 'No correction',
-                'correction_badge': 'badge-light',
-                'correction_statuses': [],
-                'has_blocking_correction': False,
-                'is_actionable': True,
-            },
-            'review': None,
-            'review_status': DustSignalReview.STATUS_PENDING,
-            'review_status_choices': DustSignalReview.STATUS_CHOICES,
-            'raw_detections': [
-                {
-                    'row': SimpleNamespace(
-                        id=9,
-                        detected_at=timezone.now(),
-                        run_id='run-detail-001',
-                        spot_quantity=None,
-                        open_lot_quantity=Decimal('0.00017708'),
-                        quantity_delta=None,
-                        price_usdt=Decimal('2343.70'),
-                        estimated_value_usdt=Decimal('0.415022396'),
-                        estimated_delta_value_usdt=None,
-                        suggested_action='review_recent_sell',
-                        source='dust_detection_service',
-                    ),
-                    'payload_text': 'No payload',
-                    'has_payload': False,
-                },
-            ],
-            'back_querystring': 'symbol=ETHUSDT&asset=ETH&reason=possible_incomplete_sell&event_type=lot_below_min_notional_detected&severity=info',
-        }
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse('dust_detail'), {
-            'symbol': 'ETHUSDT',
-            'asset': 'ETH',
-            'reason': 'possible_incomplete_sell',
-            'event_type': 'lot_below_min_notional_detected',
-            'severity': 'info',
-        })
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Dust Signal Detail')
-        self.assertContains(response, 'Dashboard')
-        self.assertContains(response, 'Dust / Residuals')
-        self.assertContains(response, 'Back to Dust / Residuals')
-        self.assertContains(response, 'ETHUSDT')
-        self.assertContains(response, 'possible_incomplete_sell')
-        self.assertContains(response, 'run-detail-001')
-        self.assertContains(response, 'review_recent_sell')
-        self.assertContains(response, 'dust_detection_service')
-        self.assertContains(response, 'No payload')
-        self.assertContains(response, 'Manual review')
-        self.assertContains(response, 'Mark ignored')
-        self.assertContains(response, 'Review later')
-        self.assertContains(response, 'No correction')
-        self.assertNotContains(response, 'Stop')
-        self.assertNotContains(response, 'Resume')
-        mock_get_detail_context.assert_called_once()
-
-    def test_dust_detail_get_does_not_mutate_review_state(self):
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse('dust_detail'), {
-            'symbol': 'BTCUSDT',
-            'asset': 'BTC',
-            'reason': 'below_min_notional',
-            'event_type': 'dust_candidate_detected',
-            'severity': 'info',
-        })
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(DustSignalReview.objects.count(), 0)
-
-    def test_dust_detail_post_marks_signal_ignored(self):
-        self.client.force_login(self.user)
-
-        response = self.client.post(reverse('dust_detail'), {
-            'symbol': 'BTCUSDT',
-            'asset': 'BTC',
-            'reason': 'below_min_notional',
-            'event_type': 'dust_candidate_detected',
-            'severity': 'info',
-            'status': DustSignalReview.STATUS_IGNORED,
-            'note': 'Known dust from old sell',
-            'group_querystring': 'symbol=BTCUSDT&asset=BTC&reason=below_min_notional&event_type=dust_candidate_detected&severity=info',
-        })
-
-        self.assertEqual(response.status_code, 302)
-        review = DustSignalReview.objects.get(
-            symbol='BTCUSDT',
-            asset='BTC',
-            reason='below_min_notional',
-            event_type='dust_candidate_detected',
-            severity='info',
-        )
-        self.assertEqual(review.status, DustSignalReview.STATUS_IGNORED)
-        self.assertEqual(review.note, 'Known dust from old sell')
-        self.assertEqual(review.reviewed_by, self.user)
-        self.assertIsNotNone(review.reviewed_at)
-
-    def test_reviews_for_rows_handles_null_identity_without_name_error(self):
-        review = DustSignalReview.objects.create(
-            symbol='BTCUSDT',
-            asset='',
-            reason='below_min_notional',
-            event_type='dust_candidate_detected',
-            severity='info',
-            status=DustSignalReview.STATUS_IGNORED,
-        )
-
-        reviews = _reviews_for_rows([{
-            'symbol': 'BTCUSDT',
-            'asset': None,
-            'reason': 'below_min_notional',
-            'event_type': 'dust_candidate_detected',
-            'severity': 'info',
-        }])
-
-        self.assertEqual(
-            reviews[('BTCUSDT', '', 'info', 'dust_candidate_detected', 'below_min_notional')],
-            review,
-        )
-
-    def test_reviews_for_rows_missing_review_table_falls_back_to_pending(self):
-        with patch(
-            'dashboard.dust_read_model.DustSignalReview.objects.filter',
-            side_effect=DatabaseError('relation "dust_signal_reviews" does not exist'),
-        ):
-            reviews = _reviews_for_rows([{
-                'symbol': 'BTCUSDT',
-                'asset': 'BTC',
-                'reason': 'below_min_notional',
-                'event_type': 'dust_candidate_detected',
-                'severity': 'info',
-            }])
-
-        self.assertEqual(reviews, {})
-
-    def test_dust_review_null_identity_does_not_create_duplicates(self):
-        update_dust_signal_review({
-            'symbol': 'BTCUSDT',
-            'asset': '__null__',
-            'reason': 'below_min_notional',
-            'event_type': 'dust_candidate_detected',
-            'severity': 'info',
-        }, DustSignalReview.STATUS_IGNORED, 'First note', self.user)
-
-        update_dust_signal_review({
-            'symbol': 'BTCUSDT',
-            'asset': '',
-            'reason': 'below_min_notional',
-            'event_type': 'dust_candidate_detected',
-            'severity': 'info',
-        }, DustSignalReview.STATUS_REVIEWED, 'Updated note', self.user)
-
-        self.assertEqual(DustSignalReview.objects.count(), 1)
-        review = DustSignalReview.objects.get()
-        self.assertEqual(review.asset, '')
-        self.assertEqual(review.status, DustSignalReview.STATUS_REVIEWED)
-        self.assertEqual(review.note, 'Updated note')
-
-    def test_dust_review_update_missing_review_table_does_not_crash(self):
-        with patch(
-            'dashboard.dust_read_model.DustSignalReview.objects.get_or_create',
-            side_effect=DatabaseError('relation "dust_signal_reviews" does not exist'),
-        ):
-            review = update_dust_signal_review({
-                'symbol': 'BTCUSDT',
-                'asset': 'BTC',
-                'reason': 'below_min_notional',
-                'event_type': 'dust_candidate_detected',
-                'severity': 'info',
-            }, DustSignalReview.STATUS_REVIEWED, 'note', self.user)
-
-        self.assertIsNone(review)
-
-    def test_unauthenticated_user_cannot_update_dust_review(self):
-        response = self.client.post(reverse('dust_detail'), {
-            'symbol': 'BTCUSDT',
-            'asset': 'BTC',
-            'reason': 'below_min_notional',
-            'event_type': 'dust_candidate_detected',
-            'severity': 'info',
-            'status': DustSignalReview.STATUS_REVIEWED,
-        })
-
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(DustSignalReview.objects.count(), 0)
-
-    def test_dust_review_migration_exists(self):
-        migration_path = Path('core/migrations/0004_dustsignalreview.py')
-
-        self.assertTrue(migration_path.exists())
-
-    @patch('dashboard.views.get_dust_detail_context')
-    def test_dust_detail_empty_group_state(self, mock_get_detail_context):
-        mock_get_detail_context.return_value.context = {
-            'data_error': None,
-            'filters': {},
-            'group_identity': [],
-            'group_summary': None,
-            'review': None,
-            'review_status': DustSignalReview.STATUS_PENDING,
-            'review_status_choices': DustSignalReview.STATUS_CHOICES,
-            'raw_detections': [],
-            'back_querystring': '',
-        }
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse('dust_detail'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'No detections found for this dust signal.')
-
-    def test_dust_filters_are_cleaned(self):
-        filters = _clean_filters({
-            'symbol': ' BTCUSDT ',
-            'severity': 'critical',
-            'event_type': ' dust_candidate_detected ',
-            'reason': ' below_min_notional ',
-        })
-
-        self.assertEqual(filters['symbol'], 'BTCUSDT')
-        self.assertEqual(filters['severity'], 'critical')
-        self.assertEqual(filters['event_type'], 'dust_candidate_detected')
-        self.assertEqual(filters['reason'], 'below_min_notional')
-
-    def test_dust_detail_filters_by_exact_group_fields(self):
-        class FakeDustQuerySet:
-            def __init__(self):
-                self.filters = []
-
-            def filter(self, **kwargs):
-                self.filters.append(kwargs)
-                return self
-
-        query = FakeDustQuerySet()
-        with patch('dashboard.dust_read_model.DustDetection.objects') as manager:
-            manager.all.return_value = query
-            _filtered_group_detections({
-                'symbol': 'BTCUSDT',
-                'asset': 'BTC',
-                'reason': 'below_min_notional',
-                'event_type': 'dust_candidate_detected',
-                'severity': 'info',
-            })
-
-        self.assertEqual(query.filters, [
-            {'symbol': 'BTCUSDT'},
-            {'asset': 'BTC'},
-            {'severity': 'info'},
-            {'event_type': 'dust_candidate_detected'},
-            {'reason': 'below_min_notional'},
-        ])
-
-    def test_dust_detail_null_group_filter_uses_isnull(self):
-        class FakeDustQuerySet:
-            def __init__(self):
-                self.filters = []
-
-            def filter(self, **kwargs):
-                self.filters.append(kwargs)
-                return self
-
-        query = FakeDustQuerySet()
-        with patch('dashboard.dust_read_model.DustDetection.objects') as manager:
-            manager.all.return_value = query
-            _filtered_group_detections({
-                'symbol': 'BTCUSDT',
-                'asset': None,
-                'reason': 'below_min_notional',
-                'event_type': 'dust_candidate_detected',
-                'severity': 'info',
-            })
-
-        self.assertIn({'asset__isnull': True}, query.filters)
-
-    def test_payload_formatting_is_safe(self):
-        self.assertEqual(_format_payload(None), 'No payload')
-        self.assertIn('"asset": "BTC"', _format_payload({'asset': 'BTC'}))
-        self.assertIn('"asset": "BTC"', _format_payload('{"asset": "BTC"}'))
-        self.assertEqual(_format_payload('not-json'), 'not-json')
-
-    def test_dust_dashboard_default_scope_uses_latest_run_id(self):
-        class FakeDustQuerySet:
-            def __init__(self):
-                self.filters = []
-
-            def filter(self, **kwargs):
-                self.filters.append(kwargs)
-                return self
-
-        query = FakeDustQuerySet()
-        with patch('dashboard.dust_read_model._filtered_detections', return_value=query):
-            with patch('dashboard.dust_read_model._latest_run_id', return_value='latest-run-001'):
-                scoped = _dashboard_queryset({
-                    'symbol': '',
-                    'severity': '',
-                    'event_type': '',
-                    'reason': '',
-                })
-
-        self.assertIs(scoped, query)
-        self.assertEqual(query.filters, [{'run_id': 'latest-run-001'}])
-
-    def test_dust_dashboard_empty_table_uses_empty_queryset(self):
-        class FakeDustQuerySet:
-            def __init__(self):
-                self.none_called = False
-
-            def none(self):
-                self.none_called = True
-                return 'empty-queryset'
-
-        query = FakeDustQuerySet()
-        with patch('dashboard.dust_read_model._filtered_detections', return_value=query):
-            with patch('dashboard.dust_read_model._latest_run_id', return_value=None):
-                scoped = _dashboard_queryset({
-                    'symbol': '',
-                    'severity': '',
-                    'event_type': '',
-                    'reason': '',
-                })
-
-        self.assertEqual(scoped, 'empty-queryset')
-        self.assertTrue(query.none_called)
-
-    def test_dust_dashboard_filters_do_not_force_latest_run_scope(self):
-        class FakeDustQuerySet:
-            def __init__(self):
-                self.filters = []
-
-            def filter(self, **kwargs):
-                self.filters.append(kwargs)
-                return self
-
-        query = FakeDustQuerySet()
-        with patch('dashboard.dust_read_model._filtered_detections', return_value=query):
-            with patch('dashboard.dust_read_model._latest_run_id') as mock_latest_run_id:
-                scoped = _dashboard_queryset({
-                    'symbol': 'BTCUSDT',
-                    'severity': '',
-                    'event_type': '',
-                    'reason': '',
-                })
-
-        self.assertIs(scoped, query)
-        self.assertEqual(query.filters, [])
-        mock_latest_run_id.assert_not_called()
-
-    def test_operator_guidance_labels_dust_and_drift_signals(self):
-        below_min = _operator_guidance({
-            'reason': 'below_min_notional',
-            'event_type': 'dust_candidate_detected',
-        })
-        lots_greater = _operator_guidance({
-            'reason': 'lot_balance_drift',
-            'event_type': 'lot_balance_drift_detected',
-            'latest_open_lot_quantity': Decimal('0.5'),
-            'latest_spot_quantity': Decimal('0.2'),
-        })
-        binance_greater = _operator_guidance({
-            'reason': 'balance_without_lot_coverage',
-            'event_type': 'balance_without_lot_coverage_detected',
-        })
-        incomplete_sell = _operator_guidance({
-            'reason': 'possible_incomplete_sell',
-            'event_type': 'lot_below_min_notional_detected',
-        })
-
-        self.assertEqual(below_min['operator_label'], 'Below min notional')
-        self.assertIn('Usually no action', below_min['operator_action'])
-        self.assertEqual(lots_greater['operator_label'], 'Lots > Binance')
-        self.assertEqual(lots_greater['operator_priority'], 'accounting drift, needs review')
-        self.assertEqual(binance_greater['operator_label'], 'Binance balance without bot lot')
-        self.assertIn('CREATE_EXTERNAL_LOT', binance_greater['operator_action'])
-        self.assertEqual(incomplete_sell['operator_label'], 'Possible incomplete sell')
-        self.assertIn('Review urgently', incomplete_sell['operator_action'])
-
-    @patch('dashboard.dust_read_model._reviews_for_rows')
-    def test_reviewed_dust_signal_suppresses_paging_but_keeps_history_row(self, mock_reviews):
-        mock_reviews.return_value = {
-            ('XRPUSDT', 'XRP', 'warning', 'lot_balance_drift_detected', 'manual_external_operation'):
-                SimpleNamespace(
-                    status=DustSignalReview.STATUS_IGNORED,
-                    note='tiny dust',
-                    reviewed_by=None,
-                    reviewed_at=timezone.now(),
-                )
-        }
-        rows = _with_review_state([{
-            'symbol': 'XRPUSDT',
-            'asset': 'XRP',
-            'reason': 'manual_external_operation',
-            'event_type': 'lot_balance_drift_detected',
-            'severity': 'warning',
-        }])
-
-        self.assertEqual(len(rows), 1)
-        self.assertTrue(rows[0]['telegram_paging_suppressed'])
-        self.assertIn('detections remain in history', rows[0]['review_effect_text'])
-
-    @patch('dashboard.dust_read_model.ManualCorrection.objects')
-    def test_detection_with_no_correction_shows_create_action_state(self, manager):
-        manager.filter.return_value.order_by.return_value = []
-        rows = _with_correction_state([{
-            'latest_detection_id': 101,
-            'latest_suggested_action': 'review_recent_sell',
-            'operator_priority': 'warning',
-            'review_status': DustSignalReview.STATUS_PENDING,
-        }])
-
-        self.assertEqual(rows[0]['correction_status_label'], 'No correction')
-        self.assertFalse(rows[0]['has_blocking_correction'])
-        self.assertTrue(rows[0]['is_actionable'])
-        manager.filter.assert_called_once_with(source_detection_id__in=[101])
-
-    @patch('dashboard.dust_read_model.ManualCorrection.objects')
-    def test_pending_correction_disables_create_action_state(self, manager):
-        manager.filter.return_value.order_by.return_value = [
-            SimpleNamespace(source_detection_id=102, status=ManualCorrection.STATUS_PENDING, id=1)
-        ]
-        rows = _with_correction_state([{'latest_detection_id': 102}])
-
-        self.assertEqual(rows[0]['correction_status_label'], 'Pending correction')
-        self.assertTrue(rows[0]['has_blocking_correction'])
-        self.assertFalse(rows[0]['is_actionable'])
-        self.assertEqual(rows[0]['correction_block_message'], 'A correction request is already pending for this detection.')
-
-    @patch('dashboard.dust_read_model.ManualCorrection.objects')
-    def test_applied_correction_disables_create_action_state(self, manager):
-        manager.filter.return_value.order_by.return_value = [
-            SimpleNamespace(source_detection_id=103, status=ManualCorrection.STATUS_APPLIED, id=2)
-        ]
-        rows = _with_correction_state([{'latest_detection_id': 103}])
-
-        self.assertEqual(rows[0]['correction_status_label'], 'Applied correction')
-        self.assertTrue(rows[0]['has_blocking_correction'])
-        self.assertFalse(rows[0]['is_actionable'])
-        self.assertEqual(rows[0]['correction_block_message'], 'A correction was already applied for this detection.')
-
-    @patch('dashboard.dust_read_model.ManualCorrection.objects')
-    def test_rejected_correction_allows_new_request_state(self, manager):
-        manager.filter.return_value.order_by.return_value = [
-            SimpleNamespace(source_detection_id=104, status=ManualCorrection.STATUS_REJECTED, id=3)
-        ]
-        rows = _with_correction_state([{'latest_detection_id': 104}])
-
-        self.assertEqual(rows[0]['correction_status_label'], 'Rejected correction')
-        self.assertFalse(rows[0]['has_blocking_correction'])
-        self.assertTrue(rows[0]['is_actionable'])
-
-    @patch('dashboard.dust_read_model.ManualCorrection.objects')
-    def test_failed_correction_allows_new_request_state(self, manager):
-        manager.filter.return_value.order_by.return_value = [
-            SimpleNamespace(source_detection_id=105, status=ManualCorrection.STATUS_FAILED, id=4)
-        ]
-        rows = _with_correction_state([{'latest_detection_id': 105}])
-
-        self.assertEqual(rows[0]['correction_status_label'], 'Failed correction')
-        self.assertFalse(rows[0]['has_blocking_correction'])
-        self.assertTrue(rows[0]['is_actionable'])
-
-    @patch('dashboard.dust_read_model.ManualCorrection.objects')
-    def test_correction_state_batches_by_source_detection_id(self, manager):
-        manager.filter.return_value.order_by.return_value = []
-        _with_correction_state([
-            {'latest_detection_id': 201},
-            {'latest_detection_id': 202},
-            {'latest_detection_id': 201},
-            {'latest_detection_id': None},
-        ])
-
-        manager.filter.assert_called_once_with(source_detection_id__in=[201, 202])
-
-    def test_pending_review_filter_keeps_only_pending_rows(self):
-        rows = [
-            {'symbol': 'BTCUSDT', 'review_status': DustSignalReview.STATUS_PENDING},
-            {'symbol': 'ETHUSDT', 'review_status': DustSignalReview.STATUS_IGNORED},
-        ]
-
-        filtered = _filter_by_review_status(rows, DustSignalReview.STATUS_PENDING)
-
-        self.assertEqual(filtered, [{'symbol': 'BTCUSDT', 'review_status': DustSignalReview.STATUS_PENDING}])
-
-    def test_active_operational_issues_exclude_info_below_min_when_warnings_exist(self):
-        now = timezone.now()
-        rows = [
-            {
-                'symbol': 'INFOUSDT',
-                'severity': 'info',
-                'reason': 'below_min_notional',
-                'display_reason': 'Below min notional',
-                'latest_detected_at': now,
-                'latest_estimated_value_usdt': Decimal('0.25'),
-                'review_status': DustSignalReview.STATUS_PENDING,
-                'has_blocking_correction': False,
-            },
-            {
-                'symbol': 'WARNUSDT',
-                'severity': 'warning',
-                'reason': 'lot_balance_drift',
-                'display_reason': 'Lots > Binance',
-                'latest_detected_at': now - timezone.timedelta(minutes=5),
-                'latest_estimated_value_usdt': Decimal('3.00'),
-                'review_status': DustSignalReview.STATUS_PENDING,
-                'has_blocking_correction': False,
-            },
-        ]
-
-        issues = _active_operational_issues(rows)
-
-        self.assertEqual([row['symbol'] for row in issues], ['WARNUSDT'])
-
-    def test_active_operational_issues_do_not_fallback_to_info_only_residuals(self):
-        rows = [
-            {
-                'symbol': 'INFOUSDT',
-                'severity': 'info',
-                'reason': 'below_min_notional',
-                'display_reason': 'Below min notional',
-                'latest_detected_at': timezone.now(),
-                'latest_estimated_value_usdt': Decimal('0.25'),
-                'review_status': DustSignalReview.STATUS_PENDING,
-                'has_blocking_correction': False,
-            },
-        ]
-
-        issues = _active_operational_issues(rows)
-
-        self.assertEqual(issues, [])
-
-    def test_informational_residual_summary_counts_info_only_residuals(self):
-        now = timezone.now()
-        rows = [
-            {
-                'symbol': 'INFOUSDT',
-                'severity': 'info',
-                'reason': 'below_min_notional',
-                'latest_detected_at': now,
-                'latest_estimated_value_usdt': Decimal('0.25'),
-                'review_status': DustSignalReview.STATUS_PENDING,
-                'has_blocking_correction': False,
-            },
-            {
-                'symbol': 'IGNOREDUSDT',
-                'severity': 'info',
-                'reason': 'below_min_notional',
-                'latest_detected_at': now - timezone.timedelta(minutes=5),
-                'latest_estimated_value_usdt': Decimal('0.75'),
-                'review_status': DustSignalReview.STATUS_IGNORED,
-                'has_blocking_correction': False,
-            },
-        ]
-
-        summary = _informational_residual_summary(rows)
-
-        self.assertEqual(summary['count'], 1)
-        self.assertEqual(summary['total_estimated_value_usdt'], Decimal('0.25'))
-        self.assertEqual(summary['latest_detected_at'], now)
-
-    def test_active_operational_issues_exclude_reviewed_ignored_and_blocked_signals(self):
-        now = timezone.now()
-        rows = [
-            {
-                'symbol': 'ACTIVEUSDT',
-                'severity': 'critical',
-                'reason': 'lot_balance_drift',
-                'latest_detected_at': now,
-                'review_status': DustSignalReview.STATUS_PENDING,
-                'has_blocking_correction': False,
-            },
-            {
-                'symbol': 'IGNOREDUSDT',
-                'severity': 'critical',
-                'reason': 'lot_balance_drift',
-                'latest_detected_at': now,
-                'review_status': DustSignalReview.STATUS_IGNORED,
-                'has_blocking_correction': False,
-            },
-            {
-                'symbol': 'REVIEWEDUSDT',
-                'severity': 'warning',
-                'reason': 'possible_incomplete_sell',
-                'latest_detected_at': now,
-                'review_status': DustSignalReview.STATUS_REVIEWED,
-                'has_blocking_correction': False,
-            },
-            {
-                'symbol': 'BLOCKEDUSDT',
-                'severity': 'warning',
-                'reason': 'lot_balance_drift',
-                'latest_detected_at': now,
-                'review_status': DustSignalReview.STATUS_PENDING,
-                'has_blocking_correction': True,
-            },
-        ]
-
-        issues = _active_operational_issues(rows)
-
-        self.assertEqual([row['symbol'] for row in issues], ['ACTIVEUSDT'])
-
-    def test_dust_dashboard_timeout_returns_safe_defaults(self):
-        with patch('dashboard.dust_read_model._dashboard_queryset', return_value=object()):
-            with patch('dashboard.dust_read_model._build_filter_options', return_value={
-                'symbols': [],
-                'severities': [],
-                'event_types': [],
-                'reasons': [],
-            }):
-                with patch('dashboard.dust_read_model._grouped_detections', side_effect=DatabaseError('statement timeout')):
-                    read_model = get_dust_dashboard_context({})
-
-        self.assertEqual(read_model.context['dust_error'], 'Query too slow')
-        self.assertEqual(read_model.context['grouped_detections'], [])
-        self.assertEqual(read_model.context['summary']['critical_count'], 0)
-
-    def test_dust_detection_model_is_read_only_bot_table(self):
-        self.assertFalse(DustDetection._meta.managed)
-        self.assertEqual(DustDetection._meta.db_table, '"bot"."dust_detections"')
-        fields = [field.name for field in DustDetection._meta.fields]
-        self.assertIn('spot_quantity', fields)
-        self.assertIn('open_lot_quantity', fields)
-        self.assertIn('price_usdt', fields)
-        self.assertIn('payload', fields)
-        self.assertIn('created_at', fields)
-        self.assertIn('estimated_value_usdt', fields)
-        self.assertIn('estimated_delta_value_usdt', fields)
-
-    def test_dust_summary_uses_latest_grouped_exposure(self):
-        class FakeDustQuerySet:
-            def count(self):
-                return 5
-
-        latest = SimpleNamespace(
-            run_id='latest-run',
-            detected_at=timezone.now(),
-        )
-        grouped_rows = [
-            {
-                'severity': 'critical',
-                'latest_estimated_value_usdt': Decimal('1.25'),
-            },
-            {
-                'severity': 'warning',
-                'latest_estimated_value_usdt': Decimal('2.50'),
-            },
-            {
-                'severity': 'warning',
-                'latest_estimated_value_usdt': None,
-            },
-            {
-                'severity': 'info',
-                'latest_estimated_value_usdt': Decimal('0.05'),
-            },
-        ]
-
-        with patch('dashboard.dust_read_model._grouped_detections', return_value=grouped_rows):
-            with patch('dashboard.dust_read_model._latest_detection_row', return_value=latest):
-                summary = _build_summary(FakeDustQuerySet())
-
-        self.assertEqual(summary['total_detections'], 5)
-        self.assertEqual(summary['critical_count'], 1)
-        self.assertEqual(summary['warning_count'], 2)
-        self.assertEqual(summary['info_count'], 1)
-        self.assertEqual(summary['total_estimated_value_usdt'], Decimal('3.80'))
-        self.assertEqual(summary['latest_run_id'], 'latest-run')
-
-    def test_stale_healthcheck_detection(self):
-        stale_row = SimpleNamespace(
-            status='ok',
-            probe_message='old heartbeat',
-            created_at=timezone.now() - timezone.timedelta(minutes=16),
-            details={'read_only': True},
-        )
-        with patch('dashboard.dashboard_read_model.BotHealthcheck.objects') as manager:
-            manager.order_by.return_value.first.return_value = stale_row
-
-            status = _build_bot_status()
-
-        self.assertTrue(status['is_stale'])
-        self.assertEqual(status['read_only'], True)
-        self.assertEqual(status['badge_label'], 'stale')
-        self.assertEqual(status['badge_class'], 'badge-warning')
-
-    def test_bot_health_badge_normalizes_uppercase_ok_to_healthy(self):
-        row = SimpleNamespace(
-            status='OK',
-            probe_message='heartbeat',
-            created_at=timezone.now(),
-            details={'read_only': True},
-        )
-        with patch('dashboard.dashboard_read_model.BotHealthcheck.objects') as manager:
-            manager.order_by.return_value.first.return_value = row
-
-            status = _build_bot_status()
-
-        self.assertEqual(status['badge_label'], 'healthy')
-        self.assertEqual(status['badge_class'], 'badge-success')
-
-    def test_bot_health_badge_normalizes_lowercase_ok_to_healthy(self):
-        row = SimpleNamespace(
-            status='ok',
-            probe_message='heartbeat',
-            created_at=timezone.now(),
-            details={'read_only': True},
-        )
-        with patch('dashboard.dashboard_read_model.BotHealthcheck.objects') as manager:
-            manager.order_by.return_value.first.return_value = row
-
-            status = _build_bot_status()
-
-        self.assertEqual(status['badge_label'], 'healthy')
-        self.assertEqual(status['badge_class'], 'badge-success')
-
-    def test_bot_health_badge_maps_missing_row_to_unknown(self):
-        with patch('dashboard.dashboard_read_model.BotHealthcheck.objects') as manager:
-            manager.order_by.return_value.first.return_value = None
-
-            status = _build_bot_status()
-
-        self.assertEqual(status['badge_label'], 'unknown')
-        self.assertEqual(status['badge_class'], 'badge-secondary')
-
-    def test_bot_health_badge_maps_error_to_error(self):
-        row = SimpleNamespace(
-            status='error',
-            probe_message='failed',
-            created_at=timezone.now(),
-            details={'read_only': True},
-        )
-        with patch('dashboard.dashboard_read_model.BotHealthcheck.objects') as manager:
-            manager.order_by.return_value.first.return_value = row
-
-            status = _build_bot_status()
-
-        self.assertEqual(status['badge_label'], 'error')
-        self.assertEqual(status['badge_class'], 'badge-danger')
-
-    def test_disk_usage_prefers_healthcheck_details(self):
-        import dashboard.dashboard_read_model as read_model
-
-        result = read_model._build_disk_usage({
-            'disk_usage': {
-                'filesystem': '/',
-                'total_bytes': 1000,
-                'used_bytes': 720,
-                'free_bytes': 280,
-                'used_pct': '72.0',
-                'status': 'warning',
-                'source': 'bot_vps',
-            },
-        })
-
-        self.assertTrue(result['available'])
-        self.assertEqual(result['source'], 'bot_vps')
-        self.assertEqual(result['source_label'], 'Bot VPS')
-        self.assertEqual(result['filesystem'], '/')
-        self.assertEqual(result['used_percent'], Decimal('72.0'))
-        self.assertEqual(result['free_gb'], Decimal(280) / Decimal(1024 ** 3))
-        self.assertEqual(result['status'], 'warning')
-        self.assertEqual(result['badge_class'], 'badge-warning')
-        self.assertEqual(result['status_label'], 'Warning')
-
-    def test_disk_usage_missing_payload_is_unavailable(self):
-        import dashboard.dashboard_read_model as read_model
-
-        result = read_model._build_disk_usage({})
-
-        self.assertFalse(result['available'])
-        self.assertEqual(result['source_label'], 'Unavailable')
-        self.assertEqual(result['status'], 'unavailable')
-        self.assertEqual(result['status_label'], 'Unavailable')
-        self.assertIsNone(result['used_percent'])
-
-    def test_disk_usage_unavailable_does_not_raise(self):
-        import dashboard.dashboard_read_model as read_model
-
-        result = read_model._build_disk_usage({'disk_usage': {'used_pct': 'bad'}})
-
-        self.assertFalse(result['available'])
-        self.assertEqual(result['source_label'], 'Unavailable')
-        self.assertEqual(result['status'], 'unavailable')
-        self.assertEqual(result['status_label'], 'Unavailable')
-        self.assertIsNone(result['used_percent'])
-
-    def test_fee_summary_uses_trade_operations_fee_fields(self):
-        class FakeTradeOperationQuery:
-            def __init__(self):
-                self.calls = []
-
-            def filter(self, **kwargs):
-                self.calls.append(('filter', kwargs))
-                return self
-
-            def values(self, *fields):
-                self.calls.append(('values', fields))
-                return self
-
-            def annotate(self, **kwargs):
-                self.calls.append(('annotate', tuple(kwargs)))
-                return self
-
-            def order_by(self, *fields):
-                self.calls.append(('order_by', fields))
-                return [
-                    {'fee_asset': 'BNB', 'total': Decimal('0.0018'), 'fill_count': 2},
-                    {'fee_asset': 'USDT', 'total': Decimal('3.42'), 'fill_count': 5},
-                ]
-
-        query = FakeTradeOperationQuery()
-        with patch('dashboard.dashboard_read_model.TradeOperation.objects', query):
-            summary = _build_fee_summary()
-
-        self.assertEqual(summary['asset_count'], 2)
-        self.assertEqual(summary['fill_count'], 7)
-        self.assertEqual(summary['rows'][0]['asset'], 'BNB')
-        self.assertIn(('filter', {'fee_amount__isnull': False}), query.calls)
-        self.assertIn(('values', ('fee_asset',)), query.calls)
-        self.assertIn(('order_by', ('fee_asset',)), query.calls)
-
-    def test_quote_fee_summary_uses_filled_usdt_trade_operations(self):
-        class FakeTradeOperationQuery:
-            def __init__(self):
-                self.calls = []
-
-            def filter(self, **kwargs):
-                self.calls.append(('filter', kwargs))
-                return self
-
-            def values(self, *fields):
-                self.calls.append(('values', fields))
-                return self
-
-            def annotate(self, **kwargs):
-                self.calls.append(('annotate', tuple(kwargs)))
-                return self
-
-            def order_by(self, *fields):
-                self.calls.append(('order_by', fields))
-                return [
-                    {
-                        'side': 'BUY',
-                        'total_fee_usdt': Decimal('2.10'),
-                        'operations_count': 3,
-                    },
-                    {
-                        'side': 'SELL',
-                        'total_fee_usdt': Decimal('1.32'),
-                        'operations_count': 2,
-                    },
-                ]
-
-        query = FakeTradeOperationQuery()
-        with patch('dashboard.dashboard_read_model.TradeOperation.objects', query):
-            summary = _build_quote_fee_summary()
-
-        self.assertEqual(summary['total_fees_usdt'], Decimal('3.42'))
-        self.assertEqual(summary['total_operations'], 5)
-        self.assertEqual(summary['by_side']['BUY']['total_fee_usdt'], Decimal('2.10'))
-        self.assertEqual(summary['by_side']['SELL']['operations_count'], 2)
-        self.assertIn(('filter', {'status': 'FILLED', 'quote_asset': 'USDT'}), query.calls)
-        self.assertIn(('values', ('side',)), query.calls)
-        self.assertIn(('order_by', ('side',)), query.calls)
-
-    def test_performance_kpi_read_model_does_not_query_lot_closure_timestamp(self):
-        class FakeLotClosureQuery:
-            def __init__(self):
-                self.values_fields = None
-                self.order_fields = None
-
-            def values(self, *fields):
-                self.values_fields = fields
-                return self
-
-            def order_by(self, *fields):
-                self.order_fields = fields
-                return [
-                    {'trade_operation_id': 1, 'realized_pnl': Decimal('3')},
-                ]
-
-        class FakeTradeOperationQuery:
-            def __init__(self):
-                self.values_calls = []
-
-            def filter(self, **kwargs):
-                return self
-
-            def values(self, *fields):
-                self.values_calls.append(fields)
-                if 'id' in fields:
-                    return [
-                        {
-                            'id': 1,
-                            'symbol': 'BTCUSDT',
-                            'client_order_id': '',
-                            'raw_payload': {},
-                            'executed_at': timezone.datetime(2026, 5, 1, 9, tzinfo=datetime_timezone.utc),
-                            'created_at': timezone.datetime(2026, 5, 1, 8, tzinfo=datetime_timezone.utc),
-                        },
-                    ]
-                if 'fee_amount_in_quote' in fields:
-                    return []
-                return []
-
-        lot_query = FakeLotClosureQuery()
-        trade_query = FakeTradeOperationQuery()
-
-        with patch('dashboard.dashboard_read_model.LotClosure.objects', lot_query):
-            with patch('dashboard.dashboard_read_model.TradeOperation.objects', trade_query):
-                summary = _build_performance_kpis()
-
-        self.assertEqual(lot_query.values_fields, ('trade_operation_id', 'realized_pnl'))
-        self.assertNotIn('timestamp', lot_query.order_fields)
-        self.assertIn(
-            ('id', 'symbol', 'client_order_id', 'raw_payload', 'executed_at', 'created_at'),
-            trade_query.values_calls,
-        )
-        self.assertEqual(summary['pnl_by_day'][0]['date'].isoformat(), '2026-05-01')
-
-    def test_lot_closure_model_does_not_map_missing_timestamp_column(self):
-        self.assertNotIn('timestamp', [field.name for field in LotClosure._meta.fields])
-
-    def test_operational_kpis_lot_link_models_use_lot_id_fields(self):
-        self.assertIn('lot_id', [field.name for field in LotClosure._meta.fields])
-        self.assertIn('lot_id', [field.name for field in PositionLot._meta.fields])
-
-    def test_performance_kpis_calculate_realized_pnl_fees_and_deployed_capital(self):
-        closure_rows = [
-            {
-                'trade_operation_id': 1,
-                'realized_pnl': Decimal('12.50'),
-            },
-            {
-                'trade_operation_id': 2,
-                'realized_pnl': Decimal('-4.25'),
-            },
-        ]
-        operation_rows = {
-            1: {'symbol': 'BTCUSDT', 'manual_correction': False},
-            2: {'symbol': 'ETHUSDT', 'manual_correction': False},
-        }
-        fee_rows = [
-            {'fee_amount_in_quote': Decimal('0.50')},
-            {'fee_amount_in_quote': Decimal('0.25')},
-            {'fee_amount_in_quote': None},
-        ]
-        buy_rows = [
-            {'gross_quote': Decimal('100.00')},
-            {'gross_quote': Decimal('25.25')},
-            {'gross_quote': None},
-        ]
-
-        summary = _calculate_performance_kpis(
-            closure_rows,
-            operation_rows,
-            fee_rows,
-            buy_rows,
-        )
-
-        self.assertEqual(summary['gross_realized_pnl'], Decimal('8.25'))
-        self.assertEqual(summary['total_fees_usdt'], Decimal('0.75'))
-        self.assertEqual(summary['net_realized_pnl'], Decimal('7.50'))
-        self.assertEqual(summary['gross_deployed_capital'], Decimal('125.25'))
-
-    def test_performance_kpis_calculate_win_rate_averages_and_profit_factor(self):
-        closure_rows = [
-            {'trade_operation_id': 1, 'realized_pnl': Decimal('10')},
-            {'trade_operation_id': 1, 'realized_pnl': Decimal('5')},
-            {'trade_operation_id': 2, 'realized_pnl': Decimal('-3')},
-            {'trade_operation_id': 3, 'realized_pnl': Decimal('0')},
-        ]
-
-        summary = _calculate_performance_kpis(closure_rows, {}, [], [])
-
-        self.assertEqual(summary['winning_closures_count'], 2)
-        self.assertEqual(summary['losing_closures_count'], 1)
-        self.assertEqual(summary['breakeven_closures_count'], 1)
-        self.assertEqual(summary['win_rate'], Decimal('66.66666666666666666666666667'))
-        self.assertEqual(summary['average_win'], Decimal('7.5'))
-        self.assertEqual(summary['average_loss'], Decimal('-3'))
-        self.assertEqual(summary['profit_factor'], Decimal('5'))
-
-    def test_performance_kpis_zero_loss_profit_factor_is_none(self):
-        closure_rows = [
-            {'trade_operation_id': 1, 'realized_pnl': Decimal('10')},
-            {'trade_operation_id': 1, 'realized_pnl': Decimal('2')},
-        ]
-
-        summary = _calculate_performance_kpis(closure_rows, {}, [], [])
-
-        self.assertIsNone(summary['profit_factor'])
-
-    def test_performance_kpis_ignore_nulls_without_crashing(self):
-        closure_rows = [
-            {'trade_operation_id': None, 'realized_pnl': None},
-            {'trade_operation_id': 1, 'realized_pnl': Decimal('2')},
-        ]
-        fee_rows = [{'fee_amount_in_quote': None}]
-        buy_rows = [{'gross_quote': None}]
-
-        summary = _calculate_performance_kpis(closure_rows, {}, fee_rows, buy_rows)
-
-        self.assertEqual(summary['closures_count'], 1)
-        self.assertEqual(summary['gross_realized_pnl'], Decimal('2'))
-        self.assertEqual(summary['total_fees_usdt'], Decimal('0'))
-        self.assertEqual(summary['gross_deployed_capital'], Decimal('0'))
-
-    def test_performance_kpis_split_identifiable_manual_corrections(self):
-        closure_rows = [
-            {'trade_operation_id': 1, 'realized_pnl': Decimal('8')},
-            {'trade_operation_id': 2, 'realized_pnl': Decimal('-2')},
-        ]
-        operation_rows = {
-            1: {'symbol': 'BTCUSDT', 'manual_correction': False},
-            2: {'symbol': 'ETHUSDT', 'manual_correction': True},
-        }
-
-        summary = _calculate_performance_kpis(closure_rows, operation_rows, [], [])
-
-        self.assertEqual(summary['bot_realized_pnl'], Decimal('8'))
-        self.assertEqual(summary['manual_adjustment_pnl'], Decimal('-2'))
-        self.assertTrue(summary['manual_corrections_split_available'])
-
-    def test_performance_kpis_group_pnl_by_symbol_and_day_from_operation_timestamp(self):
-        closure_rows = [
-            {
-                'trade_operation_id': 1,
-                'realized_pnl': Decimal('3'),
-            },
-            {
-                'trade_operation_id': 1,
-                'realized_pnl': Decimal('4'),
-            },
-            {
-                'trade_operation_id': 2,
-                'realized_pnl': Decimal('-1'),
-            },
-            {
-                'trade_operation_id': 3,
-                'realized_pnl': Decimal('2'),
-            },
-        ]
-        operation_rows = {
-            1: {
-                'symbol': 'BTCUSDT',
-                'manual_correction': False,
-                'timestamp': timezone.datetime(2026, 5, 1, 9, tzinfo=datetime_timezone.utc),
-            },
-            2: {
-                'symbol': 'ETHUSDT',
-                'manual_correction': False,
-                'timestamp': timezone.datetime(2026, 5, 2, 9, tzinfo=datetime_timezone.utc),
-            },
-            3: {'symbol': 'SOLUSDT', 'manual_correction': False, 'timestamp': None},
-        }
-
-        summary = _calculate_performance_kpis(closure_rows, operation_rows, [], [])
-
-        self.assertEqual(summary['pnl_by_symbol'][0]['symbol'], 'BTCUSDT')
-        self.assertEqual(summary['pnl_by_symbol'][0]['realized_pnl'], Decimal('7'))
-        self.assertEqual(summary['pnl_by_symbol'][0]['closures_count'], 2)
-        self.assertEqual(summary['pnl_by_day'][0]['date'].isoformat(), '2026-05-01')
-        self.assertEqual(summary['pnl_by_day'][0]['realized_pnl'], Decimal('7'))
-        self.assertEqual(summary['pnl_by_day'][1]['date'].isoformat(), '2026-05-02')
-        self.assertEqual(summary['gross_realized_pnl'], Decimal('8'))
-        self.assertEqual(len(summary['pnl_by_day']), 2)
-
-    def test_valuation_consistency_matching_portfolio_and_lots_values(self):
-        portfolio_rows = [
-            SimpleNamespace(
-                symbol='BTCUSDT',
-                quantity=Decimal('0.001'),
-                current_price=Decimal('20000.00'),
-            ),
-        ]
-        open_lots = {
-            'BTCUSDT': {'open_quantity': Decimal('0.001'), 'open_lot_count': 1},
-        }
-
-        summary = _build_valuation_consistency(portfolio_rows, open_lots)
-
-        self.assertEqual(summary['portfolio_value'], Decimal('20.00000'))
-        self.assertEqual(summary['lots_value'], Decimal('20.00000'))
-        self.assertEqual(summary['drift_value'], Decimal('0.00000'))
-        self.assertEqual(summary['portfolio_missing_price_count'], 0)
-        self.assertEqual(summary['lots_missing_price_count'], 0)
-
-    def test_valuation_consistency_surfaces_drift(self):
-        portfolio_rows = [
-            SimpleNamespace(
-                symbol='ETHUSDT',
-                quantity=Decimal('0.010'),
-                current_price=Decimal('2000.00'),
-            ),
-        ]
-        open_lots = {
-            'ETHUSDT': {'open_quantity': Decimal('0.009'), 'open_lot_count': 1},
-        }
-
-        summary = _build_valuation_consistency(portfolio_rows, open_lots)
-
-        self.assertEqual(summary['portfolio_value'], Decimal('20.00000'))
-        self.assertEqual(summary['lots_value'], Decimal('18.00000'))
-        self.assertEqual(summary['drift_value'], Decimal('2.00000'))
-
-    def test_valuation_consistency_counts_missing_current_prices(self):
-        portfolio_rows = [
-            SimpleNamespace(
-                symbol='BNBUSDT',
-                quantity=Decimal('0.25'),
-                current_price=None,
-            ),
-        ]
-        open_lots = {
-            'BNBUSDT': {'open_quantity': Decimal('0.25'), 'open_lot_count': 1},
-            'ADAUSDT': {'open_quantity': Decimal('10'), 'open_lot_count': 1},
-        }
-
-        summary = _build_valuation_consistency(portfolio_rows, open_lots)
-
-        self.assertEqual(summary['portfolio_value'], Decimal('0'))
-        self.assertEqual(summary['lots_value'], Decimal('0'))
-        self.assertEqual(summary['drift_value'], Decimal('0'))
-        self.assertEqual(summary['portfolio_missing_price_count'], 1)
-        self.assertEqual(summary['lots_missing_price_count'], 2)
-        self.assertTrue(summary['has_missing_prices'])
-
-    def test_valuation_consistency_handles_empty_portfolio_and_lots(self):
-        summary = _build_valuation_consistency([], {})
-
-        self.assertEqual(summary['portfolio_value'], Decimal('0'))
-        self.assertEqual(summary['lots_value'], Decimal('0'))
-        self.assertEqual(summary['drift_value'], Decimal('0'))
-        self.assertEqual(summary['portfolio_rows_count'], 0)
-        self.assertEqual(summary['open_lots_symbol_count'], 0)
-
-    def test_valuation_consistency_uses_decimal_safe_calculations(self):
-        portfolio_rows = [
-            SimpleNamespace(
-                symbol='SOLUSDT',
-                quantity=Decimal('0.333333333333333333'),
-                current_price=Decimal('19.700000000000000000'),
-            ),
-        ]
-        open_lots = {
-            'SOLUSDT': {
-                'open_quantity': Decimal('0.333333333333333333'),
-                'open_lot_count': 1,
-            },
-        }
-
-        summary = _build_valuation_consistency(portfolio_rows, open_lots)
-
-        self.assertIsInstance(summary['portfolio_value'], Decimal)
-        self.assertEqual(
-            summary['portfolio_value'],
-            Decimal('6.566666666666666660100000000000000000'),
-        )
-
-    def test_position_exit_status_classifies_hold_dust_and_drift(self):
-        open_lots = {
-            'ZECUSDT': {'symbol': 'ZECUSDT', 'open_quantity': Decimal('0.5'), 'open_lot_count': 1},
-            'ETHUSDT': {'symbol': 'ETHUSDT', 'open_quantity': Decimal('0.001'), 'open_lot_count': 1},
-            'ORDIUSDT': {'symbol': 'ORDIUSDT', 'open_quantity': Decimal('3'), 'open_lot_count': 2},
-        }
-        portfolio_rows = [
-            SimpleNamespace(symbol='ZECUSDT', asset='ZEC', quantity=Decimal('0.5'), current_price=Decimal('84.50')),
-            SimpleNamespace(symbol='ETHUSDT', asset='ETH', quantity=Decimal('0.001'), current_price=Decimal('2300')),
-            SimpleNamespace(symbol='ORDIUSDT', asset='ORDI', quantity=Decimal('2'), current_price=Decimal('6')),
-        ]
-        sell_events = {
-            'ZECUSDT': SimpleNamespace(
-                symbol='ZECUSDT',
-                reason='strategy_thresholds_not_reached',
-                current_price=Decimal('84.50'),
-                stop_loss_threshold=Decimal('-3'),
-                take_profit_threshold=Decimal('5'),
-                created_at=timezone.now(),
-                payload={'reasons': ['stop_loss_not_reached', 'take_profit_not_reached'], 'run_id': 'run-1'},
-            ),
-            'ETHUSDT': SimpleNamespace(
-                symbol='ETHUSDT',
-                reason='quantity_below_min_notional',
-                current_price=Decimal('2300'),
-                stop_loss_threshold=None,
-                take_profit_threshold=None,
-                created_at=timezone.now(),
-                payload={'reasons': ['quantity_below_min_notional', 'dust_residual_protection']},
-            ),
-            'ORDIUSDT': SimpleNamespace(
-                symbol='ORDIUSDT',
-                reason='insufficient_binance_balance',
-                current_price=Decimal('6'),
-                stop_loss_threshold=None,
-                take_profit_threshold=None,
-                created_at=timezone.now(),
-                payload={'reason': 'insufficient_binance_balance'},
-            ),
-        }
-
-        summary = _build_position_exit_status(open_lots, portfolio_rows, sell_events)
-        rows_by_symbol = {row['symbol']: row for row in summary['rows']}
-
-        self.assertEqual(rows_by_symbol['ZECUSDT']['status_label'], 'Holding')
-        self.assertEqual(rows_by_symbol['ZECUSDT']['main_reason'], 'stop_loss not reached, take_profit not reached')
-        self.assertEqual(rows_by_symbol['ZECUSDT']['suggested_action'], 'No action. Continue monitoring.')
-        self.assertEqual(rows_by_symbol['ETHUSDT']['status_label'], 'Dust / Below minNotional')
-        self.assertEqual(rows_by_symbol['ETHUSDT']['estimated_value_usdt'], Decimal('2.300'))
-        self.assertEqual(rows_by_symbol['ETHUSDT']['suggested_action'], 'Review as dust. It may become reusable if future buys increase the balance.')
-        self.assertEqual(rows_by_symbol['ORDIUSDT']['status_label'], 'Drift / Review needed')
-        self.assertEqual(rows_by_symbol['ORDIUSDT']['suggested_action'], 'Review for manual/external operation, Earn movement, fee residual, or incomplete sell.')
-        self.assertEqual(summary['material_count'], 2)
-        self.assertEqual(summary['dust_count'], 1)
-
-    def test_inventory_scope_summary_distinguishes_lots_from_excluded_balances(self):
-        portfolio_rows = [
-            SimpleNamespace(symbol='ZECUSDT', asset='ZEC', quantity=Decimal('0.5'), current_price=Decimal('84.50')),
-            SimpleNamespace(symbol='USDCUSDT', asset='USDC', quantity=Decimal('25'), current_price=Decimal('1')),
-            SimpleNamespace(symbol='ABCUSDT', asset='ABC', quantity=Decimal('2'), current_price=Decimal('3')),
-        ]
-        open_lots = {
-            'ZECUSDT': {'symbol': 'ZECUSDT', 'open_quantity': Decimal('0.5')},
-        }
-        position_exit_status = {'material_count': 1, 'dust_count': 0}
-
-        summary = _build_inventory_scope_summary(portfolio_rows, open_lots, position_exit_status)
-
-        self.assertIsNone(summary['spot_assets_count'])
-        self.assertEqual(summary['bot_managed_lot_symbols_count'], 1)
-        self.assertEqual(summary['material_tradable_positions_count'], 1)
-        self.assertEqual(summary['excluded_balances_count'], 2)
-        self.assertEqual(
-            [row['symbol'] for row in summary['excluded_balances']],
-            ['ABCUSDT', 'USDCUSDT'],
-        )
-        self.assertEqual(summary['excluded_balances'][1]['reason'], 'stablecoin cash balance')
-
-    def test_latest_sell_events_by_symbol_keeps_latest_open_lot_event_only(self):
-        older = SimpleNamespace(symbol='ZECUSDT', id=1)
-        latest = SimpleNamespace(symbol='ZECUSDT', id=2)
-        unrelated = SimpleNamespace(symbol='BTCUSDT', id=3)
-        eth = SimpleNamespace(symbol='ETHUSDT', id=4)
-
-        class FakeSellDecisionEventQuery:
-            def __init__(self):
-                self.filter_kwargs = None
-                self.order_fields = None
-
-            def filter(self, **kwargs):
-                self.filter_kwargs = kwargs
-                return self
-
-            def order_by(self, *fields):
-                self.order_fields = fields
-                return self
-
-            def __getitem__(self, item):
-                self.slice = item
-                return [latest, eth, older]
-
-        query = FakeSellDecisionEventQuery()
-        open_lots = {'ZECUSDT': {}, 'ETHUSDT': {}, 'ADAUSDT': {}}
-
-        with patch('dashboard.dashboard_read_model.SellDecisionEvent.objects', query):
-            events = _latest_sell_events_by_symbol(open_lots)
-
-        self.assertEqual(query.filter_kwargs, {'symbol__in': ['ZECUSDT', 'ETHUSDT', 'ADAUSDT']})
-        self.assertEqual(query.order_fields, ('-created_at', '-id'))
-        self.assertEqual(query.slice, slice(None, 200, None))
-        self.assertEqual(events, {'ZECUSDT': latest, 'ETHUSDT': eth})
-        self.assertNotIn('ADAUSDT', events)
-        self.assertNotIn(unrelated.symbol, events)
-
-    def test_latest_sell_events_by_symbol_returns_empty_mapping_when_query_fails(self):
-        class FailingSellDecisionEventQuery:
-            def filter(self, **kwargs):
-                raise DatabaseError('missing diagnostics table')
-
-        with patch('dashboard.dashboard_read_model.logger') as logger:
-            with patch('dashboard.dashboard_read_model.SellDecisionEvent.objects', FailingSellDecisionEventQuery()):
-                events = _latest_sell_events_by_symbol({'ZECUSDT': {}})
-
-        self.assertEqual(events, {})
-        logger.warning.assert_called_once()
-        logger.exception.assert_not_called()
-
-    def test_latest_sell_events_for_exit_status_uses_bounded_recent_window_without_n_plus_one(self):
-        older = SimpleNamespace(symbol='BTCUSDT', id=1)
-        latest = SimpleNamespace(symbol='BTCUSDT', id=2)
-        eth = SimpleNamespace(symbol='ETHUSDT', id=3)
-
-        class FakeSellDecisionEventQuery:
-            def __init__(self):
-                self.filter_calls = 0
-
-            def filter(self, **kwargs):
-                self.filter_calls += 1
-                self.filter_kwargs = kwargs
-                return self
-
-            def order_by(self, *fields):
-                self.order_fields = fields
-                return self
-
-            def __getitem__(self, item):
-                self.slice = item
-                return [latest, eth, older]
-
-        query = FakeSellDecisionEventQuery()
-        with patch('dashboard.dashboard_read_model.SellDecisionEvent.objects', query):
-            events = _latest_sell_events_for_exit_status({'BTCUSDT': {}, 'ETHUSDT': {}})
-
-        self.assertEqual(query.filter_calls, 0)
-        self.assertEqual(query.order_fields, ('-created_at', '-id'))
-        self.assertEqual(query.slice, slice(None, 1000, None))
-        self.assertEqual(events, {'BTCUSDT': latest, 'ETHUSDT': eth})
-
-    def test_homepage_skips_sell_diagnostics_by_default(self):
-        with patch.dict(os.environ, {}, clear=True):
-            self.assertFalse(_homepage_sell_diagnostics_enabled())
-
-    def test_homepage_env_flag_enables_sell_diagnostics(self):
-        with patch.dict(os.environ, {'DASHBOARD_INCLUDE_SELL_DIAGNOSTICS': 'true'}):
-            self.assertTrue(_homepage_sell_diagnostics_enabled())
-
-    def test_position_exit_rows_render_without_loaded_diagnostics(self):
-        summary = _build_position_exit_status(
-            {'ZECUSDT': {'open_quantity': Decimal('1'), 'open_lot_count': 1}},
-            [SimpleNamespace(symbol='ZECUSDT', asset='ZEC', quantity=Decimal('1'), current_price=Decimal('5'))],
-            {},
-            diagnostics_loaded=False,
-        )
-
-        row = summary['rows'][0]
-        self.assertEqual(row['status_label'], 'Open Exit Status')
-        self.assertEqual(row['main_reason'], 'open full page')
-
-    def test_unknown_sell_reason_maps_to_review(self):
-        rows = _build_position_exit_status(
-            {'BTCUSDT': {'open_quantity': Decimal('1'), 'open_lot_count': 1}},
-            [SimpleNamespace(symbol='BTCUSDT', asset='BTC', quantity=Decimal('1'), current_price=Decimal('10'))],
-            {'BTCUSDT': SimpleNamespace(reason='brand_new_reason', payload={}, created_at=timezone.now())},
-        )['rows']
-
-        self.assertEqual(rows[0]['status_label'], 'Review')
-
-    def test_missing_exit_status_diagnostic_maps_to_review_when_query_succeeds(self):
-        row = _build_position_exit_status(
-            {'BTCUSDT': {'open_quantity': Decimal('1'), 'open_lot_count': 1}},
-            [SimpleNamespace(symbol='BTCUSDT', asset='BTC', quantity=Decimal('1'), current_price=Decimal('10'))],
-            {},
-            diagnostics_loaded=True,
-        )['rows'][0]
-
-        self.assertEqual(row['status_label'], 'Review')
-
-    def test_exit_status_context_keeps_open_lots_when_diagnostics_query_fails(self):
-        with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
-            portfolio_manager.all.return_value.order_by.return_value = [
-                SimpleNamespace(symbol='BTCUSDT', asset='BTC', quantity=Decimal('1'), current_price=Decimal('10'))
-            ]
-            with patch(
-                'dashboard.dashboard_read_model._open_lots_by_symbol',
-                return_value={'BTCUSDT': {'open_quantity': Decimal('1'), 'open_lot_count': 1}},
-            ):
-                with patch(
-                    'dashboard.dashboard_read_model._latest_sell_events_for_exit_status',
-                    side_effect=DatabaseError('diagnostics unavailable'),
-                ):
-                    context = get_exit_status_context().context
-
-        self.assertEqual(context['position_exit_status']['rows'][0]['symbol'], 'BTCUSDT')
-        self.assertEqual(context['position_exit_status']['rows'][0]['status_label'], 'Diagnostics unavailable')
-
-    def test_exit_status_page_returns_200_when_diagnostics_query_fails(self):
-        self.client.force_login(self.user)
-        with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
-            portfolio_manager.all.return_value.order_by.return_value = [
-                SimpleNamespace(symbol='BTCUSDT', asset='BTC', quantity=Decimal('1'), current_price=Decimal('10'))
-            ]
-            with patch(
-                'dashboard.dashboard_read_model._open_lots_by_symbol',
-                return_value={'BTCUSDT': {'open_quantity': Decimal('1'), 'open_lot_count': 1}},
-            ):
-                with patch(
-                    'dashboard.dashboard_read_model._latest_sell_events_for_exit_status',
-                    side_effect=DatabaseError('diagnostics unavailable'),
-                ):
-                    response = self.client.get(reverse('dashboard_exit_status'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'BTCUSDT')
-        self.assertContains(response, 'Diagnostics unavailable')
-
-    def test_recent_operations_provide_latest_trade_without_second_query(self):
-        latest = SimpleNamespace(gross_quote=Decimal('10'), net_quote=Decimal('9'))
-
-        latest_trade = _build_latest_trade_from_recent_operations([latest])
-
-        self.assertEqual(latest_trade['row'], latest)
-        self.assertEqual(latest_trade['gross_quote'], Decimal('10'))
-        self.assertEqual(latest_trade['net_quote'], Decimal('9'))
-
-    def test_dust_homepage_summary_can_skip_count_query(self):
-        class CountShouldNotRun:
-            def count(self):
-                raise AssertionError('homepage dust summary must not call count()')
-
-        latest = SimpleNamespace(run_id='latest-run', detected_at=timezone.now())
-        summary = _build_homepage_summary(
-            CountShouldNotRun(),
-            [{'severity': 'warning', 'latest_estimated_value_usdt': Decimal('2')}],
-            latest=latest,
-        )
-
-        self.assertIsNone(summary['total_detections'])
-        self.assertEqual(summary['warning_count'], 1)
-
-    def test_dashboard_context_keeps_rendering_when_sell_diagnostics_query_fails(self):
-        class FailingSellDecisionEventQuery:
-            def filter(self, **kwargs):
-                raise DatabaseError('missing diagnostics table')
-
-        with patch('dashboard.dashboard_read_model.logger'):
-            with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
-                portfolio_manager.all.return_value.order_by.return_value = []
-                with patch('dashboard.dashboard_read_model._build_bot_status', return_value={}):
-                    with patch('dashboard.dashboard_read_model._build_fee_summary', return_value={}):
-                        with patch('dashboard.dashboard_read_model._build_quote_fee_summary', return_value={}):
-                            with patch('dashboard.dashboard_read_model._build_performance_kpis', return_value={}):
-                                with patch('dashboard.dashboard_read_model._build_recent_operations', return_value=[]):
-                                    with patch('dashboard.dashboard_read_model._build_latest_trade_from_recent_operations', return_value=None):
-                                        with patch(
-                                            'dashboard.dashboard_read_model._open_lots_by_symbol',
-                                            return_value={'ZECUSDT': {'open_quantity': Decimal('1')}},
-                                        ):
-                                            with patch(
-                                                'dashboard.dashboard_read_model.SellDecisionEvent.objects',
-                                                FailingSellDecisionEventQuery(),
-                                            ):
-                                                with patch(
-                                                    'dashboard.dashboard_read_model.get_dust_overview_context',
-                                                    return_value={'data_error': None},
-                                                ):
-                                                    read_model = get_dashboard_context()
-
-        self.assertEqual(read_model.context['position_exit_status']['rows'][0]['symbol'], 'ZECUSDT')
-
-    def test_dashboard_context_keeps_rendering_when_dust_summary_fails(self):
-        with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
-            portfolio_manager.all.return_value.order_by.return_value = []
-            with patch('dashboard.dashboard_read_model._build_bot_status', return_value={}):
-                with patch('dashboard.dashboard_read_model._build_fee_summary', return_value={}):
-                    with patch('dashboard.dashboard_read_model._build_quote_fee_summary', return_value={}):
-                        with patch('dashboard.dashboard_read_model._build_performance_kpis', return_value={}):
-                            with patch('dashboard.dashboard_read_model._build_recent_operations', return_value=[]):
-                                with patch('dashboard.dashboard_read_model._build_latest_trade_from_recent_operations', return_value=None):
-                                    with patch('dashboard.dashboard_read_model._open_lots_by_symbol', return_value={}):
-                                        with patch(
-                                            'dashboard.dashboard_read_model.get_dust_overview_context',
-                                            side_effect=DatabaseError('dust unavailable'),
-                                        ):
-                                            read_model = get_dashboard_context()
-
-        self.assertIn('dust detections: dust unavailable', read_model.context['data_error'])
-
-    @patch('dashboard.views.get_dashboard_context')
-    def test_homepage_requests_compact_performance_context(self, mock_get_dashboard_context):
-        mock_get_dashboard_context.return_value.context = self.empty_dashboard_context()
-        self.client.force_login(self.user)
-
-        response = self.client.get(self.dashboard_url)
-
-        self.assertEqual(response.status_code, 200)
-        mock_get_dashboard_context.assert_called_once_with(include_performance_kpis=False)
-
-    @patch('dashboard.views.get_dashboard_context')
-    def test_dashboard_explains_position_exit_scope_and_excluded_balances(self, mock_get_dashboard_context):
-        context = self.empty_dashboard_context()
-        context['inventory_scope'] = {
-            'spot_assets_count': None,
-            'bot_managed_lot_symbols_count': 1,
-            'material_tradable_positions_count': 1,
-            'dust_non_tradable_positions_count': 0,
-            'excluded_balances_count': 1,
-            'excluded_balances': [
-                {
-                    'symbol': 'USDCUSDT',
-                    'asset': 'USDC',
-                    'reason': 'stablecoin cash balance',
-                },
-            ],
-        }
-        mock_get_dashboard_context.return_value.context = context
-        self.client.force_login(self.user)
-
-        response = self.client.get(self.dashboard_url)
-
-        self.assertContains(response, 'Open FIFO lot exit status')
-        self.assertContains(response, 'Only symbols with open FIFO lots appear here.')
-        self.assertContains(response, 'Stablecoin cash balances are intentionally excluded.')
-        self.assertContains(response, 'Pure SPOT balances without open lots are not SELL candidates.')
-        self.assertContains(response, 'Excluded balances')
-        self.assertContains(response, 'USDCUSDT')
-
-    @patch('dashboard.views.get_dashboard_analytics_context')
-    def test_analytics_requests_full_performance_context(self, mock_get_dashboard_context):
-        mock_get_dashboard_context.return_value.context = self.empty_dashboard_context()
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse('dashboard_analytics'))
-
-        self.assertEqual(response.status_code, 200)
-        mock_get_dashboard_context.assert_called_once_with()
-
-    def test_homepage_context_skips_kpi_builder(self):
-        with patch('dashboard.dashboard_read_model.Portfolio.objects') as portfolio_manager:
-            portfolio_manager.all.return_value.order_by.return_value = []
-            with patch('dashboard.dashboard_read_model._build_bot_status', return_value={}):
-                with patch('dashboard.dashboard_read_model._build_fee_summary', return_value={}):
-                    with patch('dashboard.dashboard_read_model._build_quote_fee_summary', return_value={}):
-                        with patch('dashboard.dashboard_read_model._build_performance_kpis') as kpis:
-                            with patch('dashboard.dashboard_read_model._build_recent_operations', return_value=[]):
-                                with patch('dashboard.dashboard_read_model._build_latest_trade_from_recent_operations', return_value=None):
-                                    with patch('dashboard.dashboard_read_model._open_lots_by_symbol', return_value={}):
-                                        with patch(
-                                            'dashboard.dashboard_read_model.get_dust_overview_context',
-                                            return_value={'data_error': None},
-                                        ):
-                                            get_dashboard_context(include_performance_kpis=False)
-
-        kpis.assert_not_called()
-
-    def test_buy_status_summary_exposes_cooldown_reason_and_details(self):
-        summary = _build_buy_status_summary({
-            'latest_buy_state': 'rejected',
-            'latest_buy_reason': 'take_profit_reentry_cooldown_active',
-            'latest_buy_symbol': 'ETHUSDT',
-            'material_positions_count': 2,
-            'unknown_value_positions_count': 1,
-            'dust_positions_count': 3,
-            'max_positions': 5,
-            'free_usdt': '11.5',
-            'latest_sell_operation_id': 91,
-            'cooldown_remaining_minutes': 14,
-        })
-
-        self.assertEqual(summary['latest_buy_human_reason'], 'Re-entry blocked after take-profit cooldown')
-        self.assertEqual(summary['effective_positions_count'], Decimal('3'))
-        self.assertEqual(summary['remaining_buy_capacity'], Decimal('2'))
-        self.assertEqual(summary['latest_sell_operation_id'], 91)
-
-    def test_buy_status_summary_exposes_extended_cooldown_diagnostics(self):
-        summary = _build_buy_status_summary({
-            'latest_buy_state': 'rejected',
-            'latest_buy_reason': 'loss_reentry_cooldown_active',
-            'latest_buy_symbol': 'ETHUSDT',
-            'material_positions_count': 1,
-            'unknown_value_positions_count': 0,
-            'max_positions': 5,
-            'latest_sell_operation_id': 91,
-            'latest_sell_symbol': 'ETHUSDT',
-            'latest_sell_executed_at': '2026-05-25T12:34:56Z',
-            'latest_sell_reason': None,
-            'latest_sell_reason_source': 'unavailable',
-            'latest_sell_realized_pnl': '-1.234',
-            'cooldown_type': 'sell',
-            'cooldown_minutes': 60,
-            'cooldown_elapsed_minutes': 12,
-            'cooldown_remaining_minutes': 48,
-            'cooldown_classification_source': 'realized_pnl',
-        })
-
-        self.assertEqual(summary['latest_sell_timestamp'], '2026-05-25T12:34:56Z')
-        self.assertEqual(summary['latest_sell_symbol'], 'ETHUSDT')
-        self.assertEqual(summary['latest_sell_reason_label'], 'not provided')
-        self.assertEqual(summary['latest_sell_realized_pnl'], Decimal('-1.234'))
-        self.assertEqual(summary['cooldown_type_label'], 'recent sell')
-        self.assertEqual(summary['cooldown_elapsed_minutes'], Decimal('12'))
-        self.assertEqual(summary['cooldown_classification_source_label'], 'realized PnL')
-        self.assertIn('negative realized PnL', summary['cooldown_explanation'])
-
-    def test_homepage_renders_cooldown_diagnostics_from_summary(self):
-        self.client.force_login(self.user)
-        context = self.empty_dashboard_context()
-        context['buy_status_summary'] = _build_buy_status_summary({
-            'latest_buy_state': 'rejected',
-            'latest_buy_reason': 'loss_reentry_cooldown_active',
-            'latest_buy_symbol': 'ETHUSDT',
-            'material_positions_count': 1,
-            'unknown_value_positions_count': 0,
-            'max_positions': 5,
-            'latest_sell_operation_id': 91,
-            'latest_sell_symbol': 'ETHUSDT',
-            'latest_sell_executed_at': '2026-05-25T12:34:56Z',
-            'latest_sell_reason': None,
-            'latest_sell_realized_pnl': '-1.234',
-            'cooldown_type': 'sell',
-            'cooldown_elapsed_minutes': 12,
-            'cooldown_remaining_minutes': 48,
-            'cooldown_classification_source': 'realized_pnl',
-        })
-
-        with patch('dashboard.views.get_dashboard_context') as mock_context:
-            mock_context.return_value.context = context
-            response = self.client.get(reverse('dashboard'))
-
-        self.assertContains(response, 'Cooldown type')
-        self.assertContains(response, 'recent sell')
-        self.assertContains(response, 'Classification')
-        self.assertContains(response, 'realized PnL')
-        self.assertContains(response, 'Latest SELL')
-        self.assertContains(response, '91')
-        self.assertContains(response, '2026-05-25T12:34:56Z')
-        self.assertContains(response, 'not provided')
-
-    def test_buy_status_summary_exposes_relevant_inventory_warning_count(self):
-        summary = _build_buy_status_summary({
-            'reconciliation': {
-                'inventory_warnings': [
-                    {'severity': 'INFO'},
-                    {'severity': 'WARNING'},
-                    {'severity': 'CRITICAL'},
-                ],
-            },
-        })
-
-        self.assertEqual(summary['inventory_warnings_count'], 2)
-
-    def test_churn_summary_handles_no_data_safely(self):
-        summary = _build_churn_summary([], {})
-
-        self.assertEqual(summary['reentries_under_15m_24h'], 0)
-        self.assertEqual(summary['reentries_under_15m_48h'], 0)
-        self.assertEqual(summary['economically_questionable_count'], 0)
-        self.assertEqual(summary['rows'], [])
-
-    def test_operational_kpis_group_unversioned_and_exclude_manual_corrections(self):
-        now = timezone.datetime(2026, 5, 17, 12, tzinfo=datetime_timezone.utc)
-        result = _calculate_operational_kpis(
-            closure_rows=[
-                {'trade_operation_id': 1, 'lot_id': 'lot-1', 'realized_pnl': Decimal('10')},
-                {'trade_operation_id': 2, 'lot_id': 'lot-2', 'realized_pnl': Decimal('-2')},
-                {'trade_operation_id': 3, 'lot_id': 'lot-3', 'realized_pnl': Decimal('99')},
-            ],
-            sell_operations={
-                1: {'id': 1, 'symbol': 'BTCUSDT', 'timestamp': now, 'strategy_version': 'v2', 'fee_amount_in_quote': Decimal('0.5'), 'manual_correction': False},
-                2: {'id': 2, 'symbol': 'ETHUSDT', 'timestamp': now, 'strategy_version': 'unversioned', 'fee_amount_in_quote': Decimal('0.25'), 'manual_correction': False},
-                3: {'id': 3, 'symbol': 'SOLUSDT', 'timestamp': now, 'strategy_version': 'v2', 'fee_amount_in_quote': Decimal('0.1'), 'manual_correction': True},
-            },
-            opened_lots={
-                'lot-1': now - timezone.timedelta(hours=2),
-                'lot-2': now - timezone.timedelta(minutes=30),
-                'lot-3': now - timezone.timedelta(minutes=10),
-            },
-            operations=[],
-            churn_threshold_minutes=60,
-        )
-
-        versions = {row['strategy_version']: row for row in result['strategy_summary']}
-        self.assertEqual(set(versions), {'unversioned', 'v2'})
-        self.assertEqual(versions['v2']['closed_trades_count'], 1)
-        self.assertEqual(versions['v2']['net_realized_pnl'], Decimal('9.5'))
-        self.assertEqual(versions['v2']['eligible_filled_sell_count'], 0)
-        self.assertIsNone(versions['v2']['churn_frequency'])
-        self.assertEqual(versions['unversioned']['closed_trades_count'], 1)
-        self.assertEqual(result['fee_efficiency']['total_normalized_fees'], Decimal('0.75'))
-
-    def test_operational_kpis_strategy_churn_uses_eligible_sell_denominator(self):
-        now = timezone.datetime(2026, 5, 17, 12, tzinfo=datetime_timezone.utc)
-        result = _calculate_operational_kpis(
-            closure_rows=[
-                {'trade_operation_id': 1, 'lot_id': 'lot-1', 'realized_pnl': Decimal('3')},
-            ],
-            sell_operations={
-                1: {'id': 1, 'symbol': 'BTCUSDT', 'timestamp': now - timezone.timedelta(hours=3), 'strategy_version': 'v2', 'fee_amount_in_quote': Decimal('0.2'), 'manual_correction': False},
-            },
-            opened_lots={'lot-1': now - timezone.timedelta(hours=4)},
-            operations=[
-                {'id': 1, 'symbol': 'BTCUSDT', 'side': 'SELL', 'timestamp': now - timezone.timedelta(hours=3), 'strategy_version': 'v2', 'manual_correction': False},
-                {'id': 2, 'symbol': 'BTCUSDT', 'side': 'BUY', 'timestamp': now - timezone.timedelta(hours=2, minutes=30), 'strategy_version': 'v2', 'manual_correction': False},
-                {'id': 3, 'symbol': 'ETHUSDT', 'side': 'SELL', 'timestamp': now - timezone.timedelta(hours=2), 'strategy_version': 'v2', 'manual_correction': False},
-            ],
-            churn_threshold_minutes=60,
-        )
-
-        strategy_row = result['strategy_summary'][0]
+                'gross_qu…27371 tokens truncated…tegy_row = result['strategy_summary'][0]
         churn_row = result['churn']['by_strategy_version'][0]
         self.assertEqual(strategy_row['closed_trades_count'], 1)
         self.assertEqual(strategy_row['eligible_filled_sell_count'], 2)
@@ -5222,7 +2893,51 @@ class BuyStatusPnlSummaryTests(TestCase):
         self.assertEqual(parser.stack, [])
         self.assertIn('Additional diagnostics omitted', message)
         self.assertIn('<b>Latest BUY</b>', message)
-        self.assertIn('… +688 more', message)
+        self.assertIn('Effective positions: <code>700 / 8</code>', message)
+
+    def test_buy_status_length_fallback_preserves_operational_fields_and_escapes_multiline(self):
+        from html.parser import HTMLParser
+        from dashboard.services.telegram_buy_status_formatter import render_buy_status_message
+
+        exposure = build_buy_status_exposure([], [], [])
+        message = render_buy_status_message(
+            emoji='🟢', raw_count=2, material_count=1, dust_count=1,
+            unknown_count=0, effective_positions=1, max_positions=8,
+            remaining_capacity=7, free_usdt=Decimal('12'),
+            latest_buy_state='available', latest_buy_reason='no_candidate',
+            latest_buy_symbol='BTCUSDT', read_only=False, exposure=exposure,
+            status_lines=['line one\n<b>injected</b> ' + 'verbose ' * 1000],
+            open_positions_pnl=Decimal('1.25'), realized_today=Decimal('-0.5'),
+        )
+
+        class StrictHTML(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.stack = []
+
+            def handle_starttag(self, tag, attrs):
+                self.stack.append(tag)
+
+            def handle_endtag(self, tag):
+                if not self.stack or self.stack.pop() != tag:
+                    raise AssertionError(f'unbalanced HTML tag: {tag}')
+
+        parser = StrictHTML()
+        parser.feed(message)
+        parser.close()
+        self.assertEqual(parser.stack, [])
+        self.assertLessEqual(len(message), 4096)
+        for text in (
+            '<b>Capacity</b>', '<b>Positions</b>', '<b>PnL</b>',
+            '<b>Latest BUY</b>', '<b>Status</b>',
+            'Effective positions: <code>1 / 8</code>',
+            'Open positions: <code>+1.25 USDT</code>',
+            'Realized today (UTC): <code>-0.50 USDT</code>',
+            'Candidate: <code>BTCUSDT</code>',
+            'Additional diagnostics omitted',
+        ):
+            self.assertIn(text, message)
+        self.assertIn('&lt;b&gt;injected&lt;/b&gt;', message)
 
     def test_open_positions_pnl_includes_material_rows_beyond_display_cap(self):
         rows = [

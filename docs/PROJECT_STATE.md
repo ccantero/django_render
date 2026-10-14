@@ -101,21 +101,21 @@ Implemented capabilities:
   dust as non-blocking, falls back to runtime max-position config when the latest
   healthcheck omits it, and keeps optional diagnostic gaps from collapsing the
   whole BUY-capacity answer.
-- `/buy_status` keeps current portfolio position counts and exposure visible
-  when the latest healthcheck is missing. A stale, timestamp-less, or
-  future-dated healthcheck is visibly marked; its free-USDT and latest BUY
-  blocker data are not used to assert current availability. Remaining slots
-  derive from the current position classification.
+- `/buy_status` uses the bot-persisted position classification in
+  `bot.bot_healthcheck.details` as its authoritative BUY classification.
+  `bot.portfolio` only enriches exposure for those persisted material/dust
+  symbols and does not determine BUY capacity. Missing classification is shown
+  as unavailable; stale classification and BUY diagnostics are labeled
+  historical, with no current capacity claim.
 - BUY-status formatting treats non-finite decimal inputs as unavailable,
   compacts symbol lists, and keeps generated messages within Telegram's
   4096-character text limit with valid HTML.
-- `/buy_status` derives current raw/material/dust/unknown counts, capacity, and
-  exposure rows from one current portfolio classification snapshot; persisted
-  healthcheck details remain limited to policy and latest-BUY diagnostics.
+- `/buy_status` keeps classification counts and material/dust exposure buckets
+  aligned to the same persisted healthcheck snapshot; projection prices only
+  supply display valuations.
 - `/buy_status` accepts either flat healthcheck classification fields or a
-  nested `details.position_classification` object, and its material/dust
-  exposure display defensively rechecks `quantity * current_price` so tiny
-  residuals cannot be rendered as Material Exposure.
+  nested `details.position_classification` object. Projection values do not
+  reclassify persisted material/dust buckets.
 - `/buy_status` now renders a mobile-first operational summary with separate
   capacity, position-count, material-exposure, dust-exposure, latest-BUY, and
   status sections; material rows are approximately valued from read-only

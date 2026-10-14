@@ -20,26 +20,28 @@ Docs affected:
 - docs/CHANGELOG.md
 
 Summary:
-- Preserve current portfolio counts, capacity, exposure, and PnL when the
-  healthcheck is absent.
-- Mark stale or undated healthcheck context and treat its free-USDT and BUY
-  blocker diagnostics as unavailable for current status.
-- Reject non-finite valuation inputs and keep BUY-status messages within
-  Telegram's 4096-character limit using compact symbol lists and complete-line
-  truncation.
+- Use the bot-persisted healthcheck classification as the authoritative source
+  for `/buy_status` counts and capacity; use `bot.portfolio` only to enrich
+  valuation for persisted material/dust symbol buckets.
+- Mark stale BUY diagnostics as historical, suppress stale BUY errors from
+  current-state interpretation, and avoid current capacity claims from stale
+  classifications.
+- Reject non-finite valuation inputs and keep Telegram output within 4096
+  characters with a prioritized compact fallback and escaped multiline text.
 - Reviewed `docs/KPI_REGISTRY.md`; no metric formula, source, or meaning changed.
 
 Operator impact:
-- A stale heartbeat can no longer make an old balance/blocker look current.
-- Overlong diagnostic payloads retain the core message and report that
-  additional details were omitted.
+- Missing classification is shown as unavailable; a stale heartbeat cannot
+  make an old BUY rejection/error look current.
+- Exposure values remain approximate projection data while their material/dust
+  category stays aligned with the bot-persisted snapshot.
+- Overlong diagnostic payloads retain capacity, positions, PnL, latest BUY, and
+  status fields before omitting secondary details.
 
 Validation:
-- Focused BUY-status regression tests passed (47 tests).
-- `pytest -q`: 321 passed, 33 subtests passed.
-- `python manage.py test core`: five pre-existing errors because the isolated
-  SQLite test database lacks `dust_signal_reviews`; confirmed on clean
-  `origin/main`.
+- Focused BUY-status regression tests: 50 passed.
+- `python -m pytest -q`: 324 passed, 33 subtests passed.
+- `git diff --check` passed.
 
 ## 2026-09-24 - Clarify Missing SELL Closure Accounting
 
