@@ -21,6 +21,8 @@ SELL_REASON_SOURCE_LABELS = {
 }
 DUST_MIN_NOTIONAL_USDT = Decimal("5")
 MATERIAL_ROW_DISPLAY_LIMIT = 8
+SYMBOL_LIST_DISPLAY_LIMIT = 12
+TELEGRAM_TEXT_LIMIT = 4096
 
 
 def classify_buy_status_positions(portfolio_rows):
@@ -195,7 +197,18 @@ def render_buy_status_message(
 	lines.extend(status_lines)
 	if cooldown_lines:
 		lines.extend([""] + cooldown_lines)
-	return "\n".join(lines)
+	return _fit_telegram_message(lines)
+
+
+def _fit_telegram_message(lines):
+	message = "\n".join(lines)
+	if len(message) <= TELEGRAM_TEXT_LIMIT:
+		return message
+
+	suffix = "… Additional diagnostics omitted to fit Telegram's 4096-character limit."
+	while lines and len("\n".join(lines) + "\n" + suffix) > TELEGRAM_TEXT_LIMIT:
+		lines.pop()
+	return "\n".join(lines) + "\n" + suffix
 
 
 def build_inventory_warning_lines(warnings, limit=3):
@@ -333,7 +346,7 @@ def _humanize_inventory_warning_reason(reason):
 def _valued_row_from_portfolio(row):
 	quantity = _to_decimal(getattr(row, "quantity", None)) if row is not None else None
 	price = _to_decimal(getattr(row, "current_price", None)) if row is not None else None
-	if quantity is None or price is None or price <= 0:
+	if quantity is None or price is None or not quantity.is_finite() or not price.is_finite() or price <= 0:
 		return None
 	return {
 		"symbol": getattr(row, "symbol", ""),
@@ -402,8 +415,13 @@ def _sum_values(rows):
 
 
 def _fmt_symbol_list(values):
-	values = [escape(str(value)) for value in values if value not in (None, "")]
-	return ", ".join(values) if values else "none"
+	values = [str(value) for value in values if value not in (None, "")]
+	if not values:
+		return "none"
+	shown = [escape(value) for value in values[:SYMBOL_LIST_DISPLAY_LIMIT]]
+	if len(values) > SYMBOL_LIST_DISPLAY_LIMIT:
+		shown.append(f"… +{len(values) - SYMBOL_LIST_DISPLAY_LIMIT} more")
+	return ", ".join(shown)
 
 
 def _fmt_minutes(value):
@@ -459,9 +477,10 @@ def _to_decimal(value):
 	if value in (None, ""):
 		return None
 	try:
-		return value if isinstance(value, Decimal) else Decimal(str(value))
+		decimal_value = value if isinstance(value, Decimal) else Decimal(str(value))
 	except (InvalidOperation, TypeError, ValueError):
 		return None
+	return decimal_value if decimal_value.is_finite() else None
 
 
 def _normalized_text(value):
