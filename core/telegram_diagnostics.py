@@ -248,28 +248,17 @@ def format_help():
 def format_buy_status():
 	realized_today = _safe_realized_pnl_today()
 	latest = BotHealthcheck.objects.order_by("-created_at", "-id").first()
-	if latest is None:
-		return render_buy_status_message(
-			emoji="⚪",
-			raw_count=None,
-			material_count=None,
-			dust_count=None,
-			unknown_count=None,
-			effective_positions=None,
-			max_positions=None,
-			remaining_capacity=None,
-			free_usdt=None,
-			latest_buy_state="unavailable",
-			latest_buy_reason="unavailable",
-			latest_buy_symbol="unavailable",
-			read_only=False,
-			exposure=build_buy_status_exposure([], [], []),
-			status_lines=["⚪ Diagnostic unavailable: latest healthcheck missing"],
-			realized_today=realized_today,
-			unknown_value_symbols=[],
-		)
-
-	details = latest.details or {}
+	details = (latest.details or {}) if latest is not None else {}
+	now = timezone.now()
+	created_at = getattr(latest, "created_at", None) if latest is not None else None
+	stale_after = timedelta(minutes=getattr(settings, "HEALTHCHECK_STALE_MINUTES", 15))
+	healthcheck_age = now - created_at if created_at is not None else None
+	healthcheck_stale = (
+		latest is None
+		or healthcheck_age is None
+		or healthcheck_age < timedelta(0)
+		or healthcheck_age > stale_after
+	)
 	# Counts, capacity, and exposure must come from the same current portfolio
 	# classification.  Healthcheck details remain the source for the latest BUY
 	# diagnostics and configured policy, but may be stale after recovery.
@@ -282,7 +271,7 @@ def format_buy_status():
 	dust_count = classification["dust_count"]
 	unknown_count = classification["unknown_count"]
 	max_positions = _resolve_max_positions(details)
-	free_usdt = _details_first(details, [
+	free_usdt = None if healthcheck_stale else _details_first(details, [
 		"free_usdt",
 		"available_usdt",
 		"free_capital_usdt",
@@ -290,14 +279,13 @@ def format_buy_status():
 		"capital.free_usdt",
 		"balances.USDT.free",
 	])
-	latest_buy_decision = latest_buy_decision_from_details(details)
-	latest_buy_reason = latest_buy_reason_from_details(details)
-	if latest_buy_reason is None:
+	latest_buy_decision = latest_buy_decision_from_details(details) if latest is not None else None
+	latest_buy_reason = latest_buy_reason_from_details(details) if latest is not None else None
+	if latest_buy_reason is None and not healthcheck_stale:
 		latest_buy_reason = latest_buy_rejection_reason()
 	effective_positions = _effective_positions(material_count, unknown_count)
-	remaining_capacity = details.get("remaining_buy_capacity")
-	if remaining_capacity is None:
-		remaining_capacity = _remaining_capacity(max_positions, effective_positions)
+	# Capacity follows the same current portfolio snapshot as the position counts.
+	remaining_capacity = _remaining_capacity(max_positions, effective_positions)
 	read_only = _resolve_read_only(details)
 	state_label, emoji, reason = interpret_buy_state(
 		raw_count=raw_count,
@@ -307,10 +295,12 @@ def format_buy_status():
 		unknown_count=unknown_count,
 		read_only=read_only,
 		min_required_buy_amount=_resolve_min_required_buy_amount(details),
-		latest_buy_decision=latest_buy_decision,
-		latest_buy_reason=latest_buy_reason,
+		latest_buy_decision=None if healthcheck_stale else latest_buy_decision,
+		latest_buy_reason=None if healthcheck_stale else latest_buy_reason,
 		latest_buy_error=_latest_buy_error(details),
 	)
+	if healthcheck_stale:
+		emoji = "⚪" if latest is None else "🟡"
 
 	exposure_symbols = list(dict.fromkeys(classification["material_symbols"] + classification["dust_symbols"]))
 	portfolio_rows = classification.get("portfolio_rows")
@@ -329,11 +319,20 @@ def format_buy_status():
 	)
 	status_lines = _buy_status_lines(
 		remaining_capacity=remaining_capacity,
-		latest_buy_state=latest_buy_decision,
-		latest_buy_reason=latest_buy_reason,
+		latest_buy_state=None if healthcheck_stale else latest_buy_decision,
+		latest_buy_reason=None if healthcheck_stale else latest_buy_reason,
 		read_only=read_only,
 		state_label=state_label,
 	)
+	if latest is None:
+		status_lines.insert(0, "⚪ Diagnostic unavailable: latest healthcheck missing")
+	elif healthcheck_age is None or healthcheck_age < timedelta(0):
+		status_lines.insert(0, "⚠️ Healthcheck freshness unavailable; BUY diagnostics may be outdated")
+	elif healthcheck_stale:
+		status_lines.insert(
+			0,
+			f"⚠️ Healthcheck stale: last update {_format_elapsed(healthcheck_age)} ago; BUY diagnostics may be outdated",
+		)
 	human_reason = BUY_COOLDOWN_REASON_PRESENTATION.get(str(latest_buy_reason or "").strip().lower())
 	cooldown_lines = []
 	if human_reason:
@@ -366,6 +365,18 @@ def format_buy_status():
 			else []
 		),
 	)
+
+
+def _format_elapsed(age):
+	seconds = max(0, int(age.total_seconds()))
+	minutes = seconds // 60
+	if minutes < 60:
+		return f"{minutes}m"
+	hours, minutes = divmod(minutes, 60)
+	if hours < 24:
+		return f"{hours}h {minutes}m"
+	days, hours = divmod(hours, 24)
+	return f"{days}d {hours}h"
 
 
 DEFAULT_PORTFOLIO_STATUS_MAX_SNAPSHOTS = 512
@@ -941,11 +952,12 @@ def to_decimal(value):
 	if value is None or value == "":
 		return None
 	if isinstance(value, Decimal):
-		return value
+		return value if value.is_finite() else None
 	try:
-		return Decimal(str(value))
+		decimal_value = Decimal(str(value))
 	except (InvalidOperation, ValueError, TypeError):
 		return None
+	return decimal_value if decimal_value.is_finite() else None
 
 
 def format_profit_guard(value):
