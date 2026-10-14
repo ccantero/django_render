@@ -331,7 +331,7 @@ def format_buy_status():
 	elif healthcheck_stale:
 		status_lines.insert(
 			0,
-			f"⚠️ Healthcheck stale: last update {_format_elapsed(healthcheck_age)} ago; BUY diagnostics may be outdated",
+			f"⚠️ Healthcheck stale: last update {format_age(healthcheck_age)} ago; BUY diagnostics may be outdated",
 		)
 	human_reason = BUY_COOLDOWN_REASON_PRESENTATION.get(str(latest_buy_reason or "").strip().lower())
 	cooldown_lines = []
@@ -365,18 +365,6 @@ def format_buy_status():
 			else []
 		),
 	)
-
-
-def _format_elapsed(age):
-	seconds = max(0, int(age.total_seconds()))
-	minutes = seconds // 60
-	if minutes < 60:
-		return f"{minutes}m"
-	hours, minutes = divmod(minutes, 60)
-	if hours < 24:
-		return f"{hours}h {minutes}m"
-	days, hours = divmod(hours, 24)
-	return f"{days}d {hours}h"
 
 
 DEFAULT_PORTFOLIO_STATUS_MAX_SNAPSHOTS = 512
