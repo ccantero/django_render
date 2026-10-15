@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.42
+doc_version: 1.1.43
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-15
@@ -78,6 +78,27 @@ Validation:
 - Focused BUY-status regression tests: 50 passed.
 - `python -m pytest -q`: 324 passed, 33 subtests passed.
 - `git diff --check` passed.
+
+## 2026-09-27 - Synchronize Shared Data Contract
+
+Type: contract
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/DATA_CONTRACT.md
+- docs/CHANGELOG.md
+
+Summary:
+- Synchronized the Django copy with root `DATA_CONTRACT.md` through version
+  1.0.62.
+- Added verified BUY sizing evidence and Dynamic HOLD V1 contract details.
+
+Operator impact:
+- No Django runtime behavior, schema, accounting, or trading behavior changed.
+
+Validation:
+- Compared the synchronized contract sections with root `DATA_CONTRACT.md`.
+- Documentation governance checks and `git diff --check` passed.
 
 ## 2026-09-27 - Reconcile Django Roadmap
 

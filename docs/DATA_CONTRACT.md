@@ -1,11 +1,19 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.58
+doc_version: 1.0.62
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-09-05
+last_verified_at: 2026-09-26
 source_repo: binanceBot
 ---
+
+BUY sizing evidence in existing `buy_plan` and sizing events identifies the
+`remaining_slots` policy, current free USDT, effective positions,
+`max_positions`, remaining slots, calculated target, final target, and the
+candidate tier as scanner evidence only. Tier no longer determines monetary
+BUY exposure. Targets below effective minNotional are skipped without a
+full-balance fallback. This is an event-payload change only and requires no
+database schema migration.
 
 ### Position generation lifecycle (Phase 1)
 
@@ -19,6 +27,21 @@ boundary. Because reconciliation is outside the canonical accounting
 transaction, runtime closure is a second idempotent transaction after
 reconciliation reports `ok`; a failed or missing result leaves the active
 generation unchanged.
+
+The Dynamic HOLD V1 foundation adds an explicit `HOLD` phase and nullable
+generation-scoped admission, peak, stop, and strategy metadata. Phase 2-A
+uses TBE only as a stale-review trigger and evaluates HOLD eligibility through
+the independent strict normal/non-fallback `MarketScanner` strategic result.
+Fallback-only qualification is FAIL; unavailable or untrustworthy strategic
+evidence is UNKNOWN and remains TRADING. Phase 2-B evaluates active HOLD
+protection from durable peak/stop fields, ratchets both upward only, and
+triggers at current price less than or equal to the effective stop. The
+HOLD-triggered SELL reuses the existing SellService/OrderService execution and
+accounting path. Exchange-info `PRICE_FILTER`
+`tickSize` is read from the existing cached Binance payload; protective SELL
+stops are normalized downward to the Decimal tick grid.
+The HOLD fields use NUMERIC price storage and do not alter lots, fills, trade
+operations, FIFO, or cost basis.
 
 ### BUY decision lifecycle retention
 
