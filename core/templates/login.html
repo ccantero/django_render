@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block content %}
 <div class="container py-5">
@@ -43,7 +44,25 @@
 
 				<button type="submit" class="btn btn-primary btn-block">Entrar</button>
 			</form>
+			{% if passkeys_enabled %}
+			<hr>
+			<button
+				type="button"
+				id="passkey-login"
+				class="btn btn-outline-primary btn-block"
+				data-begin-url="{% url 'passkey_authentication_begin' %}"
+				data-complete-url="{% url 'passkey_authentication_complete' %}"
+				data-next="{{ next }}"
+				hidden
+			>Sign in with a passkey</button>
+			<p id="passkey-login-status" class="small mt-2" role="status" aria-live="polite"></p>
+			<noscript><p>Passkey sign-in requires JavaScript. You can still sign in with your email and password.</p></noscript>
+			{% endif %}
 		</div>
 	</div>
 </div>
+{% endblock %}
+
+{% block extra_head %}
+{% if passkeys_enabled %}<script defer src="{% static 'profile/passkeys.js' %}"></script>{% endif %}
 {% endblock %}

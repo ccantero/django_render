@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.28
+doc_version: 1.1.30
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-15
@@ -38,6 +38,14 @@ The results panel also shows the current official USD and UVA values used by
 the calculator.
 
 The Django dashboard is operational as a DB consumer for the Binance Python Bot.
+Optional Passkey authentication is implemented behind `PASSKEYS_ENABLED`,
+defaulting off. The existing `profile.UserProfile` remains the account model;
+library-managed credential rows, Django-owned rate limiting, atomic enrollment
+proofs, and one-use step-up challenge rows are additive. Subsequent enrollment
+requires fresh password and existing-passkey proof bound to the current user
+and session. Password login, Django Admin authorization, and DRF token
+authentication are preserved. Deployment verification is still required for
+the trusted proxy header boundary and real browser/authenticator support.
 The current product focus is shifting from infrastructure stabilization toward
 capital-efficiency and exit-quality observability, while preserving the
 dashboard's read/review/request boundary.

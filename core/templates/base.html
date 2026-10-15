@@ -29,6 +29,7 @@
 			<li><a class="nav-link" href="{% url 'dashboard_demo' %}">Demo Dashboard</a></li>
 			{% if request.user.is_authenticated %}
 				<li><a class="nav-link" href="{% url 'dust_dashboard' %}">Dust / Residuals</a></li>
+				{% if passkeys_enabled %}<li><a class="nav-link" href="{% url 'passkey_manage' %}">Security / Passkeys</a></li>{% endif %}
 			{% endif %}
 			<li><a class="nav-link" href="{% url 'aboutMe' %}">About me!</a></li>
 			{% if request.user.is_authenticated %}

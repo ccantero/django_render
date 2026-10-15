@@ -30,3 +30,7 @@ urlpatterns = [
     ),
     #path('api/user/', include('user.urls')),
 ]
+
+# Keep the Django Admin's normal staff/superuser checks and password form. The
+# extra link enters the same public passkey flow used by the existing login.
+admin.site.login_template = 'admin/passkey_login.html'

@@ -13,8 +13,10 @@ import os
 import sys
 import dj_database_url
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 from django_render.env_validation import validate_required_env_vars
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -52,6 +54,57 @@ TELEGRAM_ALLOWED_USER_IDS = env.str('TELEGRAM_ALLOWED_USER_IDS', default='')
 TELEGRAM_DELIVERY_TIMEOUT_SECONDS = env.int('TELEGRAM_DELIVERY_TIMEOUT_SECONDS', default=10)
 PORTFOLIO_STATUS_MAX_SNAPSHOTS = env.int('PORTFOLIO_STATUS_MAX_SNAPSHOTS', default=512)
 
+# Passkeys are opt-in. RP identifiers and origins are public configuration,
+# not secrets; production deployments must set them explicitly before enabling.
+PASSKEYS_ENABLED = env.bool('PASSKEYS_ENABLED', default=False)
+PASSKEY_RP_ID = env.str('PASSKEY_RP_ID', default='www.cantero-solutions.com.ar').strip().lower()
+PASSKEY_ALLOWED_ORIGINS = [
+    origin.strip() for origin in env.list(
+        'PASSKEY_ALLOWED_ORIGINS', default=['https://www.cantero-solutions.com.ar']
+    )
+]
+PASSKEY_CHALLENGE_TTL_SECONDS = env.int('PASSKEY_CHALLENGE_TTL_SECONDS', default=300)
+if PASSKEYS_ENABLED and not DEBUG:
+    if not os.environ.get('PASSKEY_RP_ID') or not os.environ.get('PASSKEY_ALLOWED_ORIGINS'):
+        raise ImproperlyConfigured(
+            'PASSKEY_RP_ID and PASSKEY_ALLOWED_ORIGINS must be explicitly configured '
+            'before enabling Passkeys in production.'
+        )
+    if any(not origin.startswith('https://') for origin in PASSKEY_ALLOWED_ORIGINS):
+        raise ImproperlyConfigured('Production Passkey origins must use HTTPS.')
+if not PASSKEY_RP_ID or not PASSKEY_ALLOWED_ORIGINS:
+    raise ImproperlyConfigured('Passkey RP ID and allowed origins must be configured.')
+if '://' in PASSKEY_RP_ID or '/' in PASSKEY_RP_ID or ':' in PASSKEY_RP_ID:
+    raise ImproperlyConfigured('PASSKEY_RP_ID must be a hostname without scheme, path, or port.')
+for configured_origin in PASSKEY_ALLOWED_ORIGINS:
+    parsed_origin = urlsplit(configured_origin)
+    if (
+        parsed_origin.scheme not in ({'https'} if not DEBUG else {'https', 'http'})
+        or not parsed_origin.hostname
+        or parsed_origin.path not in ('', '/')
+        or parsed_origin.query
+        or parsed_origin.fragment
+        or parsed_origin.username
+        or parsed_origin.password
+    ):
+        raise ImproperlyConfigured('Each PASSKEY_ALLOWED_ORIGINS entry must be an origin URL.')
+    origin_host = parsed_origin.hostname.lower()
+    rp_id = PASSKEY_RP_ID.lower()
+    if origin_host != rp_id and not origin_host.endswith('.' + rp_id):
+        raise ImproperlyConfigured('Each Passkey origin host must equal or be a subdomain of PASSKEY_RP_ID.')
+    if parsed_origin.scheme == 'http' and origin_host != 'localhost' and not origin_host.endswith('.localhost'):
+        raise ImproperlyConfigured('HTTP Passkey origins are allowed only for localhost development.')
+
+OTP_WEBAUTHN_RP_ID = PASSKEY_RP_ID
+OTP_WEBAUTHN_RP_NAME = 'Cantero Solutions'
+OTP_WEBAUTHN_ALLOWED_ORIGINS = PASSKEY_ALLOWED_ORIGINS
+OTP_WEBAUTHN_TIMEOUT_SECONDS = PASSKEY_CHALLENGE_TTL_SECONDS
+OTP_WEBAUTHN_ALLOW_PASSWORDLESS_LOGIN = True
+OTP_WEBAUTHN_HELPER_CLASS = 'profile.passkeys.StrictWebAuthnHelper'
+OTP_WEBAUTHN_EXCEPTION_LOGGER_NAME = ''
+if PASSKEY_CHALLENGE_TTL_SECONDS < 30 or PASSKEY_CHALLENGE_TTL_SECONDS > 300:
+    raise ImproperlyConfigured('Passkey challenge timeout must be between 30 and 300 seconds.')
+
 ALLOWED_HOSTS = ['www.cantero-solutions.com.ar']
 
 if 'RENDER' not in os.environ:
@@ -76,6 +129,8 @@ INSTALLED_APPS = [
     'bootstrap3',
     'rest_framework',
     'rest_framework.authtoken',
+    'django_otp',
+    'django_otp_webauthn',
     'drf_spectacular',
     'currencyconverter',
     'profile',
@@ -88,6 +143,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django_otp.middleware.OTPMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -103,6 +159,7 @@ TEMPLATES = [
             'context_processors': [
                 'django.template.context_processors.debug',
                 'django.template.context_processors.request',
+                'profile.passkeys.passkey_context',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
             ],
@@ -216,6 +273,19 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     X_FRAME_OPTIONS = 'DENY'
+    # Trust this header only when the deployment proxy overwrites client-supplied
+    # X-Forwarded-Proto and the app server is not directly reachable by clients.
+    # Verify that boundary during deployment; Host forwarding remains disabled.
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_SAMESITE = 'Lax'
 else:
     # Development security settings
     X_FRAME_OPTIONS = 'SAMEORIGIN'
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_SAMESITE = 'Lax'
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'django_otp_webauthn.backends.WebAuthnBackend',
+]

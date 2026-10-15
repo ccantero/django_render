@@ -1,6 +1,6 @@
 ---
 doc_id: readme
-doc_version: 1.1.19
+doc_version: 1.1.22
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-15
@@ -450,6 +450,39 @@ state and markdown contracts.
 - State-changing actions must be POST-only and CSRF-protected.
 - Public/demo views must never expose sensitive data.
 - Database grants should be reviewed so public roles cannot mutate bot-owned accounting tables.
+
+### Optional Passkeys
+
+Passkeys are an opt-in addition to existing email/password accounts. Set
+`PASSKEYS_ENABLED=true`, `PASSKEY_RP_ID` to the relying-party hostname, and
+`PASSKEY_ALLOWED_ORIGINS` to comma-separated exact HTTPS origins before
+enabling in production. Run the Django migrations during a normal deploy;
+they add Django-owned rate-limit, one-use enrollment-proof, and WebAuthn
+challenge tables without rewriting users or bot tables.
+
+An existing signed-in user manages credentials at `/security/passkeys/`.
+Adding or revoking requires the current password; adding a later credential
+also requires a dedicated, five-minute WebAuthn step-up against a key owned by
+the same user. Password and passkey proofs are consumed atomically for one
+registration. Device loss requires
+another registered passkey or the operator's established identity-verification
+and account recovery process. Email possession alone is not recovery.
+
+`/admin/` retains Django Admin's normal password login and staff/superuser
+authorization. Its login page links to passkey login, which creates a normal
+Django session before Admin applies its normal staff gate. Password login is
+the recovery path. Before relying on `SECURE_PROXY_SSL_HEADER`, verify that the
+deployment proxy overwrites `X-Forwarded-Proto` and the app server is not
+directly reachable.
+
+For rollback, set `PASSKEYS_ENABLED=false` and redeploy; retain migrations and
+credential rows. Existing accounts, sessions, passwords, permissions, and API
+tokens remain in place. Verify Safari/iOS and desktop authenticator
+interoperability after deployment.
+
+For loopback-only PostgreSQL validation, threaded row-lock regression tests,
+and a reproducible HTTPS Safari/iPhone smoke-test procedure, see
+`IMPLEMENTATION_WORK.md`.
 
 ---
 
