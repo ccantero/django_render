@@ -5144,6 +5144,7 @@ class BuyStatusPnlSummaryTests(TestCase):
         portfolio_rows=None,
         material_symbols=None,
         realized_today=Decimal('0'),
+        max_positions=8,
     ):
         from dashboard.services.telegram_buy_status_formatter import (
             build_open_positions_pnl,
@@ -5164,8 +5165,8 @@ class BuyStatusPnlSummaryTests(TestCase):
             dust_count=0,
             unknown_count=0,
             effective_positions=len(material_symbols),
-            max_positions=8,
-            remaining_capacity=max(0, 8 - len(material_symbols)),
+            max_positions=max_positions,
+            remaining_capacity=max(0, max_positions - len(material_symbols)),
             free_usdt=Decimal('10'),
             latest_buy_state='available',
             latest_buy_reason='capacity_available',
@@ -5281,6 +5282,99 @@ class BuyStatusPnlSummaryTests(TestCase):
         self.assertIn('Additional diagnostics omitted', message)
         self.assertIn('<b>Latest BUY</b>', message)
         self.assertIn('Effective positions: <code>700 / 8</code>', message)
+
+    def test_buy_status_displays_all_fifteen_material_rows_for_capacity_fifteen(self):
+        rows = [
+            SimpleNamespace(
+                symbol=f'ASSET{index:02d}USDT', quantity=Decimal('1'),
+                entry_price=Decimal('5'), current_price=Decimal('6'),
+            )
+            for index in range(15)
+        ]
+
+        message = self._render(portfolio_rows=rows, max_positions=15)
+
+        for index in range(15):
+            self.assertIn(f'- ASSET{index:02d}USDT ~ 6 USDT', message)
+        self.assertEqual(message.count(' | PnL '), 15)
+        self.assertIn('Effective positions: <code>15 / 15</code>', message)
+
+    def test_buy_status_material_display_scales_above_fifteen_positions(self):
+        rows = [
+            SimpleNamespace(
+                symbol=f'ASSET{index:02d}USDT', quantity=Decimal('1'),
+                entry_price=Decimal('5'), current_price=Decimal('6'),
+            )
+            for index in range(20)
+        ]
+
+        message = self._render(portfolio_rows=rows, max_positions=20)
+
+        self.assertEqual(message.count(' | PnL '), 20)
+        self.assertIn('- ASSET19USDT ~ 6 USDT', message)
+        self.assertNotIn('material positions omitted', message.lower())
+
+    def test_buy_status_compacts_large_dust_symbol_lists_separately(self):
+        from dashboard.services.telegram_buy_status_formatter import render_buy_status_message
+
+        symbols = [f'DUST{index:02d}USDT' for index in range(40)]
+        rows = [
+            SimpleNamespace(symbol=symbol, quantity=Decimal('1'), current_price=Decimal('0.1'))
+            for symbol in symbols
+        ]
+        exposure = build_buy_status_exposure([], symbols, rows)
+        message = render_buy_status_message(
+            emoji='🟢', raw_count=40, material_count=0, dust_count=40,
+            unknown_count=0, effective_positions=0, max_positions=15,
+            remaining_capacity=15, free_usdt=Decimal('10'),
+            latest_buy_state='available', latest_buy_reason=None,
+            latest_buy_symbol=None, read_only=False, exposure=exposure,
+            status_lines=['✅ Capacity available'], open_positions_pnl=Decimal('0'),
+            realized_today=Decimal('0'),
+        )
+
+        self.assertIn('Dust positions: <code>40</code>', message)
+        self.assertIn('Symbols: 40 not listed (compact dust summary)', message)
+        self.assertNotIn('DUST00USDT', message)
+        self.assertLessEqual(len(message), 4096)
+
+    def test_buy_status_material_rows_overflow_with_omission_count_and_full_pnl(self):
+        rows = [
+            SimpleNamespace(
+                symbol=f'LONG-ASSET-{index:03d}-USDT', quantity=Decimal('1'),
+                entry_price=Decimal('5'), current_price=Decimal('6'),
+            )
+            for index in range(100)
+        ]
+
+        message = self._render(portfolio_rows=rows, max_positions=100)
+
+        self.assertLessEqual(len(message), 4096)
+        self.assertIn('- Open positions: <code>+100.00 USDT</code>', message)
+        self.assertIn('material position(s) omitted', message)
+        self.assertIn('Latest BUY', message)
+        self.assertIn('<b>Status</b>', message)
+        self.assertIn('- LONG-ASSET-000-USDT', message)
+        self.assertNotIn('- LONG-ASSET-099-USDT', message)
+
+        from html.parser import HTMLParser
+
+        class BalancedHTML(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.stack = []
+
+            def handle_starttag(self, tag, attrs):
+                self.stack.append(tag)
+
+            def handle_endtag(self, tag):
+                if not self.stack or self.stack.pop() != tag:
+                    raise AssertionError(f'unbalanced HTML tag: {tag}')
+
+        parser = BalancedHTML()
+        parser.feed(message)
+        parser.close()
+        self.assertEqual(parser.stack, [])
 
     def test_buy_status_length_fallback_preserves_operational_fields_and_escapes_multiline(self):
         from html.parser import HTMLParser

@@ -1,13 +1,49 @@
 ---
 doc_id: changelog
-doc_version: 1.1.40
+doc_version: 1.1.41
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-14
+last_verified_at: 2026-10-15
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-15 - Scale Telegram BUY Rows to Configured Capacity
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Replaced the fixed eight-row material exposure cap with the configured
+  `MAX_POSITIONS` capacity; the existing persisted-healthcheck/runtime-config
+  resolution remains the source of that value.
+- Kept Telegram's 4096-character limit as the safety bound. Its compact fallback
+  retains capacity, material exposure, full-position PnL, latest BUY, and status,
+  and reports omitted material rows. PnL aggregation remains independent of the
+  visible rows.
+- Kept dust, unknown-value, and unavailable-valuation symbol lists on separate
+  compact display policies.
+- Confirmed `bot.bot_healthcheck.details` remains authoritative for current
+  classification counts and BUY capacity; `bot.portfolio` only enriches the
+  persisted material/dust buckets with projection values. No independent
+  reclassification or accounting source change was made.
+- Reviewed `docs/KPI_REGISTRY.md`; no metric formula, source, or meaning changed.
+
+Operator impact:
+- Configured portfolios can show every material position when the Telegram
+  message fits, including capacities above 15. Oversized messages retain key
+  operating fields and state how many material rows are not displayed.
+
+Validation:
+- Focused BUY-status/PnL tests: 59 passed.
+- Full `python -m pytest -q`: 328 passed, 33 subtests passed.
 
 ## 2026-10-14 - Harden Telegram BUY Status
 

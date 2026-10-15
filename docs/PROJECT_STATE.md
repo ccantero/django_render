@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.26
+doc_version: 1.1.27
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-14
+last_verified_at: 2026-10-15
 source_repo: django_render
 ---
 
@@ -125,7 +125,8 @@ Implemented capabilities:
   projection prices remain visibly unavailable instead of becoming zero.
 - `/buy_status` now adds a compact PnL section that sums the existing
   `bot.portfolio` projection PnL across all material rows while keeping the
-  visible row list capped at eight. The row cap applies only to Telegram
+  visible row list scaled to configured `MAX_POSITIONS`, subject to Telegram's
+  4096-character message limit. The display bound applies only to Telegram
   presentation, not to the summary. If any material row lacks usable valuation
   or entry-price data, the summary is `unavailable` rather than falsely complete.
 - `/buy_status` labels accounting-realized PnL as `Realized today (UTC)` and

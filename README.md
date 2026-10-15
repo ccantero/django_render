@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.18
+doc_version: 1.1.19
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-14
+last_verified_at: 2026-10-15
 source_repo: django_render
 ---
 
@@ -266,8 +266,9 @@ historical equity is invented. The Telegram text groups those values under
 the same UTC calendar-day operation-timestamp grouping as Analytics, not
 Binance's proprietary "Today's PNL" and not the Daily Audit rolling previous-24h
 window. Its open-position total covers all material rows even though the mobile
-position list remains capped at eight; incomplete material valuation or entry
-price data renders the total as `unavailable`.
+position list scales to the configured `MAX_POSITIONS` capacity when the
+Telegram message limit allows; incomplete material valuation or entry price
+data renders the total as `unavailable`.
 
 Reviewing or ignoring a dust signal suppresses repeated paging only. It does not
 delete `bot.dust_detections`, change FIFO accounting, or apply a correction.
@@ -304,8 +305,13 @@ diagnostic gaps hide useful information:
 - Material and dust exposure are approximate display values enriched from
   read-only `bot.portfolio`; `bot.position_lots` remains the accounting source of
   truth.
-- Material exposure is sorted by approximate USDT value, capped to eight rows,
-  and dust symbols are only listed compactly when there are five or fewer.
+- Material exposure is sorted by approximate USDT value and displays up to the
+  configured `MAX_POSITIONS` capacity, subject to Telegram's 4096-character limit.
+  If space runs short, the message preserves capacity, PnL, latest BUY, and status
+  fields and reports how many material rows were omitted. Dust symbols have a
+  separate compact policy; inventories above five show a count without listing
+  every symbol. Unknown and unavailable valuation symbols use their own compact
+  diagnostic limits.
 - Missing/non-positive projection prices are not treated as zero: the command
   shows valuation as unavailable or partially unavailable instead.
 - If persisted healthcheck details do not include `max_positions`, the dashboard
