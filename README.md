@@ -1,6 +1,6 @@
 ---
 doc_id: readme
-doc_version: 1.1.21
+doc_version: 1.1.22
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-15
@@ -479,6 +479,10 @@ For rollback, set `PASSKEYS_ENABLED=false` and redeploy; retain migrations and
 credential rows. Existing accounts, sessions, passwords, permissions, and API
 tokens remain in place. Verify Safari/iOS and desktop authenticator
 interoperability after deployment.
+
+For loopback-only PostgreSQL validation, threaded row-lock regression tests,
+and a reproducible HTTPS Safari/iPhone smoke-test procedure, see
+`IMPLEMENTATION_WORK.md`.
 
 ---
 

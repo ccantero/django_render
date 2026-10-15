@@ -143,10 +143,9 @@ path. No claim is made that `/admin/` itself performs a WebAuthn ceremony.
 - Package-level tests use a fake ceremony helper to test application flow;
   these do not prove browser/hardware interoperability. Direct verifier tests
   exercise the selected library's rejection of wrong origin/RP hash.
-- `pip-audit` could not run because it is not installed in the execution
-  environment (`python -m pip_audit` reports no module). `pip check` only
-  validates package compatibility and is not a vulnerability audit. Full
-  dependency/advisory review remains a deployment gate.
+- The earlier passkey implementation run did not have `pip-audit`; see
+  section 11 for the subsequent successful audit and the exact pip tooling
+  advisory findings.
 
 ## 8. Migration and deployment risks
 
@@ -188,7 +187,9 @@ Work Cloud.
 
 ## 10. Open questions for reviewer
 
-- Confirm package maintenance/security posture and transitive dependency audit.
+- Confirm package maintenance/security posture and re-run dependency auditing
+  against the exact deployment-resolved dependency graph; this repository has
+  no lockfile.
 - Confirm deployment proxy overwrites `X-Forwarded-Proto` and application
   workers are not directly reachable before relying on proxy SSL detection.
 - Confirm the exact production origin/RP ID and browser support matrix.
@@ -197,7 +198,135 @@ Work Cloud.
 - Confirm row-lock behavior and transactional guarantees on the deployed
   PostgreSQL configuration; SQLite's `select_for_update()` is a no-op and
   cannot prove production concurrency behavior.
-- Run a vulnerability audit against the complete locked/transitive dependency
-  graph before deployment; `pip-audit` was unavailable in this environment.
+- Re-run a vulnerability audit against the complete deployment-resolved
+  dependency graph before deployment; this environment audit is recorded in
+  section 11, but no lockfile pins the deployment resolution.
 - Confirm the recovery procedure for a user who loses every passkey and cannot
   use the existing password through the operator's established process.
+
+## 11. Pre-merge isolated validation follow-up
+
+Date: 2026-10-15. This follow-up used only local validation resources and did
+not access production credentials, databases, or services.
+
+### Dependency audit
+
+- `.venv/bin/pip-audit -r requirements.txt --desc`: no known vulnerabilities
+  in the dependency requirements resolved by pip-audit.
+- `.venv/bin/pip-audit --local --desc`: no known vulnerabilities after the
+  isolated environment's pip was upgraded from 25.0.1 to 26.2.1. Before that
+  upgrade, the scanner reported 12 advisory records affecting only pip 25.0.1
+  (six distinct PYSEC IDs, with duplicate advisory records for overlapping
+  fix versions): PYSEC-2026-1795 (fix 25.3), PYSEC-2026-1796 (26.0),
+  PYSEC-2026-196 (26.1.2), PYSEC-2026-2875 (26.1), PYSEC-2026-2876 (26.1),
+  and PYSEC-2026-3721 (26.2.0). The environment-only tool was upgraded; pip is
+  not a runtime requirement in `requirements.txt`. Re-run the audit against
+  the exact deployment lock/resolution before rollout because this repository
+  does not pin a lockfile.
+
+### PostgreSQL attempt and concurrency coverage
+
+The container had no PostgreSQL server or Docker. PostgreSQL 16 packages were
+downloaded, but Work Cloud blocked the package post-install service-account
+setup (`setgroups`/`setuid` are unavailable), `runuser` cannot switch users,
+and `initdb` explicitly rejected execution as root. No shared/remote database
+was substituted. Therefore fresh PostgreSQL migrations, full-suite PostgreSQL
+execution, and actual PostgreSQL row-lock/concurrency outcomes remain
+unverified and are merge/deployment review gates.
+
+Added `tests/test_passkey_postgres_concurrency.py`, containing three threaded,
+barrier-synchronized tests for concurrent proof consumption, challenge
+consumption, and fixed-window rate limits. They are explicitly skipped unless
+the configured backend reports PostgreSQL; SQLite cannot establish row-lock
+behavior. `django_render/postgres_test_settings.py` accepts only a loopback
+PostgreSQL URL, the `passkey_test` role, and a database named with the `test_`
+prefix, preventing accidental use of production or remote databases.
+
+### Checks completed here
+
+- `manage.py check --deploy` with representative production settings and a
+  strong disposable key: no issues. Repeating against base commit
+  `82e32fd04d525e5e13dd098fd3194d3f4968e33c` also reported no issues; no
+  existing or PR-introduced deploy warnings were observed.
+- All migrations applied from scratch to a disposable SQLite database,
+  including `profile.0004` and `profile.0005`; `makemigrations --check` found
+  no model/migration drift. This does not substitute for the requested
+  PostgreSQL migration run.
+- Full suite uses the default SQLite test database and remains separately
+  reported below. PostgreSQL concurrency tests were not run against PostgreSQL.
+
+### Reproducible local HTTPS test with iPhone Safari
+
+This procedure uses a disposable local PostgreSQL database and a private
+development certificate. It does not use production credentials or data.
+
+1. Install PostgreSQL and create a dedicated local-only role/database (never
+   copy a production connection URL):
+
+   ```sh
+   sudo -u postgres psql -c "CREATE ROLE passkey_test LOGIN CREATEDB PASSWORD 'local-only-change-me';"
+   sudo -u postgres createdb -O passkey_test test_django_render_passkeys
+   export PASSKEY_TEST_DATABASE_URL='postgresql://passkey_test:local-only-change-me@127.0.0.1:5432/test_django_render_passkeys'
+   ```
+
+2. Install `mkcert` on the development computer, run `mkcert -install`, and
+   configure the local router/DNS to resolve `passkeys.test` to that
+   computer's LAN address. Generate a development-only certificate:
+
+   ```sh
+   mkcert -cert-file /tmp/passkeys.test.pem -key-file /tmp/passkeys.test-key.pem passkeys.test
+   ```
+
+   Install only the generated `rootCA.pem` from `mkcert -CAROOT` on the iPhone;
+   never copy `rootCA-key.pem`. On iOS, install the downloaded certificate
+   profile, then enable full trust under Settings → General → About →
+   Certificate Trust Settings.
+
+3. Configure and migrate only the disposable database, then create a local
+   test account:
+
+   ```sh
+   export DJANGO_SETTINGS_MODULE=django_render.postgres_test_settings
+   export PASSKEY_TEST_HOST=passkeys.test
+   export PASSKEYS_ENABLED=true
+   export PASSKEY_RP_ID=passkeys.test
+   export PASSKEY_ALLOWED_ORIGINS=https://passkeys.test
+   export CC_DEBUG=true
+   export SECRET_KEY='replace-with-a-long-random-development-only-key'
+   export TUTORIAL_BOT_TOKEN=local-placeholder
+   export TELEGRAM_WEBHOOK_TOKEN=local-placeholder
+   python manage.py migrate --noinput
+   python manage.py createsuperuser
+   ```
+
+   For Django tests, use `pytest --ds=django_render.postgres_test_settings
+   --migrations tests/test_passkey_postgres_concurrency.py` and then the full
+   suite with `pytest --ds=django_render.postgres_test_settings --migrations`.
+   The test settings reject non-loopback hosts and database names without the
+   `test_` prefix.
+
+4. Run the dashboard on loopback and terminate HTTPS at a local reverse proxy
+   such as Caddy. Save this local-only `/tmp/Caddyfile`:
+
+   ```caddyfile
+   https://passkeys.test {
+       tls /tmp/passkeys.test.pem /tmp/passkeys.test-key.pem
+       reverse_proxy 127.0.0.1:8000
+   }
+   ```
+
+   Start Django with `python manage.py runserver 127.0.0.1:8000` and Caddy
+   with `caddy run --config /tmp/Caddyfile`. Caddy must forward
+   `X-Forwarded-Proto: https`. From Safari on the iPhone, navigate to
+   `https://passkeys.test/login/` while on the same network.
+
+5. Verify password fallback, first passkey enrollment, sign-out and passkey
+   login, second passkey enrollment using password plus the existing key,
+   revocation, revoked-key rejection, and cancellation/failure handling. Also
+   verify the secure session cookie and safe redirect behavior. Delete the
+   disposable database and development certificate after testing.
+
+The local proxy/DNS setup is not evidence that the production proxy overwrites
+forwarded headers or isolates app workers. Safari/iPhone authenticator
+interoperability and the production proxy boundary still require actual
+deployment-side verification before enabling Passkeys.
