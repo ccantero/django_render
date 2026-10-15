@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractBaseUser
 from django.contrib.auth.models import PermissionsMixin
 from django.contrib.auth.models import BaseUserManager
+from django.utils import timezone
 # Create your models here.
 
 class UserProfileManager(BaseUserManager):
@@ -44,3 +45,14 @@ class UserProfile(AbstractBaseUser,PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+
+class PasskeyRateLimit(models.Model):
+    """Hashed, database-backed rate-limit window shared across web workers."""
+
+    key_hash = models.CharField(max_length=64, unique=True)
+    window_started_at = models.DateTimeField(default=timezone.now)
+    attempts = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        indexes = [models.Index(fields=["window_started_at"], name="profile_passkeyrate_window_idx")]

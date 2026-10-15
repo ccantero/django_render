@@ -1,0 +1,9 @@
+{% extends "admin/login.html" %}
+{% block content %}
+{{ block.super }}
+{% if passkeys_enabled %}
+  <div class="submit-row">
+    <a href="{% url 'login' %}?next={{ next|urlencode }}">Sign in with a passkey</a>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,6 +1,6 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.15
+doc_version: 1.1.16
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-15
@@ -53,16 +53,15 @@ Use persisted bot evidence and existing projections; record
 `BOT_CONTRACT_DEPENDENCY` when authoritative evidence is absent. Django must
 not reproduce SellService logic or make trading decisions.
 
-#### P2 — Authentication security / Passkeys
+#### P2 — Authentication security / Passkeys (`IMPLEMENTED; DEPLOYMENT VERIFICATION REQUIRED`)
 
 The repository has a custom email user model, password-backed sessions, DRF
-token authentication, admin, and permissions. No WebAuthn/Passkey support or
-dependency is present. Add a bounded design-and-implementation item for
-optional multiple credentials, registration and authentication, recovery or
-fallback, revocation, device loss, operator/admin bootstrap, CSRF/session
-interaction, HTTPS/RP ID/origin configuration, abuse controls, and tests.
-Do not remove password or token authentication until a separate migration
-decision is approved.
+token authentication, admin, and permissions. Optional WebAuthn enrollment,
+login, revocation, recovery guidance, bounded abuse controls, explicit
+HTTPS/RP ID/origin configuration, and focused tests are implemented using
+`django-otp-webauthn`. Verify proxy header trust and real Safari/iOS and desktop
+authenticator behavior during deployment. Keep password and token
+authentication available.
 
 #### P3 — Authenticated Dashboard PWA
 

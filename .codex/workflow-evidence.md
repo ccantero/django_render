@@ -1,16 +1,14 @@
+# Workflow evidence — Secure Passkeys
+
+task_mode: STANDARD
 phases_completed: planner, implementer, tester, documentator
-impact: behavior, logging, operations
-tests_created: core/tests.py::TelegramWebhookTests.test_help_continues_after_audit_persistence_failure_without_diagnostics; core/tests.py::TelegramWebhookTests.test_listener_rejects_malformed_json_without_server_error; core/tests.py::TelegramWebhookTests.test_listener_accepts_update_without_message_text; core/tests.py::TelegramWebhookTests.test_send_message_uses_timeout_and_reports_timeout_failure; core/tests.py::TelegramWebhookTests.test_send_message_rejects_telegram_ok_false; core/tests.py::TelegramWebhookTests.test_send_message_reports_confirmed_telegram_success; core/tests.py::TelegramPortfolioStatusTests.test_bounded_snapshot_query_returns_all_fewer_than_limit_in_chronological_order; core/tests.py::TelegramPortfolioStatusTests.test_bounded_snapshot_query_keeps_newest_rows_and_restores_chronology; core/tests.py::TelegramPortfolioStatusTests.test_bounded_snapshot_query_uses_id_for_equal_timestamp_ordering; core/tests.py::TelegramPortfolioStatusTests.test_portfolio_status_uses_fresh_snapshot_when_rows_exceed_limit; core/tests.py::TelegramPortfolioStatusTests.test_non_positive_snapshot_limit_falls_back_to_default_bound
-failing_test_proof: Before the webhook hardening implementation, the actual Telegram audit persistence path was unguarded and a DatabaseError from persistence produced a 500 before /help dispatch; the corrected regression test now forces the TelegramMessage manager create call to raise DatabaseError while the duplicate check returns false. .venv/bin/pytest -q core/tests.py::TelegramPortfolioStatusTests --disable-warnings --maxfail=1 failed before the snapshot-limit fix with ImportError because _bounded_portfolio_snapshot_rows did not yet exist.
-tests_executed: .venv/bin/pytest -q core/tests.py::TelegramWebhookTests::test_help_continues_after_audit_persistence_failure_without_diagnostics core/tests.py::TelegramWebhookTests core/tests.py::TelegramPortfolioStatusTests core/tests.py::TelegramDiagnosticsCommandTests --disable-warnings --maxfail=1 (122 passed); .venv/bin/pytest -q django_render/tests.py investments/tests.py currencyconverter/tests.py profile/tests.py --disable-warnings --maxfail=1 (33 passed); .venv/bin/python -m compileall -q core django_render dashboard; git diff --check
-pending_issues: Render start command, webhook reachability, production RSS, and complete-suite execution remain to be verified; full pytest exceeded the local execution window after 22 percent and is not claimed as passed.
-docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md
-docs_updated: README.md, docs/ARCHITECTURE.md, docs/PROJECT_STATE.md, docs/CHANGELOG.md
-changelog: updated
-schema_der: not_applicable: no schema, migration, index, constraint, or DB contract changed
-data_contract_sync: not_applicable: no shared data contract semantics changed
-logging_observability: webhook and outbound Telegram logs now add safe command/update/chat/stage and delivery outcome context; no tokens, webhook secrets, payloads, or token-bearing URLs are logged
-kpi_registry_reviewed: no
-kpi_registry_note: reviewed, no update needed: no KPI or diagnostic metric semantics changed
-kpi_registry_updated: not-needed
-kpi_registry_sync_checked: not-available
+planner_artifacts_read: AGENTS.md, README.md, PLAN.md, docs/ARCHITECTURE.md, docs/DESIGN.md, docs/PROJECT_STATE.md, docs/DATA_CONTRACT.md, docs/CHANGELOG.md, .codex/skills/planning.md, .codex/skills/tdd.md, .codex/skills/documentation.md
+baseline: `.venv/bin/pytest -q` — 328 passed, 33 subtests.
+tdd_red: Focused entry-point tests ran before implementation: 3 expected failures and 1 pass; login/settings/management routes were missing.
+implementation: Optional WebAuthn via django-otp-webauthn; preserve profile.UserProfile, browser password auth, Admin checks, DRF token auth, public currency PWA, and bot data contract.
+tests_executed: `.venv/bin/pytest -q` — 353 passed, 1 warning, 33 subtests passed in 32.53s; `manage.py check` — no issues; `manage.py makemigrations --check --dry-run` — no changes; Python compileall passed; `node --check static/profile/passkeys.js` passed; `git diff --check` passed.
+warning: DRF pagination emits UnorderedObjectListWarning for an unordered UserProfile queryset in the token-auth regression test.
+security_review: Feature disabled by default; production exact HTTPS origin/RP validation; user verification; session-bound one-time challenges; library replay/state handling; 5-minute TTL; password and existing-passkey reauthentication; CSRF; DB-backed HMAC rate limits; scoped revoke; generic errors; inactive-user gate; Admin keeps Django checks.
+dependency_audit: `pip-audit` unavailable in environment; package maturity and transitive dependency review documented in IMPLEMENTATION_WORK.md.
+manual_checks: Real Safari/iOS, desktop, Windows Hello, and hardware key verification not available in Work Cloud. Reverse-proxy header trust boundary requires deployment verification.
+production_actions: none; no production migrations, credentials, deployment, or external state touched.

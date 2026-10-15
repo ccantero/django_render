@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.24
+doc_version: 1.1.25
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-09-20
+last_verified_at: 2026-10-15
 source_repo: django_render
 ---
 
@@ -129,6 +129,18 @@ does not reimplement SellService logic or add direct Binance calls.
 - Public app liveness endpoint at `/health/`
 - About-me page at `/me`
 - Thanks page at `/thanks/`
+- Optional credential settings at `/security/passkeys/` when `PASSKEYS_ENABLED`
+  is enabled; existing accounts enroll without identity migration.
+- Optional discoverable passkey sign-in on `/login/`; password form remains
+  available for fallback and recovery.
+
+Passkey enrollment/revocation require fresh password reauthentication and
+CSRF-protected POSTs. Subsequent enrollment also requires a registered key.
+The Admin page continues to use Django's standard password form and enforces
+the existing staff/superuser check after passkey login. Device recovery uses
+another registered credential or established operator identity verification;
+email-only recovery is not introduced. The public currency PWA scope and
+service worker remain unchanged.
 
 Dashboard and Telegram `/health` Disk Usage are operator-console diagnostics,
 not public liveness checks. They prefer latest
