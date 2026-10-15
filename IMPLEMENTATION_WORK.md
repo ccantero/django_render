@@ -47,8 +47,8 @@ and would add an account integration surface not needed here. `django-passkeys`
 was evaluated but offers less confidence in maintenance continuity for this
 project. The selected package is also relatively young; no claim of a formal
 third-party security audit is made. Its dependency risk must be monitored and
-the package should receive independent review. Runtime dependency security
-audit tooling (`pip-audit`) was unavailable in this environment.
+the package should receive independent review. The initial implementation
+environment lacked `pip-audit`; section 11 records the follow-up audit results.
 
 ## 3. Exact files changed
 
