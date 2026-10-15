@@ -20,7 +20,10 @@ SELL_REASON_SOURCE_LABELS = {
 	"unavailable": "unavailable",
 }
 DUST_MIN_NOTIONAL_USDT = Decimal("5")
-MATERIAL_ROW_DISPLAY_LIMIT = 8
+DUST_SYMBOL_DISPLAY_LIMIT = 5
+UNKNOWN_VALUE_SYMBOL_DISPLAY_LIMIT = 12
+MATERIAL_UNAVAILABLE_SYMBOL_DISPLAY_LIMIT = 12
+TELEGRAM_TEXT_LIMIT = 4096
 
 
 def classify_buy_status_positions(portfolio_rows):
@@ -53,7 +56,8 @@ def build_buy_status_exposure(material_symbols, dust_symbols, portfolio_rows):
 
 	material_unavailable = []
 	dust_unavailable = []
-	classified_rows = []
+	material_rows = []
+	dust_rows = []
 	for symbol in dict.fromkeys(material_symbols + dust_symbols):
 		source_bucket = "material" if symbol in material_symbols else "dust"
 		row = rows_by_symbol.get(symbol)
@@ -63,15 +67,16 @@ def build_buy_status_exposure(material_symbols, dust_symbols, portfolio_rows):
 			else:
 				dust_unavailable.append(symbol)
 			continue
-		classified_rows.append(row)
-	classification = classify_buy_status_positions(classified_rows)
-	material_rows = classification["material_rows"]
-	dust_rows = classification["dust_rows"]
-	for symbol in classification["unknown_symbols"]:
-		if symbol in material_symbols:
-			material_unavailable.append(symbol)
+		valued_row = _valued_row_from_portfolio(row)
+		if valued_row is None:
+			if source_bucket == "material":
+				material_unavailable.append(symbol)
+			else:
+				dust_unavailable.append(symbol)
+		elif source_bucket == "material":
+			material_rows.append(valued_row)
 		else:
-			dust_unavailable.append(symbol)
+			dust_rows.append(valued_row)
 	material_rows.sort(key=lambda row: row["estimated_value_usdt"], reverse=True)
 
 	return {
@@ -108,7 +113,11 @@ def render_buy_status_message(
 	unknown_value_symbols=None,
 	cooldown_lines=None,
 	inventory_warning_lines=None,
+	classification_stale=False,
+	latest_buy_historical=False,
 ):
+	positions_heading = "Positions (last persisted; stale)" if classification_stale else "Positions"
+	latest_heading = "Last persisted BUY (historical; healthcheck stale)" if latest_buy_historical else "Latest BUY"
 	lines = [
 		f"<b>{escape(str(emoji))} BUY status</b>",
 		"",
@@ -117,31 +126,34 @@ def render_buy_status_message(
 		f"- Remaining slots: <code>{_fmt_count(remaining_capacity)}</code>",
 		f"- Free USDT: <code>{_fmt_usdt(free_usdt) if free_usdt is not None else 'diagnostic unavailable'}</code>",
 		"",
-		"<b>Positions</b>",
+		f"<b>{positions_heading}</b>",
 		f"- Raw: <code>{_fmt_count(raw_count)}</code>",
 		f"- Material: <code>{_fmt_count(material_count)}</code>",
 		f"- Dust: <code>{_fmt_count(dust_count)}</code>",
 		f"- Unknown value: <code>{_fmt_count(unknown_count)}</code>",
 		"",
-		_material_heading(exposure),
+		_material_heading(exposure, stale=classification_stale),
 	]
 
 	if exposure["material_rows"]:
-		for row in exposure["material_rows"][:MATERIAL_ROW_DISPLAY_LIMIT]:
+		material_rows, omitted_material_rows = _configured_material_rows(
+			exposure["material_rows"], max_positions,
+		)
+		for row in material_rows:
 			lines.append(
 				f"- {escape(str(row['symbol']))} ~ {_fmt_usdt(row['estimated_value_usdt'])}"
 				f" | {_pnl_label(row)}"
 			)
-		if len(exposure["material_rows"]) > MATERIAL_ROW_DISPLAY_LIMIT:
-			lines.append(
-				f"- ... and {len(exposure['material_rows']) - MATERIAL_ROW_DISPLAY_LIMIT} more"
-			)
+		if omitted_material_rows:
+			lines.append(f"- ... and {omitted_material_rows} more")
 	else:
+		material_rows = []
+		omitted_material_rows = 0
 		lines.append("- none")
 	if exposure["material_unavailable_symbols"]:
 		lines.append(
 			"- Valuation unavailable: <code>"
-			f"{_fmt_symbol_list(exposure['material_unavailable_symbols'])}</code>"
+			f"{_fmt_symbol_list(exposure['material_unavailable_symbols'], MATERIAL_UNAVAILABLE_SYMBOL_DISPLAY_LIMIT)}</code>"
 		)
 
 	lines.extend([
@@ -150,12 +162,15 @@ def render_buy_status_message(
 		f"- Open positions: <code>{_pnl_summary_label(open_positions_pnl)}</code>",
 		f"- Realized today (UTC): <code>{_pnl_summary_label(realized_today)}</code>",
 		"",
-		"<b>Dust exposure</b>",
+		f"<b>{'Dust exposure (last persisted; stale)' if classification_stale else 'Dust exposure'}</b>",
 		f"- Dust positions: <code>{_fmt_count(dust_count)}</code>",
 		f"- Estimated dust exposure: <code>{_dust_total_label(exposure)}</code>",
 	])
 	if dust_count is not None and _to_decimal(dust_count) is not None and _to_decimal(dust_count) <= 5:
-		lines.append(f"- Symbols: <code>{_fmt_symbol_list([row['symbol'] for row in exposure['dust_rows']] + exposure['dust_unavailable_symbols'])}</code>")
+		lines.append(f"- Symbols: <code>{_fmt_symbol_list([row['symbol'] for row in exposure['dust_rows']] + exposure['dust_unavailable_symbols'], DUST_SYMBOL_DISPLAY_LIMIT)}</code>")
+	elif exposure["dust_rows"] or exposure["dust_unavailable_symbols"]:
+		dust_symbol_count = len(exposure["dust_rows"]) + len(exposure["dust_unavailable_symbols"])
+		lines.append(f"- Symbols: {dust_symbol_count} not listed (compact dust summary)")
 	lines.append("- Dust positions are non-blocking")
 
 	unknown_symbols = list(dict.fromkeys(
@@ -167,35 +182,176 @@ def render_buy_status_message(
 		lines.extend([
 			"",
 			"<b>Unknown value</b>",
-			f"- Valuation unavailable: <code>{_fmt_symbol_list(unknown_symbols)}</code>",
+			f"- Valuation unavailable: <code>{_fmt_symbol_list(unknown_symbols, UNKNOWN_VALUE_SYMBOL_DISPLAY_LIMIT)}</code>",
 		])
 
 	if inventory_warning_lines:
 		lines.extend([
 			"",
-			"<b>Inventory warnings</b>",
+			f"<b>{'Last persisted inventory warnings (historical; healthcheck stale)' if classification_stale else 'Inventory warnings'}</b>",
 			*inventory_warning_lines,
 		])
 
 	lines.extend([
 		"",
-		"<b>Latest BUY</b>",
-		f"- State: <code>{escape(str(latest_buy_state or 'unavailable'))}</code>",
-		f"- Reason: <code>{escape(str(latest_buy_reason or 'unavailable'))}</code>",
-		f"- Candidate: <code>{escape(str(latest_buy_symbol or 'unavailable'))}</code>",
+		f"<b>{latest_heading}</b>",
+		f"- State: <code>{_safe_html_text(latest_buy_state)}</code>",
+		f"- Reason: <code>{_safe_html_text(latest_buy_reason)}</code>",
+		f"- Candidate: <code>{_safe_html_text(latest_buy_symbol)}</code>",
 	])
 	if latest_buy_error_class:
-		lines.append(f"- Error class: <code>{escape(str(latest_buy_error_class))}</code>")
+		lines.append(f"- Error class: <code>{_safe_html_text(latest_buy_error_class)}</code>")
 	if latest_buy_error_code:
-		lines.append(f"- Error code: <code>{escape(str(latest_buy_error_code))}</code>")
+		lines.append(f"- Error code: <code>{_safe_html_text(latest_buy_error_code)}</code>")
 	if read_only:
 		lines.append("- Read-only: <code>true</code>")
 
 	lines.extend(["", "<b>Status</b>"])
-	lines.extend(status_lines)
+	lines.extend(_safe_html_line(line) for line in status_lines)
 	if cooldown_lines:
 		lines.extend([""] + cooldown_lines)
-	return "\n".join(lines)
+	message = "\n".join(lines)
+	if len(message) <= TELEGRAM_TEXT_LIMIT:
+		return message
+	return _compact_buy_status_message(
+		emoji=emoji,
+		effective_positions=effective_positions,
+		max_positions=max_positions,
+		remaining_capacity=remaining_capacity,
+		free_usdt=free_usdt,
+		raw_count=raw_count,
+		material_count=material_count,
+		dust_count=dust_count,
+		unknown_count=unknown_count,
+		open_positions_pnl=open_positions_pnl,
+		realized_today=realized_today,
+		latest_buy_state=latest_buy_state,
+		latest_buy_reason=latest_buy_reason,
+		latest_buy_symbol=latest_buy_symbol,
+		latest_buy_error_class=latest_buy_error_class,
+		latest_buy_error_code=latest_buy_error_code,
+		read_only=read_only,
+		status_lines=status_lines,
+		exposure=exposure,
+		material_rows=material_rows,
+		omitted_material_rows=omitted_material_rows,
+		classification_stale=classification_stale,
+		latest_buy_historical=latest_buy_historical,
+	)
+
+
+def _compact_buy_status_message(**values):
+	"""Keep operational fields in a bounded fallback; never truncate raw HTML."""
+	def safe(value, fallback="unavailable", limit=160):
+		text = " ".join(str(value or fallback).split())
+		return escape(text[:limit])
+
+	def build_message(shown_rows):
+		omitted_count = values["omitted_material_rows"] + len(values["material_rows"]) - len(shown_rows)
+		lines = [
+			f"<b>{safe(values['emoji'], limit=8)} BUY status</b>",
+			"",
+			"<b>Capacity</b>",
+			f"- Effective positions: <code>{_bounded_count(values['effective_positions'])} / {_bounded_count(values['max_positions'])}</code>",
+			f"- Remaining slots: <code>{_bounded_count(values['remaining_capacity'])}</code>",
+			f"- Free USDT: <code>{safe(_fmt_usdt(values['free_usdt']) if values['free_usdt'] is not None else 'diagnostic unavailable', limit=64)}</code>",
+			"",
+			f"<b>{'Positions (last persisted; stale)' if values['classification_stale'] else 'Positions'}</b>",
+			f"- Raw: <code>{_bounded_count(values['raw_count'])}</code>",
+			f"- Material: <code>{_bounded_count(values['material_count'])}</code>",
+			f"- Dust: <code>{_bounded_count(values['dust_count'])}</code>",
+			f"- Unknown value: <code>{_bounded_count(values['unknown_count'])}</code>",
+			"",
+			_compact_material_heading(values["exposure"], values["classification_stale"]),
+		]
+		lines.extend(_compact_material_row(row) for row in shown_rows)
+		if not shown_rows and not values["exposure"]["material_unavailable_symbols"]:
+			lines.append("- none")
+		if values["exposure"]["material_unavailable_symbols"]:
+			lines.append(
+				"- Valuation unavailable: <code>"
+				f"{_fmt_symbol_list(values['exposure']['material_unavailable_symbols'], MATERIAL_UNAVAILABLE_SYMBOL_DISPLAY_LIMIT)}</code>"
+			)
+		if omitted_count:
+			lines.append(
+				f"- … {omitted_count} material position(s) omitted; Telegram/configured display limit"
+			)
+		lines.extend([
+			"",
+			"<b>PnL</b>",
+			f"- Open positions: <code>{_safe_html_text(_pnl_summary_label(values['open_positions_pnl']), limit=64)}</code>",
+			f"- Realized today (UTC): <code>{_safe_html_text(_pnl_summary_label(values['realized_today']), limit=64)}</code>",
+			"",
+			f"<b>{'Last persisted BUY (historical; healthcheck stale)' if values['latest_buy_historical'] else 'Latest BUY'}</b>",
+			f"- State: <code>{safe(values['latest_buy_state'])}</code>",
+			f"- Reason: <code>{safe(values['latest_buy_reason'])}</code>",
+			f"- Candidate: <code>{safe(values['latest_buy_symbol'])}</code>",
+		])
+		if values['latest_buy_error_class']:
+			lines.append(f"- Error class: <code>{safe(values['latest_buy_error_class'])}</code>")
+		if values['latest_buy_error_code']:
+			lines.append(f"- Error code: <code>{safe(values['latest_buy_error_code'])}</code>")
+		if values['read_only']:
+			lines.append("- Read-only: <code>true</code>")
+		lines.extend(["", "<b>Status</b>"])
+		lines.extend(f"- {safe(line, fallback='', limit=240)}" for line in values['status_lines'][:5])
+		lines.append("… Additional diagnostics omitted to fit Telegram's 4096-character limit.")
+		return "\n".join(lines)
+
+	shown_rows = []
+	message = build_message(shown_rows)
+	for row in values["material_rows"]:
+		candidate = build_message(shown_rows + [row])
+		if len(candidate) > TELEGRAM_TEXT_LIMIT:
+			break
+		shown_rows.append(row)
+		message = candidate
+	while len(message) > TELEGRAM_TEXT_LIMIT and shown_rows:
+		shown_rows.pop()
+		message = build_message(shown_rows)
+	return message
+
+
+def _compact_material_heading(exposure, stale):
+	if exposure["material_total"] is None and exposure["material_unavailable_symbols"]:
+		label = "Material exposure (partially unavailable)"
+	else:
+		total = exposure["material_total"] or Decimal("0")
+		label = f"Material exposure (~{escape(_fmt_usdt_value(total)[:64])} USDT)"
+	if stale:
+		label += "; last persisted classification is stale"
+	return f"<b>{label}</b>"
+
+
+def _compact_material_row(row):
+	symbol = _safe_html_text(row.get("symbol"), limit=40)
+	value = _safe_html_text(_fmt_usdt(row.get("estimated_value_usdt")), limit=64)
+	pnl = _safe_html_text(_pnl_label(row), limit=96)
+	return f"- {symbol} ~ {value} | {pnl}"
+
+
+def _configured_material_rows(rows, max_positions):
+	rows = list(rows or [])
+	configured = _to_decimal(max_positions)
+	if configured is None or configured <= 0 or configured >= len(rows):
+		return rows, 0
+	limit = int(configured)
+	if limit <= 0:
+		return rows, 0
+	return rows[:limit], max(0, len(rows) - limit)
+
+
+def _safe_html_text(value, fallback="unavailable", limit=160):
+	text = " ".join(str(value or fallback).split())
+	return escape(text[:limit])
+
+
+def _safe_html_line(value):
+	return escape(" ".join(str(value or "").split()))
+
+
+def _bounded_count(value):
+	return _fmt_count(value)[:64]
 
 
 def build_inventory_warning_lines(warnings, limit=3):
@@ -333,7 +489,7 @@ def _humanize_inventory_warning_reason(reason):
 def _valued_row_from_portfolio(row):
 	quantity = _to_decimal(getattr(row, "quantity", None)) if row is not None else None
 	price = _to_decimal(getattr(row, "current_price", None)) if row is not None else None
-	if quantity is None or price is None or price <= 0:
+	if quantity is None or price is None or not quantity.is_finite() or not price.is_finite() or price <= 0:
 		return None
 	return {
 		"symbol": getattr(row, "symbol", ""),
@@ -384,11 +540,13 @@ def _pnl_summary_label(value):
 	return f"{sign}{format(rounded, 'f')} USDT"
 
 
-def _material_heading(exposure):
+def _material_heading(exposure, stale=False):
 	if exposure["material_total"] is None and exposure["material_unavailable_symbols"]:
-		return "<b>Material exposure (partially unavailable)</b>"
+		label = "Material exposure (partially unavailable)"
+		return f"<b>{label}; last persisted classification is stale</b>" if stale else f"<b>{label}</b>"
 	total = exposure["material_total"] or Decimal("0")
-	return f"<b>Material exposure (~{_fmt_usdt_value(total)} USDT)</b>"
+	label = f"Material exposure (~{_fmt_usdt_value(total)} USDT)"
+	return f"<b>{label}; last persisted classification is stale</b>" if stale else f"<b>{label}</b>"
 
 
 def _dust_total_label(exposure):
@@ -401,9 +559,14 @@ def _sum_values(rows):
 	return sum((row["estimated_value_usdt"] for row in rows), Decimal("0"))
 
 
-def _fmt_symbol_list(values):
-	values = [escape(str(value)) for value in values if value not in (None, "")]
-	return ", ".join(values) if values else "none"
+def _fmt_symbol_list(values, limit):
+	values = [str(value) for value in values if value not in (None, "")]
+	if not values:
+		return "none"
+	shown = [escape(value) for value in values[:limit]]
+	if len(values) > limit:
+		shown.append(f"… +{len(values) - limit} more")
+	return ", ".join(shown)
 
 
 def _fmt_minutes(value):
@@ -459,9 +622,10 @@ def _to_decimal(value):
 	if value in (None, ""):
 		return None
 	try:
-		return value if isinstance(value, Decimal) else Decimal(str(value))
+		decimal_value = value if isinstance(value, Decimal) else Decimal(str(value))
 	except (InvalidOperation, TypeError, ValueError):
 		return None
+	return decimal_value if decimal_value.is_finite() else None
 
 
 def _normalized_text(value):

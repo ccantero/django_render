@@ -552,6 +552,113 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertIn('<b>⚪ BUY status</b>', message)
         self.assertIn('⚪ Diagnostic unavailable: latest healthcheck missing', message)
 
+    @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
+    @patch('core.telegram_diagnostics.latest_buy_rejection_reason', return_value=None)
+    def test_buy_status_keeps_current_positions_when_healthcheck_is_missing(
+        self, _mock_rejection, _mock_realized,
+    ):
+        from core.telegram_diagnostics import format_buy_status
+
+        row = SimpleNamespace(
+            symbol='BTCUSDT', quantity=Decimal('1'), entry_price=Decimal('9'),
+            current_price=Decimal('10'),
+        )
+        with patch('core.telegram_diagnostics.BotHealthcheck.objects') as health, \
+             patch('core.telegram_diagnostics.Portfolio.objects') as portfolio:
+            health.order_by.return_value.first.return_value = None
+            portfolio.filter.return_value = [row]
+            with self.settings(MAX_POSITIONS=8):
+                message = format_buy_status()
+
+        self.assertIn('Effective positions: <code>N/A / 8</code>', message)
+        self.assertIn('Material: <code>N/A</code>', message)
+        self.assertNotIn('- BTCUSDT ~ 10 USDT', message)
+        self.assertIn('Diagnostic unavailable: latest healthcheck missing', message)
+
+    @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
+    @patch('core.telegram_diagnostics.latest_buy_rejection_reason', return_value=None)
+    def test_buy_status_does_not_treat_stale_healthcheck_values_as_current(
+        self, _mock_rejection, _mock_realized,
+    ):
+        from core.telegram_diagnostics import format_buy_status
+
+        row = SimpleNamespace(
+            symbol='BTCUSDT', quantity=Decimal('1'), entry_price=Decimal('9'),
+            current_price=Decimal('10'),
+        )
+        stale = SimpleNamespace(
+            created_at=timezone.now() - timezone.timedelta(minutes=45),
+            details={
+                'max_positions': 8, 'free_usdt': '100',
+                'positions_count': 1, 'material_positions_count': 1,
+                'dust_positions_count': 0, 'unknown_value_positions_count': 0,
+                'material_symbols': ['BTCUSDT'], 'dust_symbols': [],
+                'latest_buy_decision': 'blocked_by_usdt',
+                'latest_buy_reason': 'free_usdt_below_buy_amount',
+                'latest_buy_error_class': 'BinanceAPIError',
+                'latest_buy_error_code': '429',
+            },
+        )
+        with patch('core.telegram_diagnostics.BotHealthcheck.objects') as health, \
+             patch('core.telegram_diagnostics.Portfolio.objects') as portfolio:
+            health.order_by.return_value.first.return_value = stale
+            portfolio.filter.return_value = [row]
+            from core.telegram_diagnostics import interpret_buy_state as real_interpret_buy_state
+            with patch('core.telegram_diagnostics.interpret_buy_state', wraps=real_interpret_buy_state) as interpret:
+                message = format_buy_status()
+
+        self.assertIn('Free USDT: <code>diagnostic unavailable</code>', message)
+        self.assertIn('healthcheck stale', message.lower())
+        self.assertIn('<b>Positions (last persisted; stale)</b>', message)
+        self.assertIn('<b>Last persisted BUY (historical; healthcheck stale)</b>', message)
+        self.assertIn('- Reason: <code>free_usdt_below_buy_amount</code>', message)
+        self.assertIn('- Error code: <code>429</code>', message)
+        self.assertIsNone(interpret.call_args.kwargs['latest_buy_error'])
+        self.assertNotIn('Insufficient free USDT for next BUY', message)
+        self.assertNotIn('✅ Capacity available', message)
+
+    @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
+    @patch('core.telegram_diagnostics.latest_buy_rejection_reason', return_value=None)
+    def test_buy_status_prefers_persisted_remaining_capacity(
+        self, _mock_rejection, _mock_realized,
+    ):
+        from core.telegram_diagnostics import format_buy_status
+
+        current = SimpleNamespace(
+            created_at=timezone.now(),
+            details={
+                'positions_count': 1, 'material_positions_count': 1,
+                'dust_positions_count': 0, 'unknown_value_positions_count': 0,
+                'max_positions': 8, 'remaining_buy_capacity': 3,
+                'material_symbols': [], 'dust_symbols': [],
+            },
+        )
+        with patch('core.telegram_diagnostics.BotHealthcheck.objects') as health, \
+             patch('core.telegram_diagnostics.Portfolio.objects'):
+            health.order_by.return_value.first.return_value = current
+            message = format_buy_status()
+
+        self.assertIn('Effective positions: <code>1 / 8</code>', message)
+        self.assertIn('Remaining slots: <code>3</code>', message)
+
+    @patch('core.telegram_diagnostics._safe_realized_pnl_today', return_value=Decimal('0'))
+    @patch('core.telegram_diagnostics.latest_buy_rejection_reason', return_value=None)
+    def test_buy_status_with_healthcheck_without_timestamp_marks_freshness_unknown(
+        self, _mock_rejection, _mock_realized,
+    ):
+        from core.telegram_diagnostics import format_buy_status
+
+        with patch('core.telegram_diagnostics.BotHealthcheck.objects') as health, \
+             patch('core.telegram_diagnostics.Portfolio.objects') as portfolio:
+            health.order_by.return_value.first.return_value = SimpleNamespace(
+                created_at=None, details={'max_positions': 8, 'free_usdt': '20'},
+            )
+            portfolio.filter.return_value = SimpleNamespace(order_by=lambda *args: [])
+            message = format_buy_status()
+
+        self.assertIn('Healthcheck freshness unavailable', message)
+        self.assertIn('Free USDT: <code>diagnostic unavailable</code>', message)
+
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.Portfolio.objects')
@@ -1107,9 +1214,9 @@ class TelegramDiagnosticsCommandTests(TestCase):
             self.post_telegram_message('/buy_status')
 
         message = mock_send_message.call_args[0][0]
-        self.assertIn('Dust positions: <code>5</code>', message)
-        self.assertIn('Unknown value: <code>1</code>', message)
-        self.assertIn('Estimated dust exposure: <code>~0.5 USDT</code>', message)
+        self.assertIn('Dust positions: <code>6</code>', message)
+        self.assertIn('Unknown value: <code>0</code>', message)
+        self.assertIn('Estimated dust exposure: <code>partially unavailable</code>', message)
         self.assertNotIn('DUST0USDT, DUST1USDT, DUST2USDT, DUST3USDT, DUST4USDT, DUST5USDT', message)
         self.assertIn('Unknown value', message)
 
@@ -1231,19 +1338,17 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
-        self.assertIn('Material: <code>0</code>', message)
-        self.assertIn('Dust: <code>1</code>', message)
-        self.assertIn('Effective positions: <code>0 / 8</code>', message)
-        self.assertIn('Estimated dust exposure: <code>~0.04 USDT</code>', message)
-        self.assertIn('Symbols: <code>WLDUSDT</code>', message)
-        self.assertNotIn('- WLDUSDT ~ 0.04 USDT', message)
+        self.assertIn('Material: <code>N/A</code>', message)
+        self.assertIn('Dust: <code>N/A</code>', message)
+        self.assertIn('Effective positions: <code>N/A / 8</code>', message)
+        self.assertNotIn('WLDUSDT', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.TradeOperation.objects')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
     @patch('core.telegram_diagnostics.Portfolio.objects')
-    def test_buy_status_message_demotes_stale_healthcheck_material_symbol(
+    def test_buy_status_exposure_preserves_healthcheck_material_symbol(
         self,
         mock_portfolio_manager,
         mock_health_manager,
@@ -1279,19 +1384,16 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
-        self.assertIn('<b>Material exposure (~0 USDT)</b>', message)
-        self.assertIn('- none', message)
-        self.assertIn('<b>Dust exposure</b>', message)
-        self.assertIn('Estimated dust exposure: <code>~0.04 USDT</code>', message)
-        self.assertIn('Symbols: <code>WLDUSDT</code>', message)
-        self.assertNotIn('- WLDUSDT ~ 0.04 USDT', message)
+        self.assertIn('<b>Material exposure (~0.04 USDT)</b>', message)
+        self.assertIn('- WLDUSDT ~ 0.04 USDT', message)
+        self.assertIn('Estimated dust exposure: <code>~0 USDT</code>', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
     @patch('core.telegram_diagnostics.TradeOperation.objects')
     @patch('core.telegram_diagnostics.BotHealthcheck.objects')
     @patch('core.telegram_diagnostics.Portfolio.objects')
-    def test_buy_status_final_message_keeps_stale_wld_symbol_out_of_material_section(
+    def test_buy_status_final_message_keeps_healthcheck_wld_material_classification(
         self,
         mock_portfolio_manager,
         mock_health_manager,
@@ -1331,10 +1433,9 @@ class TelegramDiagnosticsCommandTests(TestCase):
         material_section = message.split('<b>Dust exposure</b>', 1)[0].split('<b>Material exposure', 1)[1]
         dust_section = message.split('<b>Dust exposure</b>', 1)[1].split('<b>Latest BUY</b>', 1)[0]
 
-        self.assertIn('(~0 USDT)</b>', material_section)
-        self.assertNotIn('WLDUSDT', material_section)
-        self.assertIn('Estimated dust exposure: <code>~0.04 USDT</code>', dust_section)
-        self.assertIn('Symbols: <code>WLDUSDT</code>', dust_section)
+        self.assertIn('(~0.04 USDT)</b>', material_section)
+        self.assertIn('WLDUSDT', material_section)
+        self.assertIn('Estimated dust exposure: <code>~0 USDT</code>', dust_section)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -1376,16 +1477,48 @@ class TelegramDiagnosticsCommandTests(TestCase):
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
         self.assertIn('Raw: <code>8</code>', message)
-        self.assertIn('Material: <code>2</code>', message)
-        self.assertIn('Dust: <code>6</code>', message)
+        self.assertIn('Material: <code>8</code>', message)
+        self.assertIn('Dust: <code>0</code>', message)
         self.assertIn('Unknown value: <code>0</code>', message)
-        self.assertIn('Effective positions: <code>2 / 8</code>', message)
-        self.assertIn('Remaining slots: <code>6</code>', message)
+        self.assertIn('Effective positions: <code>8 / 8</code>', message)
+        self.assertIn('Remaining slots: <code>0</code>', message)
         material_section = message.split('<b>Dust exposure</b>', 1)[0]
         self.assertIn('ZECUSDT', material_section)
         self.assertIn('BNBUSDT', material_section)
-        for symbol in ('ETHUSDT', 'SOLUSDT', 'BTCUSDT', 'UNIUSDT', 'SUIUSDT', 'DOGEUSDT'):
-            self.assertNotIn(f'- {symbol} ~', material_section)
+        self.assertIn('- ETHUSDT ~', material_section)
+
+    @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
+    @patch('core.views.send_message')
+    @patch('core.telegram_diagnostics.BotHealthcheck.objects')
+    @patch('core.telegram_diagnostics.Portfolio.objects')
+    def test_buy_status_uses_healthcheck_classification_not_portfolio_reclassification(
+        self, portfolio_manager, health_manager, send_message,
+    ):
+        health_manager.order_by.return_value.first.return_value = SimpleNamespace(
+            created_at=timezone.now(),
+            details={
+                'positions_count': 2, 'material_positions_count': 1,
+                'dust_positions_count': 1, 'unknown_value_positions_count': 0,
+                'material_symbols': ['BTCUSDT'], 'dust_symbols': ['SHIBUSDT'],
+                'unknown_value_symbols': [], 'max_positions': 8,
+            },
+        )
+        portfolio_manager.filter.return_value = [
+            SimpleNamespace(symbol='BTCUSDT', quantity=Decimal('1'), entry_price=Decimal('2'), current_price=Decimal('1')),
+            SimpleNamespace(symbol='SHIBUSDT', quantity=Decimal('1'), entry_price=Decimal('1'), current_price=Decimal('6')),
+        ]
+
+        with self.settings(TELEGRAM_ALLOWED_CHAT_IDS='999'):
+            self.post_telegram_message('/buy_status')
+
+        message = send_message.call_args[0][0]
+        material_section = message.split('<b>Dust exposure</b>', 1)[0]
+        dust_section = message.split('<b>Dust exposure</b>', 1)[1].split('<b>Latest BUY</b>', 1)[0]
+        self.assertIn('Material: <code>1</code>', message)
+        self.assertIn('Dust: <code>1</code>', message)
+        self.assertIn('- BTCUSDT ~ 1 USDT', material_section)
+        self.assertNotIn('- SHIBUSDT ~', material_section)
+        self.assertIn('SHIBUSDT', dust_section)
 
     def test_buy_classification_accepts_iterable_without_order_by(self):
         from core.telegram_diagnostics import _buy_classification_from_portfolio
@@ -1411,7 +1544,7 @@ class TelegramDiagnosticsCommandTests(TestCase):
             )
             format_buy_status()
 
-        manager.filter.assert_called_once_with(quantity__gt=0)
+        manager.filter.assert_not_called()
 
     def test_buy_classification_falls_back_on_portfolio_database_error(self):
         from core.telegram_diagnostics import _buy_classification_from_portfolio
@@ -1463,10 +1596,10 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
-        self.assertIn('Material: <code>1</code>', message)
-        self.assertIn('Dust: <code>0</code>', message)
-        self.assertIn('Effective positions: <code>1 / 8</code>', message)
-        self.assertIn('- SOLUSDT ~ 6 USDT', message)
+        self.assertIn('Material: <code>N/A</code>', message)
+        self.assertIn('Dust: <code>N/A</code>', message)
+        self.assertIn('Effective positions: <code>N/A / 8</code>', message)
+        self.assertNotIn('- SOLUSDT ~ 6 USDT', message)
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -1506,13 +1639,11 @@ class TelegramDiagnosticsCommandTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         message = mock_send_message.call_args[0][0]
-        self.assertIn('Material: <code>0</code>', message)
-        self.assertIn('Dust: <code>0</code>', message)
-        self.assertIn('Unknown value: <code>1</code>', message)
-        self.assertIn('Effective positions: <code>1 / 8</code>', message)
-        self.assertIn('Valuation unavailable: <code>MYSTERYUSDT</code>', message)
+        self.assertIn('Material: <code>N/A</code>', message)
+        self.assertIn('Unknown value: <code>N/A</code>', message)
+        self.assertIn('Effective positions: <code>N/A / 8</code>', message)
 
-    def test_buy_status_exposure_demotes_stale_material_symbol_below_threshold(self):
+    def test_buy_status_exposure_preserves_persisted_material_bucket_below_threshold(self):
         exposure = build_buy_status_exposure(
             ['WLDUSDT'],
             [],
@@ -1526,11 +1657,11 @@ class TelegramDiagnosticsCommandTests(TestCase):
             ],
         )
 
-        self.assertEqual(exposure['material_rows'], [])
-        self.assertEqual(exposure['dust_rows'][0]['symbol'], 'WLDUSDT')
-        self.assertEqual(exposure['dust_rows'][0]['estimated_value_usdt'], Decimal('0.03860428'))
-        self.assertEqual(exposure['material_total'], Decimal('0'))
-        self.assertEqual(exposure['dust_total'], Decimal('0.03860428'))
+        self.assertEqual(exposure['material_rows'][0]['symbol'], 'WLDUSDT')
+        self.assertEqual(exposure['material_rows'][0]['estimated_value_usdt'], Decimal('0.03860428'))
+        self.assertEqual(exposure['dust_rows'], [])
+        self.assertEqual(exposure['material_total'], Decimal('0.03860428'))
+        self.assertEqual(exposure['dust_total'], Decimal('0'))
 
     @patch('core.views.TELEGRAM_WEBHOOK_TOKEN', 'test-webhook-token')
     @patch('core.views.send_message')
@@ -5013,6 +5144,7 @@ class BuyStatusPnlSummaryTests(TestCase):
         portfolio_rows=None,
         material_symbols=None,
         realized_today=Decimal('0'),
+        max_positions=8,
     ):
         from dashboard.services.telegram_buy_status_formatter import (
             build_open_positions_pnl,
@@ -5033,8 +5165,8 @@ class BuyStatusPnlSummaryTests(TestCase):
             dust_count=0,
             unknown_count=0,
             effective_positions=len(material_symbols),
-            max_positions=8,
-            remaining_capacity=max(0, 8 - len(material_symbols)),
+            max_positions=max_positions,
+            remaining_capacity=max(0, max_positions - len(material_symbols)),
             free_usdt=Decimal('10'),
             latest_buy_state='available',
             latest_buy_reason='capacity_available',
@@ -5089,6 +5221,205 @@ class BuyStatusPnlSummaryTests(TestCase):
 
         self.assertIn('- Open positions: <code>+0.00 USDT</code>', message)
 
+    def test_buy_status_invalid_and_non_positive_prices_are_unavailable(self):
+        from dashboard.services.telegram_buy_status_formatter import classify_buy_status_positions
+
+        rows = [
+            SimpleNamespace(symbol='ZEROUSDT', quantity=Decimal('1'), current_price=Decimal('0')),
+            SimpleNamespace(symbol='BADUSDT', quantity=Decimal('1'), current_price='not-a-price'),
+            SimpleNamespace(symbol='NANUSDT', quantity=Decimal('1'), current_price=Decimal('NaN')),
+            SimpleNamespace(symbol='INFUSDT', quantity=Decimal('1'), current_price=Decimal('Infinity')),
+        ]
+
+        classification = classify_buy_status_positions(rows)
+
+        self.assertEqual(classification['material_rows'], [])
+        self.assertEqual(classification['dust_rows'], [])
+        self.assertEqual(
+            classification['unknown_symbols'],
+            ['ZEROUSDT', 'BADUSDT', 'NANUSDT', 'INFUSDT'],
+        )
+
+    def test_buy_status_telegram_message_stays_within_limit_and_keeps_valid_html(self):
+        from html.parser import HTMLParser
+        from dashboard.services.telegram_buy_status_formatter import (
+            build_open_positions_pnl,
+            render_buy_status_message,
+        )
+
+        symbols = [f'ASSET{index:04d}USDT' for index in range(700)]
+        exposure = build_buy_status_exposure([], [], [])
+        message = render_buy_status_message(
+            emoji='🟢', raw_count=700, material_count=0, dust_count=0,
+            unknown_count=700, effective_positions=700, max_positions=8,
+            remaining_capacity=0, free_usdt=Decimal('0'),
+            latest_buy_state='unavailable', latest_buy_reason='unavailable',
+            latest_buy_symbol=None, read_only=False, exposure=exposure,
+            status_lines=['⚠️ ' + 'details ' * 900], open_positions_pnl=Decimal('0'),
+            realized_today=Decimal('0'), unknown_value_symbols=symbols,
+        )
+
+        class TagTracker(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.stack = []
+
+            def handle_starttag(self, tag, attrs):
+                self.stack.append(tag)
+
+            def handle_endtag(self, tag):
+                self.assert_tag = tag
+                if self.stack and self.stack[-1] == tag:
+                    self.stack.pop()
+                else:
+                    raise AssertionError(f'unbalanced HTML closing tag: {tag}')
+
+        parser = TagTracker()
+        parser.feed(message)
+        parser.close()
+        self.assertLessEqual(len(message), 4096)
+        self.assertEqual(parser.stack, [])
+        self.assertIn('Additional diagnostics omitted', message)
+        self.assertIn('<b>Latest BUY</b>', message)
+        self.assertIn('Effective positions: <code>700 / 8</code>', message)
+
+    def test_buy_status_displays_all_fifteen_material_rows_for_capacity_fifteen(self):
+        rows = [
+            SimpleNamespace(
+                symbol=f'ASSET{index:02d}USDT', quantity=Decimal('1'),
+                entry_price=Decimal('5'), current_price=Decimal('6'),
+            )
+            for index in range(15)
+        ]
+
+        message = self._render(portfolio_rows=rows, max_positions=15)
+
+        for index in range(15):
+            self.assertIn(f'- ASSET{index:02d}USDT ~ 6 USDT', message)
+        self.assertEqual(message.count(' | PnL '), 15)
+        self.assertIn('Effective positions: <code>15 / 15</code>', message)
+
+    def test_buy_status_material_display_scales_above_fifteen_positions(self):
+        rows = [
+            SimpleNamespace(
+                symbol=f'ASSET{index:02d}USDT', quantity=Decimal('1'),
+                entry_price=Decimal('5'), current_price=Decimal('6'),
+            )
+            for index in range(20)
+        ]
+
+        message = self._render(portfolio_rows=rows, max_positions=20)
+
+        self.assertEqual(message.count(' | PnL '), 20)
+        self.assertIn('- ASSET19USDT ~ 6 USDT', message)
+        self.assertNotIn('material positions omitted', message.lower())
+
+    def test_buy_status_compacts_large_dust_symbol_lists_separately(self):
+        from dashboard.services.telegram_buy_status_formatter import render_buy_status_message
+
+        symbols = [f'DUST{index:02d}USDT' for index in range(40)]
+        rows = [
+            SimpleNamespace(symbol=symbol, quantity=Decimal('1'), current_price=Decimal('0.1'))
+            for symbol in symbols
+        ]
+        exposure = build_buy_status_exposure([], symbols, rows)
+        message = render_buy_status_message(
+            emoji='🟢', raw_count=40, material_count=0, dust_count=40,
+            unknown_count=0, effective_positions=0, max_positions=15,
+            remaining_capacity=15, free_usdt=Decimal('10'),
+            latest_buy_state='available', latest_buy_reason=None,
+            latest_buy_symbol=None, read_only=False, exposure=exposure,
+            status_lines=['✅ Capacity available'], open_positions_pnl=Decimal('0'),
+            realized_today=Decimal('0'),
+        )
+
+        self.assertIn('Dust positions: <code>40</code>', message)
+        self.assertIn('Symbols: 40 not listed (compact dust summary)', message)
+        self.assertNotIn('DUST00USDT', message)
+        self.assertLessEqual(len(message), 4096)
+
+    def test_buy_status_material_rows_overflow_with_omission_count_and_full_pnl(self):
+        rows = [
+            SimpleNamespace(
+                symbol=f'LONG-ASSET-{index:03d}-USDT', quantity=Decimal('1'),
+                entry_price=Decimal('5'), current_price=Decimal('6'),
+            )
+            for index in range(100)
+        ]
+
+        message = self._render(portfolio_rows=rows, max_positions=100)
+
+        self.assertLessEqual(len(message), 4096)
+        self.assertIn('- Open positions: <code>+100.00 USDT</code>', message)
+        self.assertIn('material position(s) omitted', message)
+        self.assertIn('Latest BUY', message)
+        self.assertIn('<b>Status</b>', message)
+        self.assertIn('- LONG-ASSET-000-USDT', message)
+        self.assertNotIn('- LONG-ASSET-099-USDT', message)
+
+        from html.parser import HTMLParser
+
+        class BalancedHTML(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.stack = []
+
+            def handle_starttag(self, tag, attrs):
+                self.stack.append(tag)
+
+            def handle_endtag(self, tag):
+                if not self.stack or self.stack.pop() != tag:
+                    raise AssertionError(f'unbalanced HTML tag: {tag}')
+
+        parser = BalancedHTML()
+        parser.feed(message)
+        parser.close()
+        self.assertEqual(parser.stack, [])
+
+    def test_buy_status_length_fallback_preserves_operational_fields_and_escapes_multiline(self):
+        from html.parser import HTMLParser
+        from dashboard.services.telegram_buy_status_formatter import render_buy_status_message
+
+        exposure = build_buy_status_exposure([], [], [])
+        message = render_buy_status_message(
+            emoji='🟢', raw_count=2, material_count=1, dust_count=1,
+            unknown_count=0, effective_positions=1, max_positions=8,
+            remaining_capacity=7, free_usdt=Decimal('12'),
+            latest_buy_state='available', latest_buy_reason='no_candidate',
+            latest_buy_symbol='BTCUSDT', read_only=False, exposure=exposure,
+            status_lines=['line one\n<b>injected</b> ' + 'verbose ' * 1000],
+            open_positions_pnl=Decimal('1.25'), realized_today=Decimal('-0.5'),
+        )
+
+        class StrictHTML(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.stack = []
+
+            def handle_starttag(self, tag, attrs):
+                self.stack.append(tag)
+
+            def handle_endtag(self, tag):
+                if not self.stack or self.stack.pop() != tag:
+                    raise AssertionError(f'unbalanced HTML tag: {tag}')
+
+        parser = StrictHTML()
+        parser.feed(message)
+        parser.close()
+        self.assertEqual(parser.stack, [])
+        self.assertLessEqual(len(message), 4096)
+        for text in (
+            '<b>Capacity</b>', '<b>Positions</b>', '<b>PnL</b>',
+            '<b>Latest BUY</b>', '<b>Status</b>',
+            'Effective positions: <code>1 / 8</code>',
+            'Open positions: <code>+1.25 USDT</code>',
+            'Realized today (UTC): <code>-0.50 USDT</code>',
+            'Candidate: <code>BTCUSDT</code>',
+            'Additional diagnostics omitted',
+        ):
+            self.assertIn(text, message)
+        self.assertIn('&lt;b&gt;injected&lt;/b&gt;', message)
+
     def test_open_positions_pnl_includes_material_rows_beyond_display_cap(self):
         rows = [
             SimpleNamespace(
@@ -5138,6 +5469,19 @@ class BuyStatusPnlSummaryTests(TestCase):
                 symbol='BTCUSDT',
                 quantity=Decimal('1'),
                 entry_price=None,
+                current_price=Decimal('10'),
+            ),
+        ])
+
+        self.assertIn('- BTCUSDT ~ 10 USDT | PnL unavailable', message)
+        self.assertIn('- Open positions: <code>unavailable</code>', message)
+
+    def test_open_positions_pnl_is_unavailable_when_entry_price_is_non_finite(self):
+        message = self._render(portfolio_rows=[
+            SimpleNamespace(
+                symbol='BTCUSDT',
+                quantity=Decimal('1'),
+                entry_price=Decimal('NaN'),
                 current_price=Decimal('10'),
             ),
         ])

@@ -1,13 +1,83 @@
 ---
 doc_id: changelog
-doc_version: 1.1.39
+doc_version: 1.1.41
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-09-16
+last_verified_at: 2026-10-15
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-15 - Scale Telegram BUY Rows to Configured Capacity
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Replaced the fixed eight-row material exposure cap with the configured
+  `MAX_POSITIONS` capacity; the existing persisted-healthcheck/runtime-config
+  resolution remains the source of that value.
+- Kept Telegram's 4096-character limit as the safety bound. Its compact fallback
+  retains capacity, material exposure, full-position PnL, latest BUY, and status,
+  and reports omitted material rows. PnL aggregation remains independent of the
+  visible rows.
+- Kept dust, unknown-value, and unavailable-valuation symbol lists on separate
+  compact display policies.
+- Confirmed `bot.bot_healthcheck.details` remains authoritative for current
+  classification counts and BUY capacity; `bot.portfolio` only enriches the
+  persisted material/dust buckets with projection values. No independent
+  reclassification or accounting source change was made.
+- Reviewed `docs/KPI_REGISTRY.md`; no metric formula, source, or meaning changed.
+
+Operator impact:
+- Configured portfolios can show every material position when the Telegram
+  message fits, including capacities above 15. Oversized messages retain key
+  operating fields and state how many material rows are not displayed.
+
+Validation:
+- Focused BUY-status/PnL tests: 59 passed.
+- Full `python -m pytest -q`: 328 passed, 33 subtests passed.
+
+## 2026-10-14 - Harden Telegram BUY Status
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Use the bot-persisted healthcheck classification as the authoritative source
+  for `/buy_status` counts and capacity; use `bot.portfolio` only to enrich
+  valuation for persisted material/dust symbol buckets.
+- Mark stale BUY diagnostics as historical, suppress stale BUY errors from
+  current-state interpretation, and avoid current capacity claims from stale
+  classifications.
+- Reject non-finite valuation inputs and keep Telegram output within 4096
+  characters with a prioritized compact fallback and escaped multiline text.
+- Reviewed `docs/KPI_REGISTRY.md`; no metric formula, source, or meaning changed.
+
+Operator impact:
+- Missing classification is shown as unavailable; a stale heartbeat cannot
+  make an old BUY rejection/error look current.
+- Exposure values remain approximate projection data while their material/dust
+  category stays aligned with the bot-persisted snapshot.
+- Overlong diagnostic payloads retain capacity, positions, PnL, latest BUY, and
+  status fields before omitting secondary details.
+
+Validation:
+- Focused BUY-status regression tests: 50 passed.
+- `python -m pytest -q`: 324 passed, 33 subtests passed.
+- `git diff --check` passed.
 
 ## 2026-09-24 - Clarify Missing SELL Closure Accounting
 

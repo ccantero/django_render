@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.25
+doc_version: 1.1.27
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-09-20
+last_verified_at: 2026-10-15
 source_repo: django_render
 ---
 
@@ -101,13 +101,21 @@ Implemented capabilities:
   dust as non-blocking, falls back to runtime max-position config when the latest
   healthcheck omits it, and keeps optional diagnostic gaps from collapsing the
   whole BUY-capacity answer.
-- `/buy_status` derives current raw/material/dust/unknown counts, capacity, and
-  exposure rows from one current portfolio classification snapshot; persisted
-  healthcheck details remain limited to policy and latest-BUY diagnostics.
+- `/buy_status` uses the bot-persisted position classification in
+  `bot.bot_healthcheck.details` as its authoritative BUY classification.
+  `bot.portfolio` only enriches exposure for those persisted material/dust
+  symbols and does not determine BUY capacity. Missing classification is shown
+  as unavailable; stale classification and BUY diagnostics are labeled
+  historical, with no current capacity claim.
+- BUY-status formatting treats non-finite decimal inputs as unavailable,
+  compacts symbol lists, and keeps generated messages within Telegram's
+  4096-character text limit with valid HTML.
+- `/buy_status` keeps classification counts and material/dust exposure buckets
+  aligned to the same persisted healthcheck snapshot; projection prices only
+  supply display valuations.
 - `/buy_status` accepts either flat healthcheck classification fields or a
-  nested `details.position_classification` object, and its material/dust
-  exposure display defensively rechecks `quantity * current_price` so tiny
-  residuals cannot be rendered as Material Exposure.
+  nested `details.position_classification` object. Projection values do not
+  reclassify persisted material/dust buckets.
 - `/buy_status` now renders a mobile-first operational summary with separate
   capacity, position-count, material-exposure, dust-exposure, latest-BUY, and
   status sections; material rows are approximately valued from read-only
@@ -117,7 +125,8 @@ Implemented capabilities:
   projection prices remain visibly unavailable instead of becoming zero.
 - `/buy_status` now adds a compact PnL section that sums the existing
   `bot.portfolio` projection PnL across all material rows while keeping the
-  visible row list capped at eight. The row cap applies only to Telegram
+  visible row list scaled to configured `MAX_POSITIONS`, subject to Telegram's
+  4096-character message limit. The display bound applies only to Telegram
   presentation, not to the summary. If any material row lacks usable valuation
   or entry-price data, the summary is `unavailable` rather than falsely complete.
 - `/buy_status` labels accounting-realized PnL as `Realized today (UTC)` and

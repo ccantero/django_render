@@ -1,6 +1,6 @@
 ---
 doc_id: design
-doc_version: 1.1.23
+doc_version: 1.1.24
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-09-20
@@ -215,7 +215,9 @@ positions are `material + unknown`, dust is explicitly non-blocking, missing fre
 USDT renders as `diagnostic unavailable`, and a missing latest BUY reason renders
 as `unavailable` without blocking capacity. Its mobile summary separates
 Capacity, Positions, Material exposure, Dust exposure, Latest BUY, and Status;
-sorts material exposure by approximate USDT value; caps material rows at eight;
+sorts material exposure by approximate USDT value; displays up to configured
+`MAX_POSITIONS` capacity when Telegram's 4096-character limit permits, with an
+omission count when rows do not fit;
 shows approximate unrealized PnL for displayed material rows when
 `bot.portfolio` provides usable quantity, entry price, and current price; lists
 dust symbols only when there are five or fewer; and keeps missing or non-positive
@@ -235,8 +237,8 @@ trigger trading.
 `/buy_status` includes a compact PnL section that separates open-position PnL
 from realized PnL for the current UTC calendar day. Open-position PnL sums all
 material rows with the same `bot.portfolio` projection formula used by each
-position row; the eight-row presentation cap applies only to the visible list
-and does not cap the summary. If any material row lacks usable valuation or
+position row; the configured-capacity and Telegram-length bounds apply only to the visible
+list and do not cap the summary. If any material row lacks usable valuation or
 entry-price data, the summary renders `unavailable` rather than presenting a
 partial value as complete.
 

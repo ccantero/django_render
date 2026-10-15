@@ -248,41 +248,29 @@ def format_help():
 def format_buy_status():
 	realized_today = _safe_realized_pnl_today()
 	latest = BotHealthcheck.objects.order_by("-created_at", "-id").first()
-	if latest is None:
-		return render_buy_status_message(
-			emoji="⚪",
-			raw_count=None,
-			material_count=None,
-			dust_count=None,
-			unknown_count=None,
-			effective_positions=None,
-			max_positions=None,
-			remaining_capacity=None,
-			free_usdt=None,
-			latest_buy_state="unavailable",
-			latest_buy_reason="unavailable",
-			latest_buy_symbol="unavailable",
-			read_only=False,
-			exposure=build_buy_status_exposure([], [], []),
-			status_lines=["⚪ Diagnostic unavailable: latest healthcheck missing"],
-			realized_today=realized_today,
-			unknown_value_symbols=[],
-		)
-
-	details = latest.details or {}
-	# Counts, capacity, and exposure must come from the same current portfolio
-	# classification.  Healthcheck details remain the source for the latest BUY
-	# diagnostics and configured policy, but may be stale after recovery.
-	classification = _buy_classification_from_portfolio()
-	if classification["query_fallback"]:
-		classification = _buy_classification_from_details(details)
+	details = (latest.details or {}) if latest is not None else {}
+	now = timezone.now()
+	created_at = getattr(latest, "created_at", None) if latest is not None else None
+	stale_after = timedelta(minutes=getattr(settings, "HEALTHCHECK_STALE_MINUTES", 15))
+	healthcheck_age = now - created_at if created_at is not None else None
+	healthcheck_stale = (
+		latest is None
+		or healthcheck_age is None
+		or healthcheck_age < timedelta(0)
+		or healthcheck_age > stale_after
+	)
+	# The bot-persisted classification is authoritative for current BUY state.
+	# Portfolio is only a projection used to enrich valuation of those buckets.
+	classification = _buy_classification_from_details(details)
+	if not classification["has_healthcheck_counts"]:
+		classification = _unavailable_buy_classification(classification)
 
 	raw_count = classification["raw_count"]
 	material_count = classification["material_count"]
 	dust_count = classification["dust_count"]
 	unknown_count = classification["unknown_count"]
 	max_positions = _resolve_max_positions(details)
-	free_usdt = _details_first(details, [
+	free_usdt = None if healthcheck_stale else _details_first(details, [
 		"free_usdt",
 		"available_usdt",
 		"free_capital_usdt",
@@ -290,13 +278,18 @@ def format_buy_status():
 		"capital.free_usdt",
 		"balances.USDT.free",
 	])
-	latest_buy_decision = latest_buy_decision_from_details(details)
-	latest_buy_reason = latest_buy_reason_from_details(details)
-	if latest_buy_reason is None:
+	latest_buy_decision = latest_buy_decision_from_details(details) if latest is not None else None
+	latest_buy_reason = latest_buy_reason_from_details(details) if latest is not None else None
+	if latest_buy_reason is None and not healthcheck_stale:
 		latest_buy_reason = latest_buy_rejection_reason()
 	effective_positions = _effective_positions(material_count, unknown_count)
-	remaining_capacity = details.get("remaining_buy_capacity")
-	if remaining_capacity is None:
+	# Capacity is derived from the same persisted classification snapshot; prefer
+	# the bot's explicit capacity diagnostic when it was persisted.
+	remaining_capacity = (
+		None if healthcheck_stale or not classification["has_healthcheck_counts"]
+		else _details_first(details, ["remaining_buy_capacity"])
+	)
+	if remaining_capacity is None and not healthcheck_stale:
 		remaining_capacity = _remaining_capacity(max_positions, effective_positions)
 	read_only = _resolve_read_only(details)
 	state_label, emoji, reason = interpret_buy_state(
@@ -305,19 +298,21 @@ def format_buy_status():
 		max_positions=max_positions,
 		free_usdt=free_usdt,
 		unknown_count=unknown_count,
-		read_only=read_only,
+		read_only=False if healthcheck_stale else read_only,
 		min_required_buy_amount=_resolve_min_required_buy_amount(details),
-		latest_buy_decision=latest_buy_decision,
-		latest_buy_reason=latest_buy_reason,
-		latest_buy_error=_latest_buy_error(details),
+		latest_buy_decision=None if healthcheck_stale else latest_buy_decision,
+		latest_buy_reason=None if healthcheck_stale else latest_buy_reason,
+		latest_buy_error=None if healthcheck_stale else _latest_buy_error(details),
 	)
+	if healthcheck_stale:
+		emoji = "⚪" if latest is None else "🟡"
 
 	exposure_symbols = list(dict.fromkeys(classification["material_symbols"] + classification["dust_symbols"]))
-	portfolio_rows = classification.get("portfolio_rows")
+	portfolio_rows = None
 	try:
-		if portfolio_rows is None and exposure_symbols:
+		if exposure_symbols:
 			portfolio_rows = list(Portfolio.objects.filter(symbol__in=exposure_symbols))
-		elif portfolio_rows is None:
+		else:
 			portfolio_rows = []
 	except DatabaseError:
 		logger.debug("Could not read portfolio rows for Telegram BUY status exposure")
@@ -329,12 +324,21 @@ def format_buy_status():
 	)
 	status_lines = _buy_status_lines(
 		remaining_capacity=remaining_capacity,
-		latest_buy_state=latest_buy_decision,
-		latest_buy_reason=latest_buy_reason,
-		read_only=read_only,
-		state_label=state_label,
+		latest_buy_state=None if healthcheck_stale else latest_buy_decision,
+		latest_buy_reason=None if healthcheck_stale else latest_buy_reason,
+		read_only=False if healthcheck_stale else read_only,
+		state_label="diagnostic_unavailable" if healthcheck_stale else state_label,
 	)
-	human_reason = BUY_COOLDOWN_REASON_PRESENTATION.get(str(latest_buy_reason or "").strip().lower())
+	if latest is None:
+		status_lines.insert(0, "⚪ Diagnostic unavailable: latest healthcheck missing")
+	elif healthcheck_age is None or healthcheck_age < timedelta(0):
+		status_lines.insert(0, "⚠️ Healthcheck freshness unavailable; BUY diagnostics may be outdated")
+	elif healthcheck_stale:
+		status_lines.insert(
+			0,
+			f"⚠️ Healthcheck stale: last update {format_age(healthcheck_age)} ago; BUY diagnostics may be outdated",
+		)
+	human_reason = None if healthcheck_stale else BUY_COOLDOWN_REASON_PRESENTATION.get(str(latest_buy_reason or "").strip().lower())
 	cooldown_lines = []
 	if human_reason:
 		cooldown_lines = build_cooldown_lines(build_cooldown_diagnostics(details, human_reason))
@@ -365,6 +369,8 @@ def format_buy_status():
 			if isinstance(details.get("reconciliation"), dict)
 			else []
 		),
+		classification_stale=healthcheck_stale,
+		latest_buy_historical=healthcheck_stale and latest is not None,
 	)
 
 
@@ -941,11 +947,12 @@ def to_decimal(value):
 	if value is None or value == "":
 		return None
 	if isinstance(value, Decimal):
-		return value
+		return value if value.is_finite() else None
 	try:
-		return Decimal(str(value))
+		decimal_value = Decimal(str(value))
 	except (InvalidOperation, ValueError, TypeError):
 		return None
+	return decimal_value if decimal_value.is_finite() else None
 
 
 def format_profit_guard(value):
@@ -1006,6 +1013,20 @@ def _buy_classification_from_details(details):
 		),
 		"portfolio_rows": None,
 		"query_fallback": True,
+	}
+
+
+def _unavailable_buy_classification(classification):
+	return {
+		**classification,
+		"raw_count": None,
+		"material_count": None,
+		"dust_count": None,
+		"unknown_count": None,
+		"material_symbols": [],
+		"dust_symbols": [],
+		"unknown_symbols": [],
+		"has_healthcheck_counts": False,
 	}
 
 
