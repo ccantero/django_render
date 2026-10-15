@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.14
+doc_version: 1.1.15
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-09-27
+last_verified_at: 2026-10-15
 source_repo: django_render
 ---
 
@@ -72,6 +72,23 @@ service-worker scope, installability, mobile layout, update/version behavior,
 and safe authenticated caching. Default to no offline caching of sensitive or
 bot-owned trading data until an explicit threat-model and stale-data policy
 approve it. The existing public currency-converter PWA remains separate.
+
+### `/buy_status` observation follow-ups
+
+- **P2 — Snapshot consistency:** Investigate the temporary classification
+  mismatch observed after a WALUSDT stop-loss and WLDUSDT BUY. WLDUSDT briefly
+  appeared as dust (approximately 25.35 USDT) before becoming material. Compare
+  BUY fill, portfolio update, and healthcheck timestamps to determine whether
+  the mismatch is display-only or could affect BUY capacity. Do not treat the
+  observation as a confirmed race condition without supporting evidence.
+- **P3 — Telegram formatting:** Round cooldown elapsed and remaining minutes to
+  one or two decimal places, and avoid negative-zero output such as `-0 USDT`
+  or `-0.00%`.
+- **P3 — Status clarity:** Clearly distinguish the latest historical BUY
+  rejection from the current capacity status.
+
+These items are planned investigation and improvement work; they are not
+completed fixes.
 
 ### Existing item classification
 
