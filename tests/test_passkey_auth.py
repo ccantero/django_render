@@ -2,17 +2,22 @@ import hashlib
 import json
 import time
 import hashlib as hashlib_module
+from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
+from django.db import DatabaseError
+from django.utils import timezone
 from django_otp_webauthn.models import WebAuthnCredential
 from django_otp_webauthn.helpers import WebAuthnHelper
 from webauthn.helpers.exceptions import InvalidAuthenticationResponse
 from webauthn.helpers import bytes_to_base64url
 from rest_framework.authtoken.models import Token
+from profile.models import PasskeyEnrollmentChallenge, PasskeyEnrollmentProof, PasskeyRateLimit
 
 
 def make_credential(user, credential_id, name="Device"):
@@ -102,6 +107,15 @@ class PasskeyEntryPointTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_enrollment_step_up_is_unavailable_when_feature_is_disabled(self):
+        response = self.client.post("/passkeys/enrollment/step-up/begin/", data="{}", content_type="application/json")
+
+        self.assertRedirects(
+            response,
+            f"{reverse('login')}?next=/passkeys/enrollment/step-up/begin/",
+            fetch_redirect_response=False,
+        )
+
 
 @override_settings(PASSKEYS_ENABLED=True)
 class PasskeyFlowTests(TestCase):
@@ -120,6 +134,16 @@ class PasskeyFlowTests(TestCase):
     def register(self, name):
         if not self.client.session.get("_auth_user_id"):
             self.client.force_login(self.user)
+        credentials = list(WebAuthnCredential.objects.filter(user=self.user))
+        if credentials:
+            begin = self.client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
+            self.assertEqual(begin.status_code, 200)
+            proof = self.client.post(
+                reverse("passkey_enrollment_step_up_complete"),
+                data=json.dumps({"id": credentials[0].credential_id.decode(), "type": "public-key"}),
+                content_type="application/json",
+            )
+            self.assertEqual(proof.status_code, 200)
         reauth = self.client.post(reverse("passkey_reauthenticate"), {"password": "A-strong-test-password-123"})
         self.assertEqual(reauth.status_code, 200)
         begin = self.client.post(reverse("passkey_registration_begin"), {"name": name})
@@ -163,6 +187,211 @@ class PasskeyFlowTests(TestCase):
             list(WebAuthnCredential.objects.filter(user=self.user).values_list("name", flat=True)),
             ["Phone", "Security key"],
         )
+
+    def test_second_enrollment_fails_with_password_proof_alone(self):
+        self.assertEqual(self.register("Phone").status_code, 200)
+        self.client.post(reverse("passkey_reauthenticate"), {"password": "A-strong-test-password-123"})
+
+        response = self.client.post(reverse("passkey_registration_begin"), {"name": "Password only"})
+
+        self.assertEqual(response.status_code, 428)
+        self.assertEqual(WebAuthnCredential.objects.filter(user=self.user).count(), 1)
+
+    def test_second_enrollment_requires_passkey_proof_and_preserves_session_identity(self):
+        self.assertEqual(self.register("Phone").status_code, 200)
+        credential = WebAuthnCredential.objects.get(user=self.user)
+        user_id_before = self.client.session.get("_auth_user_id")
+        session_key_before = self.client.session.session_key
+
+        begin = self.client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
+        self.assertEqual(begin.status_code, 200)
+        proof = self.client.post(
+            reverse("passkey_enrollment_step_up_complete"),
+            data=json.dumps({"id": credential.credential_id.decode(), "type": "public-key"}),
+            content_type="application/json",
+        )
+        self.assertEqual(proof.status_code, 200)
+        self.assertEqual(self.client.session.get("_auth_user_id"), user_id_before)
+        self.assertEqual(self.client.session.session_key, session_key_before)
+
+        self.client.post(reverse("passkey_reauthenticate"), {"password": "A-strong-test-password-123"})
+        response = self.client.post(reverse("passkey_registration_begin"), {"name": "Second key"})
+
+        self.assertEqual(response.status_code, 200)
+        complete = self.client.post(
+            reverse("passkey_registration_complete"),
+            data=json.dumps({"type": "public-key"}),
+            content_type="application/json",
+        )
+        self.assertEqual(complete.status_code, 200)
+        self.assertEqual(WebAuthnCredential.objects.filter(user=self.user).count(), 2)
+
+    def test_another_users_credential_cannot_authorize_enrollment(self):
+        self.assertEqual(self.register("Phone").status_code, 200)
+        other = get_user_model().objects.create_user(email="other@example.com", password="OtherPassword123", name="Other")
+        other_credential = make_credential(other, "other-user-proof")
+
+        self.client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
+        response = self.client.post(
+            reverse("passkey_enrollment_step_up_complete"),
+            data=json.dumps({"id": other_credential.credential_id.decode(), "type": "public-key"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.client.session.get("_auth_user_id"), str(self.user.pk))
+        self.assertNotIn("passkeys.enrollment_step_up_grant", self.client.session)
+
+    def test_step_up_proof_expires_and_cannot_be_replayed(self):
+        self.assertEqual(self.register("Phone").status_code, 200)
+        credential = WebAuthnCredential.objects.get(user=self.user)
+        self.client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
+        session = self.client.session
+        from profile.passkeys import _fingerprint
+        PasskeyEnrollmentChallenge.objects.filter(
+            token_hash=_fingerprint("enrollment-challenge", session["passkeys.enrollment_step_up_state"])
+        ).update(started_at=timezone.now() - timedelta(seconds=301))
+        payload = json.dumps({"id": credential.credential_id.decode(), "type": "public-key"})
+
+        expired = self.client.post(reverse("passkey_enrollment_step_up_complete"), data=payload, content_type="application/json")
+        self.assertEqual(expired.status_code, 400)
+        self.assertNotIn("passkeys.enrollment_step_up_grant", self.client.session)
+
+        self.client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
+        valid = self.client.post(reverse("passkey_enrollment_step_up_complete"), data=payload, content_type="application/json")
+        replay = self.client.post(reverse("passkey_enrollment_step_up_complete"), data=payload, content_type="application/json")
+        self.assertEqual(valid.status_code, 200)
+        self.assertEqual(replay.status_code, 400)
+
+    def test_step_up_grant_is_consumed_by_one_registration_begin(self):
+        self.assertEqual(self.register("Phone").status_code, 200)
+        credential = WebAuthnCredential.objects.get(user=self.user)
+        self.client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
+        proof = self.client.post(
+            reverse("passkey_enrollment_step_up_complete"),
+            data=json.dumps({"id": credential.credential_id.decode(), "type": "public-key"}),
+            content_type="application/json",
+        )
+        self.assertEqual(proof.status_code, 200)
+        self.client.post(reverse("passkey_reauthenticate"), {"password": "A-strong-test-password-123"})
+
+        first = self.client.post(reverse("passkey_registration_begin"), {"name": "Second"})
+        self.client.post(reverse("passkey_reauthenticate"), {"password": "A-strong-test-password-123"})
+        second = self.client.post(reverse("passkey_registration_begin"), {"name": "Third"})
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 428)
+
+    def test_persisted_proofs_cannot_be_reused_from_a_stale_session_snapshot(self):
+        self.assertEqual(self.register("Phone").status_code, 200)
+        credential = WebAuthnCredential.objects.get(user=self.user)
+        self.client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
+        self.client.post(
+            reverse("passkey_enrollment_step_up_complete"),
+            data=json.dumps({"id": credential.credential_id.decode(), "type": "public-key"}),
+            content_type="application/json",
+        )
+        self.client.post(reverse("passkey_reauthenticate"), {"password": "A-strong-test-password-123"})
+        snapshot = self.client.session
+
+        class SessionSnapshot(dict):
+            pass
+
+        snapshot_data = {
+            "passkeys.reauthenticated_at": snapshot["passkeys.reauthenticated_at"],
+            "passkeys.enrollment_step_up_grant": snapshot["passkeys.enrollment_step_up_grant"],
+        }
+        session_one = SessionSnapshot(snapshot_data.copy())
+        session_two = SessionSnapshot(snapshot_data.copy())
+        session_one.session_key = snapshot.session_key
+        session_two.session_key = snapshot.session_key
+        request_one = SimpleNamespace(user=self.user, session=session_one)
+        request_two = SimpleNamespace(user=self.user, session=session_two)
+        from profile.passkeys import _consume_enrollment_proofs
+
+        self.assertTrue(_consume_enrollment_proofs(request_one, require_passkey=True)[0])
+        self.assertFalse(_consume_enrollment_proofs(request_two, require_passkey=True)[0])
+
+    def test_step_up_challenge_is_consumed_even_from_a_stale_session_snapshot(self):
+        self.assertEqual(self.register("Phone").status_code, 200)
+        self.client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
+        original = self.client.session
+        token = original["passkeys.enrollment_step_up_state"]
+
+        class SessionSnapshot(dict):
+            pass
+
+        session_one = SessionSnapshot()
+        session_two = SessionSnapshot()
+        session_one.session_key = original.session_key
+        session_two.session_key = original.session_key
+        request_one = SimpleNamespace(user=self.user, session=session_one)
+        request_two = SimpleNamespace(user=self.user, session=session_two)
+        from profile.passkeys import _consume_enrollment_challenge
+
+        self.assertTrue(_consume_enrollment_challenge(request_one, token))
+        self.assertIsNone(_consume_enrollment_challenge(request_two, token))
+
+    def test_step_up_grant_expires_before_registration_begin(self):
+        self.assertEqual(self.register("Phone").status_code, 200)
+        credential = WebAuthnCredential.objects.get(user=self.user)
+        self.client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
+        proof = self.client.post(
+            reverse("passkey_enrollment_step_up_complete"),
+            data=json.dumps({"id": credential.credential_id.decode(), "type": "public-key"}),
+            content_type="application/json",
+        )
+        self.assertEqual(proof.status_code, 200)
+        self.client.post(reverse("passkey_reauthenticate"), {"password": "A-strong-test-password-123"})
+        session = self.client.session
+        from profile.passkeys import _proof_token_hash
+        PasskeyEnrollmentProof.objects.filter(
+            token_hash=_proof_token_hash(session["passkeys.enrollment_step_up_grant"])
+        ).update(verified_at=timezone.now() - timedelta(seconds=301))
+        session.save()
+
+        response = self.client.post(reverse("passkey_registration_begin"), {"name": "Expired proof"})
+
+        self.assertEqual(response.status_code, 428)
+        self.assertNotIn("passkeys.enrollment_step_up_grant", self.client.session)
+
+    def test_step_up_challenge_cannot_complete_after_authenticated_identity_changes(self):
+        self.assertEqual(self.register("Phone").status_code, 200)
+        credential = WebAuthnCredential.objects.get(user=self.user)
+        self.client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
+        other = get_user_model().objects.create_user(email="other@example.com", password="OtherPassword123", name="Other")
+        self.client.force_login(other)
+
+        response = self.client.post(
+            reverse("passkey_enrollment_step_up_complete"),
+            data=json.dumps({"id": credential.credential_id.decode(), "type": "public-key"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.client.session.get("_auth_user_id"), str(other.pk))
+        self.assertNotIn("passkeys.enrollment_step_up_grant", self.client.session)
+
+    def test_first_passkey_bootstrap_succeeds_with_password_only(self):
+        self.client.force_login(self.user)
+        self.client.post(reverse("passkey_reauthenticate"), {"password": "A-strong-test-password-123"})
+
+        response = self.client.post(reverse("passkey_registration_begin"), {"name": "First key"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.session.get("_auth_user_id"), str(self.user.pk))
+
+    def test_enrollment_step_up_requires_csrf_and_authentication(self):
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+        csrf_client.get(reverse("passkey_manage"))
+        csrf_response = csrf_client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
+        csrf_complete = csrf_client.post(reverse("passkey_enrollment_step_up_complete"), data="{}", content_type="application/json")
+        anonymous = Client().post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
+
+        self.assertEqual(csrf_response.status_code, 403)
+        self.assertEqual(csrf_complete.status_code, 403)
+        self.assertEqual(anonymous.status_code, 302)
 
     def test_enrollment_requires_recent_password_reauthentication(self):
         self.client.force_login(self.user)
@@ -403,6 +632,16 @@ class PasskeyFlowTests(TestCase):
         )
 
         self.assertEqual(limited.status_code, 429)
+
+    def test_rate_limiter_fails_closed_when_database_enforcement_fails(self):
+        from profile.passkeys import _consume_rate_limit
+
+        with patch("profile.passkeys._maybe_cleanup_rate_limits"), patch.object(
+            PasskeyRateLimit.objects,
+            "select_for_update",
+            side_effect=DatabaseError("database unavailable"),
+        ):
+            self.assertFalse(_consume_rate_limit("test", "identity", 2))
 
     def test_admin_login_shows_passkey_link_when_enabled(self):
         response = self.client.get("/admin/login/?next=/admin/")

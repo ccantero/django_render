@@ -2,7 +2,7 @@
 
 Date: 2026-10-15  
 Branch: `feat/secure-passkey-auth-20261015`  
-Status: implementation complete; PR opened after local validation.
+Status: review blockers addressed in the existing PR branch; regression suite passed.
 
 ## 1. Architecture before and after
 
@@ -21,6 +21,16 @@ ordinary Django session and rotates it. Authenticated users manage credentials
 at `/security/passkeys/`. Password login, custom user model, APIs, and Admin
 authorization stay in place. Allauth/social login and the authenticated PWA
 were not added.
+
+Additional credential enrollment now has a dedicated authenticated step-up
+ceremony. It verifies a credential from the current user using
+`authenticate_complete(user=request.user, ...)`, never calls Django `login()`
+or OTP login, and does not change the identity or session key. Short-lived
+proof records are HMAC-keyed and bound to the user, auth hash, and session.
+Registration begin consumes password and, where a passkey already exists,
+passkey proof rows together under database row locks. A separate challenge
+row makes the step-up WebAuthn challenge one-use even when concurrent requests
+reuse a stale session snapshot. First-passkey bootstrap remains password-only.
 
 ## 2. Library selection and alternatives
 
@@ -47,7 +57,9 @@ audit tooling (`pip-audit`) was unavailable in this environment.
 - `core/urls.py`, `core/templates/base.html`, `core/templates/login.html`
 - `profile/models.py`, `profile/passkeys.py`
 - `profile/migrations/0002_passkey_rate_limit.py`,
-  `profile/migrations/0003_passkey_rate_limit_window_index.py`
+  `profile/migrations/0003_passkey_rate_limit_window_index.py`,
+  `profile/migrations/0004_passkeyenrollmentproof.py`,
+  `profile/migrations/0005_passkeyenrollmentchallenge.py`
 - `profile/templates/profile/passkeys.html`
 - `templates/admin/passkey_login.html`
 - `static/profile/passkeys.js`
@@ -60,8 +72,9 @@ audit tooling (`pip-audit`) was unavailable in this environment.
 
 `AUTH_USER_MODEL` remains `profile.UserProfile`; migration `0001_initial` and
 all existing user rows are untouched. The new profile migrations create only
-the rate-limit model/index. The selected library's migrations add credential
-and user-handle tables related to the existing user model. No migration
+Django-owned rate-limit, expiring enrollment-proof, and step-up challenge
+tables/indexes. The selected library's migrations add credential and
+user-handle tables related to the existing user model. No migration
 rewrites users, passwords, group/permission links, or bot-owned tables.
 `test_existing_identity_and_permissions_are_preserved` verifies user primary
 key, email, password hash, staff/superuser state, group membership and
@@ -85,13 +98,23 @@ path. No claim is made that `/admin/` itself performs a WebAuthn ceremony.
 - WebAuthn user verification is required. Challenges are session-bound,
   consumed once by the library, and expire after at most five minutes.
 - Registration and revocation require current password; further enrollment
-  also verifies a previously registered passkey. Both use CSRF-protected POST.
+  also verifies a previously registered passkey. The dedicated step-up
+  endpoints are authenticated and CSRF-protected and never call the login
+  backend or rotate the authenticated user's identity.
+- Password and passkey proofs are HMAC-tokenized, tied to the current user's
+  session key/auth hash, expire after five minutes, and are atomically consumed
+  under row locks. Step-up challenge state is server-side and atomically
+  consumed before assertion verification; a stale session snapshot cannot
+  replay it.
 - Registration enforces name bounds and credential uniqueness via the library;
   credentials are scoped to the current user for management and revocation.
 - Authentication checks origin/RP hash/credential ownership via the chosen
   verifier, rejects inactive users, rotates sessions, and uses generic errors.
 - DB-backed HMAC-keyed fixed-window rate limits cover login, registration,
-  reauthentication, and revocation. Limiter database errors fail closed.
+  reauthentication, step-up, and revocation. Updates use `select_for_update`
+  inside transactions; database failures fail closed. Expired-row cleanup is
+  throttled to once per process every five minutes, with cleanup errors treated
+  as best-effort maintenance failures.
 - Error logging from the WebAuthn package is disabled; challenge/assertion data
   and credential material are not logged or returned by management pages.
 - Existing secure session/CSRF cookies and HTTPS redirect remain. Production
@@ -107,33 +130,41 @@ path. No claim is made that `/admin/` itself performs a WebAuthn ceremony.
 - Initial focused entry-point tests failed before route/template implementation
   (three expected failures, one pass), confirming the test detected missing
   behavior before implementation.
-- Final full suite: `.venv/bin/pytest -q` — **353 passed, 1 warning, 33
-  subtests passed in 32.53s**. Warning: DRF pagination on an unordered
+- New focused passkey suite after review fixes: **38 passed, 1 warning**.
+- Final full suite: `.venv/bin/pytest -q` — **366 passed, 1 warning, 33
+  subtests passed in 64.60s**. Warning: DRF pagination on an unordered
   `UserProfile` queryset in the token-auth regression test.
 - `manage.py check` — no issues.
 - `manage.py makemigrations --check --dry-run` — no changes detected.
 - `python -m compileall -q core django_render profile tests` — passed.
 - `node --check static/profile/passkeys.js` — passed.
 - `git diff --check` — passed.
+- `.venv/bin/python -m pip check` — no broken requirements found.
 - Package-level tests use a fake ceremony helper to test application flow;
   these do not prove browser/hardware interoperability. Direct verifier tests
   exercise the selected library's rejection of wrong origin/RP hash.
 - `pip-audit` could not run because it is not installed in the execution
-  environment. Dependency versions and package advisories still require
-  independent review before deployment.
+  environment (`python -m pip_audit` reports no module). `pip check` only
+  validates package compatibility and is not a vulnerability audit. Full
+  dependency/advisory review remains a deployment gate.
 
 ## 8. Migration and deployment risks
 
-No production migrations were run. Deploy the migrations through the normal
-release process with a database backup and staging verification. The new
-rate-limit table is Django-owned; the library migrations are also Django
-models and reference `profile.UserProfile`. Apply them before enabling the
-feature. Set `PASSKEY_RP_ID`, `PASSKEY_ALLOWED_ORIGINS`, and then
+No production migrations were run. Deploy profile migrations `0002` through
+`0005` and the `django-otp-webauthn` app migrations through the normal release
+process with a database backup and staging verification. The new rate-limit,
+proof, and challenge tables are Django-owned; the library migrations are also
+Django models and reference `profile.UserProfile`. Apply them before enabling
+the feature. Set `PASSKEY_RP_ID`, `PASSKEY_ALLOWED_ORIGINS`, and then
 `PASSKEYS_ENABLED=true`; origins must match the actual browser-facing HTTPS
 site. Verify trusted forwarded-proto handling, secure cookies, and cross-worker
 session persistence. To roll back, turn the feature flag off and redeploy;
 retain schema and credential rows. Existing passwords, accounts, tokens,
 permissions, and sessions are not removed.
+This repository does not currently contain a `docs/db/` DER/schema artifact;
+the generated Django migrations and architecture documentation are the schema
+record for these Django-owned tables. `docs/DATA_CONTRACT.md` was reviewed and
+left unchanged because no bot-owned/shared table semantics changed.
 
 ## 9. Manual verification checklist
 
@@ -147,7 +178,8 @@ Work Cloud.
 - Chrome/Edge/Firefox desktop: verify Windows Hello and a hardware security key
   where available; test cancellation and browser-without-WebAuthn fallback.
 - Verify wrong-origin requests, expired challenges, repeated assertions,
-  cross-account credential IDs, inactive accounts, and rate limits fail safely.
+  replayed step-up challenge, cross-account credentials, expired/replayed
+  proof grants, inactive accounts, and rate limits fail safely.
 - Verify password and DRF token login, staff Admin access, nonstaff Admin
   denial, logout invalidation, CSRF rejection, and safe `next` redirects.
 - Confirm production HTTPS, RP ID/origin configuration, reverse-proxy header
@@ -162,5 +194,10 @@ Work Cloud.
 - Confirm the exact production origin/RP ID and browser support matrix.
 - Review whether password reauthentication for revocation and the additional
   passkey verification for second-key enrollment meet operator policy.
+- Confirm row-lock behavior and transactional guarantees on the deployed
+  PostgreSQL configuration; SQLite's `select_for_update()` is a no-op and
+  cannot prove production concurrency behavior.
+- Run a vulnerability audit against the complete locked/transitive dependency
+  graph before deployment; `pip-audit` was unavailable in this environment.
 - Confirm the recovery procedure for a user who loses every passkey and cannot
   use the existing password through the operator's established process.

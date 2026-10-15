@@ -1,6 +1,6 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.16
+doc_version: 1.1.17
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-15
@@ -60,7 +60,9 @@ token authentication, admin, and permissions. Optional WebAuthn enrollment,
 login, revocation, recovery guidance, bounded abuse controls, explicit
 HTTPS/RP ID/origin configuration, and focused tests are implemented using
 `django-otp-webauthn`. Verify proxy header trust and real Safari/iOS and desktop
-authenticator behavior during deployment. Keep password and token
+authenticator behavior during deployment. Subsequent enrollment requires a
+separate user/session-bound step-up challenge and an atomically consumed
+passkey proof in addition to recent password proof. Keep password and token
 authentication available.
 
 #### P3 — Authenticated Dashboard PWA

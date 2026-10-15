@@ -1,6 +1,6 @@
 ---
 doc_id: design
-doc_version: 1.1.25
+doc_version: 1.1.26
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-15
@@ -135,7 +135,10 @@ does not reimplement SellService logic or add direct Binance calls.
   available for fallback and recovery.
 
 Passkey enrollment/revocation require fresh password reauthentication and
-CSRF-protected POSTs. Subsequent enrollment also requires a registered key.
+CSRF-protected POSTs. Subsequent enrollment also requires a dedicated
+user-bound WebAuthn assertion; proof grants are short-lived and atomically
+one-use. The step-up flow does not invoke normal login or rotate/change the
+authenticated identity.
 The Admin page continues to use Django's standard password form and enforces
 the existing staff/superuser check after passkey login. Device recovery uses
 another registered credential or established operator identity verification;

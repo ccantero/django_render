@@ -6,8 +6,8 @@
       data-reauth-url="{% url 'passkey_reauthenticate' %}"
       data-register-begin-url="{% url 'passkey_registration_begin' %}"
       data-register-complete-url="{% url 'passkey_registration_complete' %}"
-      data-auth-begin-url="{% url 'passkey_authentication_begin' %}"
-      data-auth-complete-url="{% url 'passkey_authentication_complete' %}">
+      data-step-up-begin-url="{% url 'passkey_enrollment_step_up_begin' %}"
+      data-step-up-complete-url="{% url 'passkey_enrollment_step_up_complete' %}">
   <div class="row justify-content-center"><div class="col-lg-8">
     <h1 class="h3 mb-3">Passkeys and account security</h1>
     <p>Passkeys let you sign in with your device screen lock, biometrics, or a security key. Your private key stays with your authenticator.</p>
@@ -42,7 +42,7 @@
       <label class="sr-only" for="reauth-password">Current password</label>
       <input id="reauth-password" type="password" name="password" class="form-control mr-2" autocomplete="current-password" placeholder="Current password" required>
       <button class="btn btn-secondary" type="submit">Verify password</button>
-      <span class="small ml-2">Required for each enrollment. Verification expires after five minutes. If you already have a passkey, verify with it first.</span>
+      <span class="small ml-2">Password verification is required for every enrollment. If you have a passkey already, prove it too. Each proof is single-use and expires after five minutes.</span>
     </form>
     <form id="passkey-register-form">
       {% csrf_token %}

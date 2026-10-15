@@ -1,6 +1,6 @@
 ---
 doc_id: readme
-doc_version: 1.1.20
+doc_version: 1.1.21
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-15
@@ -457,12 +457,14 @@ Passkeys are an opt-in addition to existing email/password accounts. Set
 `PASSKEYS_ENABLED=true`, `PASSKEY_RP_ID` to the relying-party hostname, and
 `PASSKEY_ALLOWED_ORIGINS` to comma-separated exact HTTPS origins before
 enabling in production. Run the Django migrations during a normal deploy;
-they add Django-owned rate-limit and credential tables without rewriting
-users or bot tables.
+they add Django-owned rate-limit, one-use enrollment-proof, and WebAuthn
+challenge tables without rewriting users or bot tables.
 
 An existing signed-in user manages credentials at `/security/passkeys/`.
 Adding or revoking requires the current password; adding a later credential
-also requires verification by an existing passkey. Device loss requires
+also requires a dedicated, five-minute WebAuthn step-up against a key owned by
+the same user. Password and passkey proofs are consumed atomically for one
+registration. Device loss requires
 another registered passkey or the operator's established identity-verification
 and account recovery process. Email possession alone is not recovery.
 

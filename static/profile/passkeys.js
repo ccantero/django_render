@@ -104,11 +104,11 @@
       deviceReauth.disabled = true;
       status.textContent = "Verify with one of your registered passkeys…";
       try {
-        const options = await post(settings.dataset.authBeginUrl, {}, true);
+        const options = await post(settings.dataset.stepUpBeginUrl, {}, true);
         const credential = await navigator.credentials.get({ publicKey: requestOptions(options) });
         if (!credential) throw new Error("No passkey was selected.");
-        await post(settings.dataset.authCompleteUrl, serializeCredential(credential, false), true);
-        status.textContent = "Passkey verified. Enter your current password to authorize enrollment.";
+        await post(settings.dataset.stepUpCompleteUrl, serializeCredential(credential, false), true);
+        status.textContent = "Passkey proof accepted. Enter your current password to authorize one enrollment.";
       } catch (error) { status.textContent = error.message; }
       finally { deviceReauth.disabled = false; }
     });
@@ -118,7 +118,7 @@
     const password = document.getElementById("reauth-password").value;
     try {
       await post(settings.dataset.reauthUrl, { password }, false);
-      status.textContent = "Password verified. You can register one passkey in the next five minutes.";
+      status.textContent = "Password proof accepted. If you have an existing passkey, verify it too before registering.";
       document.getElementById("reauth-password").value = "";
     } catch (error) { status.textContent = error.message; }
   });
