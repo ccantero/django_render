@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.19
+doc_version: 1.1.20
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-15
+last_verified_at: 2026-10-17
 source_repo: django_render
 ---
 
@@ -49,6 +49,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Staff-only correction request creation
 - Public app liveness endpoint at `/health/` for Render keepalive/cron pings
 - Dashboard Disk Usage visibility from latest bot healthcheck VPS disk data
+- Experimental authenticated, read-only bot diagnostics API for health and persisted ETHUSDT inventory evidence
 
 ---
 
@@ -93,6 +94,162 @@ The dashboard and bot are separate projects and share only the database.
 - The dashboard may create `PENDING` rows in `bot.manual_corrections` only through the explicit review workflow.
 - The bot-side CLI/service applies or rejects corrections.
 - The dashboard may hide/disable obvious duplicate correction clicks for detections with linked `PENDING` or `APPLIED` corrections, but bot-side duplicate validation remains authoritative.
+
+## Read-only Bot Diagnostics API (PoC)
+
+The PoC exposes only two GET routes for an authenticated operator client:
+
+- `GET /api/bot/health`
+- `GET /api/bot/inventory/ETHUSDT`
+
+Configure a dedicated `BOT_DIAGNOSTICS_API_TOKEN` of at least 32 characters in
+the deployment environment. It is independent of Django user tokens and is
+accepted only by these diagnostics views. Leave it unset to keep the API
+closed. Send it as `Authorization: Bearer <token>`; do not put it in source,
+chat, shell history, or logs. Responses are `no-store` and expose an
+allowlisted set of fields only.
+
+The inventory endpoint reads one `bot.portfolio` row, aggregates positive
+`bot.position_lots` rows for ETHUSDT, reads the latest healthcheck, and selects
+the latest matching `bot.dust_detections` observation. It returns quantities
+and valuations as decimal strings, evidence timestamps, freshness, persisted
+BUY classification/capacity evidence when present, and explicit unavailable
+states. The dust row's `spot_quantity` is a timestamped event observation, not
+a complete or current account snapshot. The bot does not periodically persist
+complete per-asset Spot balances. Its read-only Binance comparison script
+fetches live balances when run and compares them to local lots/generations
+without persisting that snapshot. Django never calls Binance. Portfolio data is
+a projection, open lots are accounting evidence, and neither is asserted to
+be current Binance Spot balance. Lot freshness stays `unknown` because the
+Django read model has no lot-update timestamp. Active generation data also
+stays unavailable because no position-generation model is mapped here.
+
+For local HTTP verification, set a disposable token in the local environment
+and start Django:
+
+```bash
+export BOT_DIAGNOSTICS_API_TOKEN="$(openssl rand -hex 32)"
+python manage.py runserver 127.0.0.1:8000
+```
+
+In another terminal, verify anonymous rejection and authenticated reachability:
+
+```bash
+curl -i http://127.0.0.1:8000/api/bot/health
+curl -i -H "Authorization: Bearer $BOT_DIAGNOSTICS_API_TOKEN" \
+  http://127.0.0.1:8000/api/bot/health
+curl -i -H "Authorization: Bearer $BOT_DIAGNOSTICS_API_TOKEN" \
+  http://127.0.0.1:8000/api/bot/inventory/ETHUSDT
+```
+
+The local default SQLite database does not contain bot-owned tables, so an
+authenticated request can correctly return `503 evidence_unavailable` there.
+Use a disposable PostgreSQL fixture with the required bot tables to inspect a
+successful response; do not point this procedure at production. Focused API
+tests mock the bot read models and require no production database or Binance
+credentials.
+
+Example response fragments below use synthetic fixture data, not the reported
+incident or a live exchange reading:
+
+```json
+{
+  "healthcheck": {
+    "source": "bot.bot_healthcheck",
+    "status": "ok",
+    "observed_at": "2026-10-17T12:00:00+00:00",
+    "healthcheck_at": "2026-10-17T11:59:18+00:00",
+    "age_seconds": 42,
+    "freshness": "fresh"
+  }
+}
+```
+
+```json
+{
+  "symbol": "ETHUSDT",
+  "observed_at": "2026-10-17T12:00:00+00:00",
+  "portfolio": {
+    "source": "bot.portfolio",
+    "quantity": "0.25",
+    "entry_price": "3000",
+    "current_price": "3200",
+    "estimated_value_usdt": "800.00",
+    "valuation_status": "available",
+    "updated_at": "2026-10-17T11:59:10+00:00",
+    "freshness": "fresh"
+  },
+  "open_lots": {
+    "source": "bot.position_lots",
+    "quantity": "0.25",
+    "count": 2,
+    "first_opened_at": "2026-10-15T12:00:00+00:00",
+    "last_opened_at": "2026-10-16T12:00:00+00:00",
+    "freshness": "unknown",
+    "freshness_reason": "Open lot rows have no update timestamp in the Django read model."
+  },
+  "latest_spot_observation": {
+    "source": "bot.dust_detections",
+    "quantity": "0.000093",
+    "quantity_status": "available",
+    "open_lot_quantity": "0.25",
+    "price_usdt": "2370",
+    "estimated_value_usdt": "0.22041",
+    "event_type": "lot_balance_drift_detected",
+    "reason": "balance differs from open FIFO lots",
+    "source_label": "dust_detection_service",
+    "observed_at": "2026-10-17T11:57:00+00:00",
+    "freshness": "fresh",
+    "current_exchange_truth": false
+  },
+  "quantity_difference": {
+    "portfolio_minus_open_lots": "0.00",
+    "status": "available"
+  },
+  "buy_capacity": {
+    "source": "bot.bot_healthcheck.details",
+    "freshness": "fresh",
+    "symbol_classification": "material",
+    "global": {
+      "positions_count": 15,
+      "material_positions_count": 15,
+      "dust_positions_count": 0,
+      "unknown_value_positions_count": 0,
+      "effective_positions_count": 15,
+      "max_positions": 15,
+      "remaining_buy_capacity": 0
+    }
+  },
+  "active_generation": {
+    "available": false,
+    "status": "unavailable",
+    "reason": "No position generation read model is mapped in this Django application."
+  },
+  "exchange_spot": {
+    "available": false,
+    "status": "unavailable",
+    "quantity": null,
+    "estimated_value_usdt": null,
+    "reason": "Django does not call Binance; persisted database evidence is not current exchange truth."
+  }
+}
+```
+
+An authenticated HTTP route alone does not connect ChatGPT Work Cloud to it.
+The documented route can be exercised through a configured GPT Action if that
+ChatGPT surface and workspace permit custom actions, bearer API-key auth, and
+the Render hostname. That requires an OpenAPI schema and a dedicated token
+entered into the action's secret configuration. This repository does not
+configure the action, secret delivery, or workspace domain allowlist, so
+direct ChatGPT Work Cloud access remains **unverified**. Verify with a
+short-lived dedicated token in action preview; do not paste it into a prompt.
+See [OpenAI's GPT Actions configuration guide](https://help.openai.com/en/articles/9442513-configuring-actions-in-gpts)
+for supported bearer API-key authentication, OpenAPI schema setup, and workspace
+domain restrictions.
+
+The PoC deliberately excludes Binance API access, arbitrary symbol queries,
+database/SQL access, logs, SSH/shell, trading, accounting changes, service
+control, and any general-purpose agent or MCP service.
 
 ---
 
@@ -213,6 +370,10 @@ Optional Telegram diagnostics allowlist settings:
 
 - `TELEGRAM_ALLOWED_CHAT_IDS`
 - `TELEGRAM_ALLOWED_USER_IDS`
+
+Optional diagnostics API setting:
+
+- `BOT_DIAGNOSTICS_API_TOKEN` — dedicated bearer secret (minimum 32 characters); unset disables the API.
 
 The mobile diagnostics commands require the incoming Telegram chat ID or user ID
 to match one of those allowlists. The commands use safe HTML formatting and only

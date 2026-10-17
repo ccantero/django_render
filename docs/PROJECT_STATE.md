@@ -1,13 +1,37 @@
 ---
 doc_id: project-state
-doc_version: 1.1.28
+doc_version: 1.1.29
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-15
+last_verified_at: 2026-10-17
 source_repo: django_render
 ---
 
 # Django Dashboard — Project State
+
+## Read-only Bot Diagnostics API PoC
+
+Two GET-only routes are implemented for an external diagnostics client:
+`/api/bot/health` and `/api/bot/inventory/ETHUSDT`. A separate bearer token is
+required; `BOT_DIAGNOSTICS_API_TOKEN` is unset by default, fails closed when
+missing/short, and is not the Django user-token credential. Health uses the
+latest persisted bot healthcheck. ETH inventory joins the portfolio projection
+with an aggregate of positive FIFO lot quantities and exposes persisted
+classification/capacity evidence only while its healthcheck is fresh. It also
+returns the latest ETHUSDT `bot.dust_detections` event's Spot quantity and
+observation timestamp when available; this is historical event evidence, not a
+complete account snapshot.
+
+The response is bounded, sanitized, decimal-safe, and marked `no-store`.
+The bot does not periodically persist complete per-asset Binance Spot
+balances. Its read-only comparison CLI fetches a live balance snapshot for a
+one-off comparison and does not persist it. No current Binance Spot snapshot
+or active position-generation read model is available to Django; no direct
+Binance client or new persistence was added. The API is locally testable with
+mocked reads and can return 503 when bot-owned tables are absent.
+ChatGPT Work Cloud reachability is unverified: deployment of an endpoint does
+not provide a Work connector or safe cloud secret delivery. Production
+deployment and any live access test remain outstanding.
 
 ## Current State
 
