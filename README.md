@@ -1,6 +1,6 @@
 ---
 doc_id: readme
-doc_version: 1.1.20
+doc_version: 1.1.21
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-17
@@ -97,7 +97,9 @@ The dashboard and bot are separate projects and share only the database.
 
 ## Read-only Bot Diagnostics API (PoC)
 
-The PoC exposes only two GET routes for an authenticated operator client:
+The PoC exposes two fixed diagnostics resources to an authenticated operator
+client. GET retrieves data; HEAD and OPTIONS are non-mutating; write methods
+are rejected:
 
 - `GET /api/bot/health`
 - `GET /api/bot/inventory/ETHUSDT`
@@ -112,17 +114,33 @@ allowlisted set of fields only.
 The inventory endpoint reads one `bot.portfolio` row, aggregates positive
 `bot.position_lots` rows for ETHUSDT, reads the latest healthcheck, and selects
 the latest matching `bot.dust_detections` observation. It returns quantities
-and valuations as decimal strings, evidence timestamps, freshness, persisted
-BUY classification/capacity evidence when present, and explicit unavailable
-states. The dust row's `spot_quantity` is a timestamped event observation, not
-a complete or current account snapshot. The bot does not periodically persist
-complete per-asset Spot balances. Its read-only Binance comparison script
-fetches live balances when run and compares them to local lots/generations
-without persisting that snapshot. Django never calls Binance. Portfolio data is
-a projection, open lots are accounting evidence, and neither is asserted to
-be current Binance Spot balance. Lot freshness stays `unknown` because the
-Django read model has no lot-update timestamp. Active generation data also
-stays unavailable because no position-generation model is mapped here.
+and valuations as decimal strings, source timestamps, observation recency,
+persisted BUY classification/capacity evidence when present, and explicit
+unavailable states. `latest_spot_observation.observed_spot_quantity` is the
+quantity recorded by that historical event. `observation_recency: recent`
+means only that the event timestamp is recent; `current_exchange_truth` remains
+false. It is never a current Binance Spot balance. The bot does not persist a
+complete per-asset Spot balance snapshot. Its read-only Binance comparison
+script obtains a live balance response and compares it with local lots and
+generations without persisting that exchange snapshot. Django never calls
+Binance. `bot.portfolio` is a local projection, `bot.position_lots` is FIFO
+accounting evidence, and neither is represented as current exchange truth. Lot
+freshness stays `unknown` because the Django read model has no lot-update
+timestamp. Active generation data stays unavailable because no position
+generation model is mapped here.
+
+BUY capacity is bot-produced healthcheck evidence. Fresh values are labeled
+`current_as_of_healthcheck`; stale values move under `historical_global` and
+`global` becomes null. Partial fresh capacity fields are labeled
+`partial_as_of_healthcheck`, with missing individual values left null. Django
+does not recalculate capacity from portfolio rows or FIFO lots. A symbol's
+`material` classification describes portfolio materiality; it does not prove
+that a specific position generation consumes a BUY slot.
+
+The inventory request issues separate bounded reads for healthcheck, Spot event,
+portfolio, and FIFO lot aggregates. It is not an atomic cross-source snapshot.
+`consistency.atomic` is false and portfolio-versus-lot differences are marked
+`not_synchronized`; compare their source timestamps before drawing conclusions.
 
 For local HTTP verification, set a disposable token in the local environment
 and start Django:
@@ -142,12 +160,19 @@ curl -i -H "Authorization: Bearer $BOT_DIAGNOSTICS_API_TOKEN" \
   http://127.0.0.1:8000/api/bot/inventory/ETHUSDT
 ```
 
+Run the focused tests without any bot tables or credentials:
+
+```bash
+.venv/bin/pytest dashboard/test_bot_diagnostics_api.py -q
+```
+
 The local default SQLite database does not contain bot-owned tables, so an
 authenticated request can correctly return `503 evidence_unavailable` there.
 Use a disposable PostgreSQL fixture with the required bot tables to inspect a
 successful response; do not point this procedure at production. Focused API
 tests mock the bot read models and require no production database or Binance
-credentials.
+credentials. The API uses four read queries for inventory and one for health;
+the lot aggregate returns one row but its work scales with matching lot rows.
 
 Example response fragments below use synthetic fixture data, not the reported
 incident or a live exchange reading:
@@ -161,6 +186,22 @@ incident or a live exchange reading:
     "healthcheck_at": "2026-10-17T11:59:18+00:00",
     "age_seconds": 42,
     "freshness": "fresh"
+  }
+}
+```
+
+When capacity evidence is stale, the response keeps the values explicitly
+historical and makes the current-capacity field unavailable:
+
+```json
+{
+  "capacity_status": "historical",
+  "freshness": "stale",
+  "global": null,
+  "historical_global": {
+    "effective_positions_count": 15,
+    "max_positions": 15,
+    "remaining_buy_capacity": 0
   }
 }
 ```
@@ -190,7 +231,7 @@ incident or a live exchange reading:
   },
   "latest_spot_observation": {
     "source": "bot.dust_detections",
-    "quantity": "0.000093",
+    "observed_spot_quantity": "0.000093",
     "quantity_status": "available",
     "open_lot_quantity": "0.25",
     "price_usdt": "2370",
@@ -198,17 +239,25 @@ incident or a live exchange reading:
     "event_type": "lot_balance_drift_detected",
     "reason": "balance differs from open FIFO lots",
     "source_label": "dust_detection_service",
-    "observed_at": "2026-10-17T11:57:00+00:00",
-    "freshness": "fresh",
+    "detected_at": "2026-10-17T11:57:00+00:00",
+    "observation_recency": "recent",
     "current_exchange_truth": false
   },
   "quantity_difference": {
     "portfolio_minus_open_lots": "0.00",
-    "status": "available"
+    "status": "available",
+    "comparability": "not_synchronized"
+  },
+  "consistency": {
+    "atomic": false,
+    "mode": "separate_queries",
+    "cross_source_comparisons": "not_synchronized"
   },
   "buy_capacity": {
     "source": "bot.bot_healthcheck.details",
     "freshness": "fresh",
+    "capacity_status": "current_as_of_healthcheck",
+    "global_status": "available",
     "symbol_classification": "material",
     "global": {
       "positions_count": 15,
@@ -236,16 +285,36 @@ incident or a live exchange reading:
 ```
 
 An authenticated HTTP route alone does not connect ChatGPT Work Cloud to it.
-The documented route can be exercised through a configured GPT Action if that
-ChatGPT surface and workspace permit custom actions, bearer API-key auth, and
-the Render hostname. That requires an OpenAPI schema and a dedicated token
-entered into the action's secret configuration. This repository does not
-configure the action, secret delivery, or workspace domain allowlist, so
-direct ChatGPT Work Cloud access remains **unverified**. Verify with a
-short-lived dedicated token in action preview; do not paste it into a prompt.
-See [OpenAI's GPT Actions configuration guide](https://help.openai.com/en/articles/9442513-configuring-actions-in-gpts)
-for supported bearer API-key authentication, OpenAPI schema setup, and workspace
-domain restrictions.
+The currently documented candidate is a **custom GPT Action**, which is a
+separate ChatGPT surface and does not establish native ChatGPT Work
+connectivity. A custom GPT Action needs an OpenAPI schema, API-key auth
+configured as Bearer, a cloud-reachable HTTPS Render hostname, the dedicated
+API token stored in the Action's secret configuration, and (for applicable
+Enterprise/Edu workspaces) the Render domain allowed by workspace policy. Do
+not put the token in a prompt. OpenAI's current guide says custom GPT Actions
+for affected Enterprise workspaces are scheduled for retirement on
+2026-12-11; the replacement path is not verified for this PoC. No Action,
+secret delivery, workspace domain permission, or cloud request has been
+configured or tested, so ChatGPT Work compatibility remains **UNVERIFIED**.
+See [OpenAI's GPT Actions configuration guide](https://help.openai.com/en/articles/9442513-configuring-actions-in-gpts).
+
+Proposed cloud check after an approved non-production endpoint is available:
+create a custom GPT Action with the two fixed paths in an OpenAPI schema, use a
+short-lived token for a synthetic-data environment, configure Bearer API-key
+authentication in the Action secret field, allow the test Render hostname in
+workspace policy, then call both operations from Action Preview. Confirm
+anonymous/wrong-token calls fail and no credential appears in prompts or logs.
+This tests the custom GPT Action path only; native ChatGPT Work connectivity
+requires a supported Work integration and remains unverified here.
+
+Production assumes Render's HTTPS termination and Django's production HTTPS
+redirect/HSTS settings. Store the dedicated token only in the Render secret
+environment and rotate it there. Render provides edge DDoS protection, but
+this application has no per-route rate limiter; repeated authentication
+failures do not query bot tables, though targeted application-level request
+abuse is not ruled out. Before broad public enablement, use a trusted edge
+allowlist/rate limit for these fixed paths where available, or add a small
+application-level limit without introducing shared infrastructure.
 
 The PoC deliberately excludes Binance API access, arbitrary symbol queries,
 database/SQL access, logs, SSH/shell, trading, accounting changes, service

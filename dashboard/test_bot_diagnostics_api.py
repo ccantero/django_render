@@ -25,12 +25,41 @@ class BotDiagnosticsAPITests(TestCase):
         self.assertEqual(response.status_code, 401)
         health.order_by.assert_not_called()
 
-    def test_invalid_or_unconfigured_bearer_secret_is_rejected(self):
-        response = self.client.get(
-            "/api/bot/health",
-            HTTP_AUTHORIZATION="Bearer wrong-token",
-        )
+    def test_inventory_rejects_anonymous_request_without_reading_bot_tables(self):
+        with patch("dashboard.bot_diagnostics_api.BotHealthcheck.objects") as health, \
+             patch("dashboard.bot_diagnostics_api.DustDetection.objects") as dust, \
+             patch("dashboard.bot_diagnostics_api.Portfolio.objects") as portfolio, \
+             patch("dashboard.bot_diagnostics_api.PositionLot.objects") as lots:
+            response = self.client.get("/api/bot/inventory/ETHUSDT")
+
         self.assertEqual(response.status_code, 401)
+        health.order_by.assert_not_called()
+        dust.filter.assert_not_called()
+        portfolio.filter.assert_not_called()
+        lots.filter.assert_not_called()
+
+    def test_diagnostics_bearer_authentication_is_scoped_to_diagnostics_routes(self):
+        response = self.client.get("/health/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_invalid_or_unconfigured_bearer_secret_is_rejected(self):
+        for authorization in (
+            "Bearer wrong-token",
+            f"Bearer {'x' * 31}",
+            f"Bearer {'x' * 32}",
+            "Basic not-a-bearer-token",
+            "Bearer one two",
+            f"Bearer {'x' * 513}",
+            "Bearer",
+        ):
+            with self.subTest(authorization=authorization[:32]):
+                with patch("dashboard.bot_diagnostics_api.BotHealthcheck.objects") as health:
+                    response = self.client.get(
+                        "/api/bot/health", HTTP_AUTHORIZATION=authorization
+                    )
+                self.assertEqual(response.status_code, 401)
+                self.assertEqual(response["Cache-Control"], "no-store")
+                health.order_by.assert_not_called()
 
         with override_settings(BOT_DIAGNOSTICS_API_TOKEN="too-short"):
             response = self.client.get("/api/bot/health", **self.auth)
@@ -112,17 +141,22 @@ class BotDiagnosticsAPITests(TestCase):
         self.assertEqual(payload["portfolio"]["quantity"], "0.25")
         self.assertEqual(payload["portfolio"]["estimated_value_usdt"], "800.00")
         self.assertEqual(payload["open_lots"]["quantity"], "0.25")
-        self.assertEqual(payload["latest_spot_observation"]["quantity"], "0.000093")
+        self.assertEqual(payload["latest_spot_observation"]["observed_spot_quantity"], "0.000093")
         self.assertEqual(payload["latest_spot_observation"]["quantity_status"], "available")
-        self.assertEqual(payload["latest_spot_observation"]["freshness"], "fresh")
+        self.assertEqual(payload["latest_spot_observation"]["observation_recency"], "recent")
+        self.assertEqual(payload["latest_spot_observation"]["detected_at"], spot_row.detected_at.isoformat())
         self.assertFalse(payload["latest_spot_observation"]["current_exchange_truth"])
         self.assertEqual(payload["quantity_difference"]["portfolio_minus_open_lots"], "0.00")
         self.assertEqual(payload["buy_capacity"]["symbol_classification"], "material")
+        self.assertEqual(payload["buy_capacity"]["capacity_status"], "current_as_of_healthcheck")
+        self.assertEqual(payload["buy_capacity"]["global_status"], "available")
         self.assertEqual(payload["buy_capacity"]["global"]["remaining_buy_capacity"], 0)
         self.assertEqual(payload["buy_capacity"]["global"]["effective_positions_count"], 15)
         self.assertFalse(payload["exchange_spot"]["available"])
         self.assertFalse(payload["active_generation"]["available"])
         self.assertEqual(payload["open_lots"]["freshness"], "unknown")
+        self.assertFalse(payload["consistency"]["atomic"])
+        self.assertEqual(payload["quantity_difference"]["comparability"], "not_synchronized")
         self.assertNotIn("not-exposed", response.content.decode())
 
         health.order_by.assert_called_once_with("-created_at", "-id")
@@ -190,7 +224,7 @@ class BotDiagnosticsAPITests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertIsNone(payload["portfolio"]["quantity"])
-        self.assertEqual(payload["latest_spot_observation"]["quantity"], "0.000093")
+        self.assertEqual(payload["latest_spot_observation"]["observed_spot_quantity"], "0.000093")
 
     def test_inventory_marks_stale_or_malformed_valuation_unavailable(self):
         now = timezone.now()
@@ -227,7 +261,129 @@ class BotDiagnosticsAPITests(TestCase):
         self.assertEqual(payload["portfolio"]["valuation_status"], "unavailable")
         self.assertEqual(payload["buy_capacity"]["freshness"], "stale")
         self.assertEqual(payload["buy_capacity"]["symbol_classification"], "unavailable")
-        self.assertEqual(payload["latest_spot_observation"]["freshness"], "stale")
+        self.assertEqual(payload["latest_spot_observation"]["observation_recency"], "stale")
+        self.assertEqual(payload["latest_spot_observation"]["detected_at"], stale.isoformat())
+        self.assertEqual(payload["buy_capacity"]["capacity_status"], "historical")
+        self.assertIsNone(payload["buy_capacity"]["global"])
+        self.assertIsNone(payload["buy_capacity"]["historical_global"])
+
+    def test_missing_and_malformed_spot_observations_do_not_create_a_current_balance(self):
+        now = timezone.now()
+        cases = (
+            (None, "unavailable"),
+            (SimpleNamespace(spot_quantity=Decimal("NaN"), detected_at=now), "recent"),
+        )
+        for spot_row, expected_recency in cases:
+            with self.subTest(expected_recency=expected_recency), \
+                 patch("dashboard.bot_diagnostics_api.BotHealthcheck.objects") as health, \
+                 patch("dashboard.bot_diagnostics_api.DustDetection.objects") as dust_manager, \
+                 patch("dashboard.bot_diagnostics_api.Portfolio.objects") as portfolio_manager, \
+                 patch("dashboard.bot_diagnostics_api.PositionLot.objects") as lot_manager:
+                health.order_by.return_value.first.return_value = None
+                dust_manager.filter.return_value.only.return_value.order_by.return_value.first.return_value = spot_row
+                portfolio_manager.filter.return_value.only.return_value.first.return_value = None
+                lot_manager.filter.return_value.aggregate.return_value = {
+                    "open_quantity": Decimal("0"), "open_lot_count": 1,
+                    "first_opened_at": now, "last_opened_at": now,
+                }
+                response = self.client.get("/api/bot/inventory/ETHUSDT", **self.auth)
+
+            self.assertEqual(response.status_code, 200)
+            observation = response.json()["latest_spot_observation"]
+            self.assertIsNone(observation["observed_spot_quantity"])
+            self.assertEqual(observation["quantity_status"], "unavailable")
+            self.assertEqual(observation["observation_recency"], expected_recency)
+            self.assertFalse(observation["current_exchange_truth"])
+            if spot_row:
+                self.assertEqual(observation["detected_at"], now.isoformat())
+
+    def test_absent_and_partial_healthcheck_capacity_are_explicit(self):
+        now = timezone.now()
+        cases = (
+            (None, "unavailable"),
+            (SimpleNamespace(status="ok", created_at=now, details={"max_positions": 15}),
+             "partial_as_of_healthcheck"),
+        )
+        for health_row, expected_status in cases:
+            with self.subTest(expected_status=expected_status), \
+                 patch("dashboard.bot_diagnostics_api.BotHealthcheck.objects") as health, \
+                 patch("dashboard.bot_diagnostics_api.DustDetection.objects") as dust_manager, \
+                 patch("dashboard.bot_diagnostics_api.Portfolio.objects") as portfolio_manager, \
+                 patch("dashboard.bot_diagnostics_api.PositionLot.objects") as lot_manager:
+                health.order_by.return_value.first.return_value = health_row
+                dust_manager.filter.return_value.only.return_value.order_by.return_value.first.return_value = None
+                portfolio_manager.filter.return_value.only.return_value.first.return_value = None
+                lot_manager.filter.return_value.aggregate.return_value = {
+                    "open_quantity": Decimal("0"), "open_lot_count": 1,
+                    "first_opened_at": now, "last_opened_at": now,
+                }
+                response = self.client.get("/api/bot/inventory/ETHUSDT", **self.auth)
+
+            self.assertEqual(response.status_code, 200)
+            capacity = response.json()["buy_capacity"]
+            self.assertEqual(capacity["capacity_status"], expected_status)
+            if health_row is None:
+                self.assertIsNone(capacity["global"])
+            else:
+                self.assertEqual(capacity["global"]["max_positions"], 15)
+                self.assertIsNone(capacity["global"]["effective_positions_count"])
+
+    def test_stale_capacity_is_labeled_historical_and_never_returned_as_current(self):
+        stale = timezone.now() - timedelta(hours=1)
+        with patch("dashboard.bot_diagnostics_api.BotHealthcheck.objects") as health, \
+             patch("dashboard.bot_diagnostics_api.DustDetection.objects") as dust_manager, \
+             patch("dashboard.bot_diagnostics_api.Portfolio.objects") as portfolio_manager, \
+             patch("dashboard.bot_diagnostics_api.PositionLot.objects") as lot_manager:
+            health.order_by.return_value.first.return_value = SimpleNamespace(
+                status="ok", created_at=stale,
+                details={"max_positions": 15, "effective_positions_count": 14,
+                         "remaining_buy_capacity": 1},
+            )
+            dust_manager.filter.return_value.only.return_value.order_by.return_value.first.return_value = None
+            portfolio_manager.filter.return_value.only.return_value.first.return_value = SimpleNamespace(
+                quantity=Decimal("0.1"), entry_price=None, current_price=Decimal("1"),
+                updated_at=stale,
+            )
+            lot_manager.filter.return_value.aggregate.return_value = {
+                "open_quantity": Decimal("0.1"), "open_lot_count": 1,
+                "first_opened_at": stale, "last_opened_at": stale,
+            }
+            response = self.client.get("/api/bot/inventory/ETHUSDT", **self.auth)
+
+        capacity = response.json()["buy_capacity"]
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(capacity["capacity_status"], "historical")
+        self.assertIsNone(capacity["global"])
+        self.assertEqual(capacity["historical_global"]["remaining_buy_capacity"], 1)
+
+    def test_cross_source_comparison_is_marked_non_atomic_and_not_synchronized(self):
+        now = timezone.now()
+        detected_at = now - timedelta(minutes=12)
+        with patch("dashboard.bot_diagnostics_api.BotHealthcheck.objects") as health, \
+             patch("dashboard.bot_diagnostics_api.DustDetection.objects") as dust_manager, \
+             patch("dashboard.bot_diagnostics_api.Portfolio.objects") as portfolio_manager, \
+             patch("dashboard.bot_diagnostics_api.PositionLot.objects") as lot_manager:
+            health.order_by.return_value.first.return_value = None
+            dust_manager.filter.return_value.only.return_value.order_by.return_value.first.return_value = SimpleNamespace(
+                spot_quantity=Decimal("0.000093"), detected_at=detected_at
+            )
+            portfolio_manager.filter.return_value.only.return_value.first.return_value = SimpleNamespace(
+                quantity=Decimal("0.25"), entry_price=None, current_price=Decimal("3200"),
+                updated_at=now,
+            )
+            lot_manager.filter.return_value.aggregate.return_value = {
+                "open_quantity": Decimal("0.2"), "open_lot_count": 1,
+                "first_opened_at": detected_at, "last_opened_at": detected_at,
+            }
+            response = self.client.get("/api/bot/inventory/ETHUSDT", **self.auth)
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(payload["consistency"]["atomic"])
+        self.assertEqual(payload["consistency"]["mode"], "separate_queries")
+        self.assertEqual(payload["latest_spot_observation"]["detected_at"], detected_at.isoformat())
+        self.assertEqual(payload["portfolio"]["updated_at"], now.isoformat())
+        self.assertEqual(payload["quantity_difference"]["comparability"], "not_synchronized")
 
     def test_stale_projection_value_is_labeled_stale(self):
         stale = timezone.now() - timedelta(hours=1)
@@ -262,6 +418,11 @@ class BotDiagnosticsAPITests(TestCase):
     def test_post_is_rejected_and_response_disables_caching(self):
         response = self.client.post("/api/bot/health", {}, **self.auth)
         self.assertEqual(response.status_code, 405)
+        for method in ("put", "patch", "delete"):
+            self.assertEqual(
+                getattr(self.client, method)("/api/bot/health", **self.auth).status_code,
+                405,
+            )
         get_response = self.client.get("/api/bot/health", **self.auth)
         self.assertEqual(get_response.status_code, 503)
         self.assertEqual(get_response["Cache-Control"], "no-store")

@@ -151,8 +151,10 @@ def _capacity_payload(health_row, symbol, observed_at):
 		return {
 			"source": "bot.bot_healthcheck.details",
 			"freshness": "unavailable",
+			"capacity_status": "unavailable",
 			"symbol_classification": "unavailable",
 			"global": None,
+			"historical_global": None,
 		}
 
 	created_at = getattr(health_row, "created_at", None)
@@ -193,13 +195,28 @@ def _capacity_payload(health_row, symbol, observed_at):
 	)
 	if not any(value is not None for value in global_values.values()):
 		global_values = None
+	global_status = (
+		"unavailable" if global_values is None
+		else "partial" if any(value is None for value in global_values.values())
+		else "available"
+	)
+	capacity_status = "unavailable"
+	if freshness == "stale":
+		capacity_status = "historical"
+	elif freshness == "fresh" and global_status == "partial":
+		capacity_status = "partial_as_of_healthcheck"
+	elif freshness == "fresh" and global_status == "available":
+		capacity_status = "current_as_of_healthcheck"
 
 	return {
 		"source": "bot.bot_healthcheck.details",
 		"healthcheck_at": _iso(created_at),
 		"freshness": freshness,
+		"capacity_status": capacity_status,
 		"symbol_classification": symbol_class if freshness == "fresh" else "unavailable",
-		"global": global_values,
+		"global_status": global_status if freshness == "fresh" else "unavailable",
+		"global": global_values if freshness == "fresh" else None,
+		"historical_global": global_values if freshness == "stale" else None,
 	}
 
 
@@ -269,9 +286,11 @@ class ETHInventoryAPIView(ReadOnlyDiagnosticsAPIView):
 		except DatabaseError:
 			return _database_unavailable(observed_at)
 		spot_observation_at = getattr(spot_observation, "detected_at", None) if spot_observation else None
-		spot_observation_freshness = (
-			_freshness(spot_observation_at, observed_at) if spot_observation else "unavailable"
-		)
+		spot_observation_recency = "unavailable"
+		if spot_observation:
+			spot_observation_recency = _freshness(spot_observation_at, observed_at)
+			if spot_observation_recency == "fresh":
+				spot_observation_recency = "recent"
 		spot_quantity = _as_decimal(getattr(spot_observation, "spot_quantity", None)) if spot_observation else None
 
 		open_quantity = _as_decimal(lots.get("open_quantity"))
@@ -332,7 +351,7 @@ class ETHInventoryAPIView(ReadOnlyDiagnosticsAPIView):
 			},
 			"latest_spot_observation": {
 				"source": "bot.dust_detections",
-				"quantity": _decimal_text(spot_quantity),
+				"observed_spot_quantity": _decimal_text(spot_quantity),
 				"quantity_status": "available" if spot_quantity is not None else "unavailable",
 				"open_lot_quantity": _decimal_text(getattr(spot_observation, "open_lot_quantity", None)) if spot_observation else None,
 				"price_usdt": _decimal_text(getattr(spot_observation, "price_usdt", None)) if spot_observation else None,
@@ -340,13 +359,19 @@ class ETHInventoryAPIView(ReadOnlyDiagnosticsAPIView):
 				"event_type": str(getattr(spot_observation, "event_type", "") or "")[:64] if spot_observation else None,
 				"reason": str(getattr(spot_observation, "reason", "") or "")[:256] if spot_observation else None,
 				"source_label": str(getattr(spot_observation, "source", "") or "")[:64] if spot_observation else None,
-				"observed_at": _iso(spot_observation_at),
-				"freshness": spot_observation_freshness,
+				"detected_at": _iso(spot_observation_at),
+				"observation_recency": spot_observation_recency,
 				"current_exchange_truth": False,
 			},
 			"quantity_difference": {
 				"portfolio_minus_open_lots": _decimal_text(difference),
 				"status": "available" if difference is not None else "unavailable",
+				"comparability": "not_synchronized",
+			},
+			"consistency": {
+				"atomic": False,
+				"mode": "separate_queries",
+				"cross_source_comparisons": "not_synchronized",
 			},
 			"buy_capacity": _capacity_payload(health_row, self.symbol, observed_at),
 			"active_generation": {

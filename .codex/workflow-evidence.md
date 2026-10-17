@@ -1,16 +1,17 @@
 phases_completed: planner, implementer, tester, documentator
-impact: behavior, logging, operations
-tests_created: core/tests.py::TelegramWebhookTests.test_help_continues_after_audit_persistence_failure_without_diagnostics; core/tests.py::TelegramWebhookTests.test_listener_rejects_malformed_json_without_server_error; core/tests.py::TelegramWebhookTests.test_listener_accepts_update_without_message_text; core/tests.py::TelegramWebhookTests.test_send_message_uses_timeout_and_reports_timeout_failure; core/tests.py::TelegramWebhookTests.test_send_message_rejects_telegram_ok_false; core/tests.py::TelegramWebhookTests.test_send_message_reports_confirmed_telegram_success; core/tests.py::TelegramPortfolioStatusTests.test_bounded_snapshot_query_returns_all_fewer_than_limit_in_chronological_order; core/tests.py::TelegramPortfolioStatusTests.test_bounded_snapshot_query_keeps_newest_rows_and_restores_chronology; core/tests.py::TelegramPortfolioStatusTests.test_bounded_snapshot_query_uses_id_for_equal_timestamp_ordering; core/tests.py::TelegramPortfolioStatusTests.test_portfolio_status_uses_fresh_snapshot_when_rows_exceed_limit; core/tests.py::TelegramPortfolioStatusTests.test_non_positive_snapshot_limit_falls_back_to_default_bound
-failing_test_proof: Before the webhook hardening implementation, the actual Telegram audit persistence path was unguarded and a DatabaseError from persistence produced a 500 before /help dispatch; the corrected regression test now forces the TelegramMessage manager create call to raise DatabaseError while the duplicate check returns false. .venv/bin/pytest -q core/tests.py::TelegramPortfolioStatusTests --disable-warnings --maxfail=1 failed before the snapshot-limit fix with ImportError because _bounded_portfolio_snapshot_rows did not yet exist.
-tests_executed: .venv/bin/pytest -q core/tests.py::TelegramWebhookTests::test_help_continues_after_audit_persistence_failure_without_diagnostics core/tests.py::TelegramWebhookTests core/tests.py::TelegramPortfolioStatusTests core/tests.py::TelegramDiagnosticsCommandTests --disable-warnings --maxfail=1 (122 passed); .venv/bin/pytest -q django_render/tests.py investments/tests.py currencyconverter/tests.py profile/tests.py --disable-warnings --maxfail=1 (33 passed); .venv/bin/python -m compileall -q core django_render dashboard; git diff --check
-pending_issues: Render start command, webhook reachability, production RSS, and complete-suite execution remain to be verified; full pytest exceeded the local execution window after 22 percent and is not claimed as passed.
-docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md
+impact: behavior, contract, operations
+tests_executed: .venv/bin/pytest dashboard/test_bot_diagnostics_api.py -q --disable-warnings (16 passed, 11 subtests); .venv/bin/pytest -q --disable-warnings --create-db (344 passed, 44 subtests); base 82e32fd same full-suite command (328 passed, 33 subtests); CC_DEBUG=True with disposable local settings .venv/bin/python manage.py check; git diff --check
+pending_issues: PostgreSQL execution unavailable in runner; ChatGPT Work Cloud access unverified; no application-level rate limiter; paired bot DATA_CONTRACT and KPI_REGISTRY copies are behind current bot main and follow-up is recorded
+
+tests_created: API regression cases cover recent/stale/missing/malformed Spot observations; fresh/stale/absent/partial capacity; unsynchronized sources; malformed/missing auth and no-query rejection; write methods
+failing_test_proof: Initial focused run failed on the intended missing response fields (observed_spot_quantity, observation_recency, consistency); one new test fixture initially returned the expected 404 because it supplied no inventory evidence and was corrected before final test runs.
+docs_reviewed: README.md, PLAN.md, docs/PROJECT_STATE.md, docs/ARCHITECTURE.md, docs/DATA_CONTRACT.md, docs/DESIGN.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
 docs_updated: README.md, docs/ARCHITECTURE.md, docs/PROJECT_STATE.md, docs/CHANGELOG.md
 changelog: updated
-schema_der: not_applicable: no schema, migration, index, constraint, or DB contract changed
-data_contract_sync: not_applicable: no shared data contract semantics changed
-logging_observability: webhook and outbound Telegram logs now add safe command/update/chat/stage and delivery outcome context; no tokens, webhook secrets, payloads, or token-bearing URLs are logged
-kpi_registry_reviewed: no
-kpi_registry_note: reviewed, no update needed: no KPI or diagnostic metric semantics changed
+data_contract_sync: not_applicable: no bot-owned table, column, or shared database contract changed; paired source copy lag recorded as a follow-up
+logging_observability: reviewed; response semantics changed, no runtime logging or KPI formula changed
+kpi_registry_reviewed: yes
 kpi_registry_updated: not-needed
-kpi_registry_sync_checked: not-available
+kpi_registry_sync_checked: no
+kpi_registry_notes: No KPI definition or formula changed. Current bot main header 1.0.48 differs from dashboard copy 1.0.36; follow-up recorded in changelog.
+schema_der: not_applicable: no schema change; disposable PostgreSQL execution was unavailable and no generated schema claim is made
