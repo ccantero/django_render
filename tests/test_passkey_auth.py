@@ -32,6 +32,15 @@ def make_credential(user, credential_id, name="Device"):
     )
 
 
+def credential_id_text(credential):
+    """Return the persisted binary credential identifier as text on every backend."""
+    return bytes(credential.credential_id).decode("utf-8")
+
+
+def test_credential_id_text_accepts_memoryview_values():
+    assert credential_id_text(SimpleNamespace(credential_id=memoryview(b"credential-id"))) == "credential-id"
+
+
 class FakeWebAuthnHelper:
     """Application-flow test double; it does not validate WebAuthn signatures."""
 
@@ -102,10 +111,13 @@ class PasskeyEntryPointTests(TestCase):
             original,
         )
 
+    @override_settings(PASSKEYS_ENABLED=False)
     def test_passkey_login_entry_is_unavailable_when_feature_is_disabled(self):
-        response = self.client.get("/passkeys/authentication/begin/")
-
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.client.get("/passkeys/authentication/begin/").status_code, 404)
+        self.assertEqual(
+            self.client.post("/passkeys/authentication/begin/", data="{}", content_type="application/json").status_code,
+            404,
+        )
 
     def test_enrollment_step_up_is_unavailable_when_feature_is_disabled(self):
         response = self.client.post("/passkeys/enrollment/step-up/begin/", data="{}", content_type="application/json")
@@ -140,7 +152,7 @@ class PasskeyFlowTests(TestCase):
             self.assertEqual(begin.status_code, 200)
             proof = self.client.post(
                 reverse("passkey_enrollment_step_up_complete"),
-                data=json.dumps({"id": credentials[0].credential_id.decode(), "type": "public-key"}),
+                data=json.dumps({"id": credential_id_text(credentials[0]), "type": "public-key"}),
                 content_type="application/json",
             )
             self.assertEqual(proof.status_code, 200)
@@ -207,7 +219,7 @@ class PasskeyFlowTests(TestCase):
         self.assertEqual(begin.status_code, 200)
         proof = self.client.post(
             reverse("passkey_enrollment_step_up_complete"),
-            data=json.dumps({"id": credential.credential_id.decode(), "type": "public-key"}),
+            data=json.dumps({"id": credential_id_text(credential), "type": "public-key"}),
             content_type="application/json",
         )
         self.assertEqual(proof.status_code, 200)
@@ -234,7 +246,7 @@ class PasskeyFlowTests(TestCase):
         self.client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
         response = self.client.post(
             reverse("passkey_enrollment_step_up_complete"),
-            data=json.dumps({"id": other_credential.credential_id.decode(), "type": "public-key"}),
+            data=json.dumps({"id": credential_id_text(other_credential), "type": "public-key"}),
             content_type="application/json",
         )
 
@@ -251,7 +263,7 @@ class PasskeyFlowTests(TestCase):
         PasskeyEnrollmentChallenge.objects.filter(
             token_hash=_fingerprint("enrollment-challenge", session["passkeys.enrollment_step_up_state"])
         ).update(started_at=timezone.now() - timedelta(seconds=301))
-        payload = json.dumps({"id": credential.credential_id.decode(), "type": "public-key"})
+        payload = json.dumps({"id": credential_id_text(credential), "type": "public-key"})
 
         expired = self.client.post(reverse("passkey_enrollment_step_up_complete"), data=payload, content_type="application/json")
         self.assertEqual(expired.status_code, 400)
@@ -269,7 +281,7 @@ class PasskeyFlowTests(TestCase):
         self.client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
         proof = self.client.post(
             reverse("passkey_enrollment_step_up_complete"),
-            data=json.dumps({"id": credential.credential_id.decode(), "type": "public-key"}),
+            data=json.dumps({"id": credential_id_text(credential), "type": "public-key"}),
             content_type="application/json",
         )
         self.assertEqual(proof.status_code, 200)
@@ -288,7 +300,7 @@ class PasskeyFlowTests(TestCase):
         self.client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
         self.client.post(
             reverse("passkey_enrollment_step_up_complete"),
-            data=json.dumps({"id": credential.credential_id.decode(), "type": "public-key"}),
+            data=json.dumps({"id": credential_id_text(credential), "type": "public-key"}),
             content_type="application/json",
         )
         self.client.post(reverse("passkey_reauthenticate"), {"password": "A-strong-test-password-123"})
@@ -338,7 +350,7 @@ class PasskeyFlowTests(TestCase):
         self.client.post(reverse("passkey_enrollment_step_up_begin"), data="{}", content_type="application/json")
         proof = self.client.post(
             reverse("passkey_enrollment_step_up_complete"),
-            data=json.dumps({"id": credential.credential_id.decode(), "type": "public-key"}),
+            data=json.dumps({"id": credential_id_text(credential), "type": "public-key"}),
             content_type="application/json",
         )
         self.assertEqual(proof.status_code, 200)
@@ -364,7 +376,7 @@ class PasskeyFlowTests(TestCase):
 
         response = self.client.post(
             reverse("passkey_enrollment_step_up_complete"),
-            data=json.dumps({"id": credential.credential_id.decode(), "type": "public-key"}),
+            data=json.dumps({"id": credential_id_text(credential), "type": "public-key"}),
             content_type="application/json",
         )
 

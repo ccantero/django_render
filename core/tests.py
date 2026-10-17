@@ -6859,10 +6859,10 @@ class LastOperationsCommandTests(TransactionTestCase):
     def _insert_operation(self, symbol, executed_at):
         with connection.cursor() as cursor:
             cursor.execute(
-                'INSERT INTO "bot"."trade_operations" (symbol, side, status, executed_at, created_at, raw_payload) VALUES (%s, %s, %s, %s, %s, %s)',
+                'INSERT INTO "bot"."trade_operations" (symbol, side, status, executed_at, created_at, raw_payload) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id',
                 [symbol, 'SELL', 'FILLED', executed_at, executed_at, '{}'],
             )
-            return cursor.lastrowid
+            return cursor.fetchone()[0]
 
     def _insert_closure(self, operation_id, pnl, index):
         with connection.cursor() as cursor:

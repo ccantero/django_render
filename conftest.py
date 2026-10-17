@@ -22,16 +22,36 @@ def assert_postgresql_test_schemas():
 		)
 
 
-def bot_dust_signal_review_table_exists():
+def postgresql_relation_exists(relation_name):
 	with connection.cursor() as cursor:
-		cursor.execute("SELECT to_regclass('bot.dust_signal_reviews')")
+		cursor.execute("SELECT to_regclass(%s)", [relation_name])
 		return cursor.fetchone()[0] is not None
+
+
+def bot_dust_signal_review_table_exists():
+	return postgresql_relation_exists("bot.dust_signal_reviews")
+
+
+def postgresql_flush_table_names(tables, *fixture_tables):
+	"""Return the exact PostgreSQL relations that test cleanup may truncate.
+
+	The disposable PostgreSQL settings place Django-managed relations in the
+	``django`` schema.  Qualifying them removes any dependency on a connection's
+	current search path and lets PostgreSQL see each test-only dust-review table
+	and its ``profile_userprofile`` foreign-key target in the same TRUNCATE
+	statement.
+	"""
+	return [*(f'"django"."{table}"' for table in tables), *fixture_tables]
 
 
 @pytest.fixture(scope="session")
 def django_db_setup(django_db_setup, django_db_blocker):
 	with django_db_blocker.unblock():
 		if connection.vendor != "postgresql":
+			existing_tables = connection.introspection.table_names()
+			if DustSignalReview._meta.db_table not in existing_tables:
+				with connection.schema_editor() as schema_editor:
+					schema_editor.create_model(DustSignalReview)
 			yield
 			return
 
@@ -49,8 +69,20 @@ def django_db_setup(django_db_setup, django_db_blocker):
 
 		def django_table_names_with_bot_fixture(*args, **kwargs):
 			tables = original_django_table_names(*args, **kwargs)
-			if kwargs.get("only_existing", False) and bot_dust_signal_review_table_exists():
-				return [*tables, DustSignalReview._meta.db_table]
+			if kwargs.get("only_existing", False):
+				fixture_tables = []
+				# The historical migration created this Django-schema table, but
+				# the current unmanaged model no longer represents it. It still has
+				# a FK to profile_userprofile and must participate in test flush.
+				if postgresql_relation_exists("django.dust_signal_reviews"):
+					fixture_tables.append('"django"."dust_signal_reviews"')
+				if bot_dust_signal_review_table_exists():
+					fixture_tables.append(DustSignalReview._meta.db_table)
+				if fixture_tables:
+					return postgresql_flush_table_names(
+						tables,
+						*fixture_tables,
+					)
 			return tables
 
 		connection.introspection.django_table_names = django_table_names_with_bot_fixture

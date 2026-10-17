@@ -26,6 +26,10 @@ docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md,
 docs_updated: README.md, IMPLEMENTATION_CODEX.md
 changelog: not_applicable: docs/CHANGELOG.md is binary data in the existing working tree; the report records this blocker without altering the file
 logging_observability: no application logging or operator diagnostics changed; the disposable harness emits only non-secret lifecycle and verification status markers
+kpi_registry_reviewed: not-needed
+kpi_registry_updated: not-needed
+kpi_registry_sync_checked: not-available
+kpi_registry_rationale: dashboard/dust_read_model.py change only preserves PostgreSQL transaction usability after an already-handled bot read failure; it adds no KPI, metric, formula, source of truth, dashboard output, or operator diagnostic.
 
 ## Pre-merge isolated validation follow-up
 

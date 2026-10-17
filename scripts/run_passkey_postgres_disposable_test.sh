@@ -197,13 +197,11 @@ run_migration_consistency_check() {
     return 0
 }
 
-run_postgres_concurrency_stage() {
-    local concurrency_junit="${temp_dir}/passkey-postgres-concurrency.xml"
+assert_junit_tests_passed() {
+    local junit_file="$1"
+    local expected_tests="$2"
+    local validation_label="$3"
 
-    # Override the repository's speed-oriented pytest defaults: this validation
-    # must exercise migrations and must not reuse any database between runs.
-    run_django -m pytest -q -rs -o addopts='' --junitxml="${concurrency_junit}" \
-        tests/test_passkey_postgres_concurrency.py || return 1
     run_django -c '
 import sys
 import xml.etree.ElementTree as etree
@@ -217,13 +215,47 @@ tests = len(cases)
 skipped = sum(case.find("skipped") is not None for case in cases)
 failures = sum(case.find("failure") is not None for case in cases)
 errors = sum(case.find("error") is not None for case in cases)
-if (tests, skipped, failures, errors) != (3, 0, 0, 0):
+expected_tests = int(sys.argv[2])
+if (tests, skipped, failures, errors) != (expected_tests, 0, 0, 0):
     raise SystemExit(
         f"PostgreSQL concurrency validation invalid: tests={tests}, "
         f"skipped={skipped}, failures={failures}, errors={errors}"
     )
-' "${concurrency_junit}" || return 1
-    printf '%s\n' 'POSTGRES_CONCURRENCY_TESTS_CONFIRMED = 3 passed, 0 skipped'
+' "${junit_file}" "${expected_tests}" || return 1
+    printf 'POSTGRES_CONCURRENCY_%s_CONFIRMED = %s passed, 0 skipped\n' \
+        "${validation_label}" "${expected_tests}"
+}
+
+run_postgres_concurrency_stage() {
+    local all_tests='tests/test_passkey_postgres_concurrency.py'
+    local test_case
+    local test_index=0
+    local individual_junit
+    local combined_junit="${temp_dir}/passkey-postgres-concurrency-combined.xml"
+    local repeat_junit="${temp_dir}/passkey-postgres-concurrency-repeat.xml"
+    local -a concurrency_tests=(
+        'tests/test_passkey_postgres_concurrency.py::PasskeyPostgreSQLConcurrencyTests::test_only_one_simultaneous_consumer_can_consume_enrollment_proofs'
+        'tests/test_passkey_postgres_concurrency.py::PasskeyPostgreSQLConcurrencyTests::test_only_one_simultaneous_consumer_can_consume_step_up_challenge'
+        'tests/test_passkey_postgres_concurrency.py::PasskeyPostgreSQLConcurrencyTests::test_concurrent_rate_limit_requests_do_not_lose_attempts'
+    )
+
+    # Override the repository's speed-oriented pytest defaults: this validation
+    # must exercise migrations and must not reuse any database between runs.
+    for test_case in "${concurrency_tests[@]}"; do
+        test_index=$((test_index + 1))
+        individual_junit="${temp_dir}/passkey-postgres-concurrency-individual-${test_index}.xml"
+        run_django -m pytest -q -rs -o addopts='' --junitxml="${individual_junit}" \
+            "${test_case}" || return 1
+        assert_junit_tests_passed "${individual_junit}" 1 "INDIVIDUAL_${test_index}" || return 1
+    done
+
+    run_django -m pytest -q -rs -o addopts='' --junitxml="${combined_junit}" \
+        "${all_tests}" || return 1
+    assert_junit_tests_passed "${combined_junit}" 3 COMBINED || return 1
+
+    run_django -m pytest -q -rs -o addopts='' --junitxml="${repeat_junit}" \
+        "${all_tests}" || return 1
+    assert_junit_tests_passed "${repeat_junit}" 3 REPEAT || return 1
 }
 
 verify_django_test_database_cleanup() {

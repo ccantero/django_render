@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.28
+doc_version: 1.1.30
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-16
+last_verified_at: 2026-10-17
 source_repo: django_render
 ---
 
@@ -501,8 +501,9 @@ inherited database URLs and does not load `.env`. See `IMPLEMENTATION_WORK.md`
 for the remaining HTTPS Safari/iPhone smoke-test procedure.
 
 After successful disposable database initialization and fresh migrations, the
-harness reports migration consistency, deployment security checks, PostgreSQL
-concurrency tests, the full Django suite, and Django test-database cleanup as
+harness reports migration consistency, deployment security checks, each
+PostgreSQL concurrency case individually, the combined and repeated
+concurrency runs, the full Django suite, and Django test-database cleanup as
 independent `PASS`, `FAIL`, or `NOT_RUN` stages. Migration drift is still a
 required failure: a known `core` drift is labeled as pre-existing
 `origin/main` drift while remaining checks continue. The final result is
@@ -512,12 +513,16 @@ The run-owned test template contains both `django` and `bot` schemas, while
 the PostgreSQL search path remains `django,public`; bot tables are always
 schema-qualified. Django clones that template for each test database, and a
 PostgreSQL-only session fixture fails before tests if either expected schema is
-absent. Its disposable `bot.dust_signal_reviews`
-fixture table is explicitly included in Django's PostgreSQL flush set so its
-foreign key to the Django-owned user table is truncated in the same statement;
-it does not use `CASCADE` or alter bot-table ownership. The `bot` schema and
-any test tables in it are disposable only; the harness never connects to or
-changes an external bot database.
+absent. Its historical `django.dust_signal_reviews` table and disposable
+`bot.dust_signal_reviews` fixture table are explicitly included in Django's
+PostgreSQL flush set so their foreign keys to the Django-owned user table are
+truncated in the same statement;
+the Django-managed tables are explicitly qualified with the `django` schema to
+avoid relying on connection search-path resolution. The cleanup path does not
+use `CASCADE` or alter bot-table ownership. The `bot` schema and any test
+tables in it are disposable only; the harness never connects to or changes an
+external bot database. PostgreSQL runtime confirmation of this isolation path
+remains required from an authorized Docker-capable operator.
 
 ---
 
