@@ -25,7 +25,11 @@ TEMPLATE_DIR = os.path.join(BASE_DIR,'templates')
 STATIC_DIR = os.path.join(BASE_DIR,'static')
 
 env = environ.Env()
-environ.Env.read_env(BASE_DIR / '.env')
+# A disposable test harness may opt out before importing these base settings so
+# validation never opens a developer or production .env file.  Normal runtime
+# behavior remains unchanged because the guard is unset by default.
+if os.environ.get("DJANGO_SKIP_ENV_FILE") != "1":
+    environ.Env.read_env(BASE_DIR / '.env')
 
 RUNNING_TESTS = "pytest" in sys.argv[0] or (len(sys.argv) > 1 and sys.argv[1] == "test")
 

@@ -13,6 +13,20 @@ dependency_audit: `pip-audit` unavailable (`python -m pip_audit`: no module). `p
 manual_checks: Real Safari/iOS, desktop, Windows Hello, and hardware key verification not available in Work Cloud. Reverse-proxy header overwrite/direct-reachability boundary requires deployment verification.
 production_actions: none; no production migrations, credentials, deployment, or external state touched.
 
+## Disposable PostgreSQL passkey harness
+
+task_mode: STANDARD
+phases_completed: planner, implementer, tester, documentator
+impact: behavior,docs_only,logging,operations
+tests_executed: bash -n scripts/run_passkey_postgres_disposable_test.sh; Python py_compile for guarded settings; synthetic guarded DEBUG=False settings import; in-memory JUnit testsuite/testsuites parser fixtures; git diff --check
+tests_created: no new runtime test created: the operator explicitly restricted this task to static validation and prohibited database test execution
+failing_test_proof: unavailable: implementation occurred under the operator's explicit static-only restriction, so no failing runtime test was run
+pending_issues: authorized operator must execute the harness to obtain PostgreSQL migration, concurrency, full-suite, security-check, version, warning, and cleanup results; docs/CHANGELOG.md is binary data and was not modified
+docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md (binary data confirmed with file)
+docs_updated: README.md, IMPLEMENTATION_CODEX.md
+changelog: not_applicable: docs/CHANGELOG.md is binary data in the existing working tree; the report records this blocker without altering the file
+logging_observability: no application logging or operator diagnostics changed; the disposable harness emits only non-secret lifecycle and verification status markers
+
 ## Pre-merge isolated validation follow-up
 
 task_mode: STANDARD

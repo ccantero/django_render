@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.22
+doc_version: 1.1.28
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-15
+last_verified_at: 2026-10-16
 source_repo: django_render
 ---
 
@@ -480,9 +480,44 @@ credential rows. Existing accounts, sessions, passwords, permissions, and API
 tokens remain in place. Verify Safari/iOS and desktop authenticator
 interoperability after deployment.
 
-For loopback-only PostgreSQL validation, threaded row-lock regression tests,
-and a reproducible HTTPS Safari/iPhone smoke-test procedure, see
-`IMPLEMENTATION_WORK.md`.
+For loopback-only PostgreSQL validation, run the disposable harness from an
+authorized Docker account:
+
+```bash
+./scripts/run_passkey_postgres_disposable_test.sh
+```
+
+It creates uniquely named PostgreSQL 16 Docker resources, uses an isolated
+loopback-only test database, runs the PostgreSQL row-lock regression tests and
+full Django suite, then removes only the resources it created. Its deployment
+system check uses a long synthetic key and production-like settings with
+`DEBUG` disabled, so security warnings fail validation rather than being
+confused with development-mode test behavior. The test suites run with
+`DEBUG=True`, matching their normal request expectations. Django clones its
+explicitly named test database from an ordinary,
+run-owned PostgreSQL template database that already contains the `django`
+schema; no globally reusable PostgreSQL template is created. It refuses
+inherited database URLs and does not load `.env`. See `IMPLEMENTATION_WORK.md`
+for the remaining HTTPS Safari/iPhone smoke-test procedure.
+
+After successful disposable database initialization and fresh migrations, the
+harness reports migration consistency, deployment security checks, PostgreSQL
+concurrency tests, the full Django suite, and Django test-database cleanup as
+independent `PASS`, `FAIL`, or `NOT_RUN` stages. Migration drift is still a
+required failure: a known `core` drift is labeled as pre-existing
+`origin/main` drift while remaining checks continue. The final result is
+nonzero if any required stage fails.
+
+The run-owned test template contains both `django` and `bot` schemas, while
+the PostgreSQL search path remains `django,public`; bot tables are always
+schema-qualified. Django clones that template for each test database, and a
+PostgreSQL-only session fixture fails before tests if either expected schema is
+absent. Its disposable `bot.dust_signal_reviews`
+fixture table is explicitly included in Django's PostgreSQL flush set so its
+foreign key to the Django-owned user table is truncated in the same statement;
+it does not use `CASCADE` or alter bot-table ownership. The `bot` schema and
+any test tables in it are disposable only; the harness never connects to or
+changes an external bot database.
 
 ---
 
