@@ -51,6 +51,8 @@ TELEGRAM_ALLOWED_CHAT_IDS = env.str('TELEGRAM_ALLOWED_CHAT_IDS', default='')
 TELEGRAM_ALLOWED_USER_IDS = env.str('TELEGRAM_ALLOWED_USER_IDS', default='')
 TELEGRAM_DELIVERY_TIMEOUT_SECONDS = env.int('TELEGRAM_DELIVERY_TIMEOUT_SECONDS', default=10)
 PORTFOLIO_STATUS_MAX_SNAPSHOTS = env.int('PORTFOLIO_STATUS_MAX_SNAPSHOTS', default=512)
+# Dedicated bearer secret for the read-only bot diagnostics API. Keep unset to disable access.
+BOT_DIAGNOSTICS_API_TOKEN = env.str('BOT_DIAGNOSTICS_API_TOKEN', default='')
 
 ALLOWED_HOSTS = ['www.cantero-solutions.com.ar']
 

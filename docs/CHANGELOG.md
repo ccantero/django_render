@@ -1,13 +1,108 @@
 ---
 doc_id: changelog
-doc_version: 1.1.43
+doc_version: 1.1.45
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-15
+last_verified_at: 2026-10-17
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-17 - Correct Bot Diagnostics Evidence Semantics
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/ARCHITECTURE.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Renamed the Spot quantity/timestamp fields to `observed_spot_quantity` and
+  `detected_at`; the age field is `observation_recency`, and the observation
+  still explicitly sets `current_exchange_truth: false`.
+- Stale capacity numbers now appear only under `historical_global`; partial,
+  unavailable, and current-as-of-healthcheck states are explicit.
+- Marked portfolio-versus-lot comparisons as not synchronized and the
+  multi-query inventory response as non-atomic. No read transaction was added.
+- Reviewed the bot repository: complete non-zero Binance balances are fetched
+  into runtime memory; no complete Spot-balance snapshot is persisted. The
+  bot's comparison CLI reads Binance, FIFO lots, and generations without
+  persisting the exchange snapshot. Django remains without an active-generation
+  read model.
+- No Binance client, persistence, KPI formula, database schema, or bot behavior
+  changed. `docs/DATA_CONTRACT.md` and `docs/KPI_REGISTRY.md` were reviewed; no
+  semantic update was needed for these API response corrections. The Django
+  copies are behind current `ccantero/binancebot` main headers
+  (`DATA_CONTRACT.md` 1.0.62 vs 1.0.79; `KPI_REGISTRY.md` 1.0.36 vs 1.0.48);
+  a full paired-document sync is a separate follow-up and was not mixed into
+  this API correction.
+- Documented that custom GPT Actions are distinct from native ChatGPT Work
+  connectivity, and recorded the security and deployment limitations.
+
+Operator impact:
+- An old Spot event can no longer be mistaken for a current exchange balance;
+  stale BUY slot counts are visibly historical and unavailable as current
+  capacity.
+
+Validation:
+- Focused API tests: 16 passed, 11 subtests passed. Django system check: no
+  issues. Full suite on PR branch: 344 passed, 44 subtests passed.
+- Full suite on base `82e32fd`: 328 passed, 33 subtests passed. The earlier
+  report of five `dust_signal_reviews` failures did not reproduce on either
+  branch with the repository's pytest setup; the exact earlier invocation was
+  not recorded.
+- PostgreSQL execution validation was not possible: this runner has no
+  PostgreSQL server/client or container runtime, and package installation was
+  blocked by runner permissions. No production database was accessed.
+- ChatGPT Work Cloud Action/connector compatibility remains **UNVERIFIED**.
+
+## 2026-10-17 - Add Read-only Bot Diagnostics API PoC
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/ARCHITECTURE.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Added authenticated GET-only health and fixed ETHUSDT inventory diagnostics
+  backed by existing managed=False bot read models, including the latest
+  timestamped `bot.dust_detections` Spot quantity observation.
+- Required a dedicated environment bearer secret; user tokens, raw healthcheck
+  details, Binance calls, mutations, and general query/action interfaces are
+  excluded.
+- Exposed persisted freshness and unavailable states so DB projections and
+  lots are not confused with live Binance Spot truth.
+- Included the bot-persisted `effective_positions_count` alongside the other
+  available BUY capacity details; per-symbol active-generation occupancy is
+  not recomputed by Django.
+- Documented from bot repository code that complete per-asset Binance Spot
+  balances are not periodically persisted; the one-off comparison CLI fetches
+  live balances without persisting the snapshot.
+- Recorded direct ChatGPT Work Cloud access as unverified because no connector
+  or cloud-safe credential delivery is configured by this application.
+- Reviewed `docs/KPI_REGISTRY.md`: no KPI/metric definitions or formulas
+  changed; the API exposes existing healthcheck fields with their existing
+  source semantics. No database schema or data-contract changes were made.
+
+Operator impact:
+- An authorized client can retrieve bounded, sanitized persisted ETHUSDT
+  evidence without database or SSH access once the endpoint is deployed and
+  provisioned with a dedicated secret.
+
+Validation:
+- Focused API tests verify authentication, read-only access, missing/stale
+  evidence, malformed valuation, bounded ORM operations, and safe output.
+- Focused API suite: 10/10 passed. Full project test run: 333 passed, 5
+  failed because the SQLite test database does not contain
+  `dust_signal_reviews`.
 
 ## 2026-10-15 - Scale Telegram BUY Rows to Configured Capacity
 

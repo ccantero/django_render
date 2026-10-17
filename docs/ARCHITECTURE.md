@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.12
+doc_version: 1.1.14
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-08-29
+last_verified_at: 2026-10-17
 source_repo: django_render
 ---
 
@@ -139,6 +139,7 @@ External keepalive cron -> /health/ -> core.views.health -> JSON liveness respon
 Telegram webhook -> /telegramapi/listener/ -> secret validation -> safe update parsing -> best-effort audit persistence/deduplication -> static `/help` or lazy diagnostic dispatch -> bounded outbound Telegram API call -> HTTP acknowledgement
 Telegram portfolio chart -> read-only `bot.portfolio_snapshots` rows with `source = "bot_cycle"` and `notes.portfolio_equity_usdt` -> transport-agnostic PNG bytes -> Telegram photo or text fallback
 API client -> django_render.urls -> currencyconverter/profile routers -> DRF viewsets -> serializers/models
+Diagnostics API client -> django_render.urls -> dashboard.bot_diagnostics_api -> scoped bearer authentication -> bounded managed=False bot-table reads -> sanitized JSON
 Swagger UI -> /api/docs -> drf-spectacular schema at /api/schema
 Telegram message auditing is diagnostic-only: a database failure is logged with
 safe context and does not block `/help` or a command response. `/help` checks
@@ -150,6 +151,65 @@ individual command failures use an operator-safe fallback response.
 State-changing dashboard actions are protected with login, staff checks where required, POST-only decorators where present, and Django CSRF except for the Telegram webhook listener, which uses the Telegram secret-token header.
 
 `/health/` is public and side-effect-free. It reports only Django web-process liveness for hosting keepalive checks; bot operational health remains sourced from `bot.bot_healthcheck` in dashboard views.
+
+The experimental `/api/bot/health` and `/api/bot/inventory/ETHUSDT` routes
+require a dedicated `BOT_DIAGNOSTICS_API_TOKEN` bearer secret of at least 32
+characters, capped at 512 characters. They do not reuse Django user tokens or
+session authentication. The secret is unset by default, which denies access.
+The health route selects one latest `bot.bot_healthcheck` row; inventory adds
+one latest ETHUSDT `bot.dust_detections` event lookup, one `bot.portfolio`
+lookup, and one aggregate over positive ETHUSDT `bot.position_lots` rows. It
+emits a fixed JSON allowlist, decimal strings, source timestamps, explicit
+observation recency/capacity status, and `Cache-Control: no-store`; no query
+accepts SQL, symbols, file paths, commands, or action parameters. Responses
+never include the raw healthcheck `details` object. GET reads data; HEAD and
+OPTIONS are non-mutating; unsupported write methods return 405.
+
+This is a new internet-facing Render route when deployed and enabled. HTTPS is
+required by production Django security settings. Keep the credential outside
+Git and rotate it by replacing the environment secret. [Render documents
+automatic edge DDoS protection](https://render.com/docs/ddos-protection), but
+targeted application-level HTTP abuse is not fully covered; this Django app
+has no route-level rate limiter. Failed
+authentication is checked before bot-table queries. Accepted query count and
+response shape are fixed, though aggregate work scales with the number of
+matching ETHUSDT lot rows. Before broad public enablement, prefer an edge
+allowlist or rate limit for these two paths where the deployment supports it;
+otherwise assess a small app-level limiter. No Redis or rate-limit service is
+added by this PoC. Work Cloud network egress, Action support, secret delivery,
+and workspace domain permission are not configured or tested here.
+
+The inventory endpoint reports `bot.portfolio` as a local projection,
+`bot.position_lots` as FIFO accounting evidence, and the latest matching
+`bot.dust_detections.spot_quantity` as a historical event quantity. Its
+`observation_recency` is event age only, never exchange-balance validity; the
+field `current_exchange_truth` remains false. The bot's `BalanceService`
+fetches complete non-zero account assets into runtime memory, and the periodic
+portfolio/dust paths use that data to produce projections or event records,
+but no complete Spot snapshot table is persisted. The read-only inventory
+comparison CLI queries Binance at runtime and reads lots/generations from
+PostgreSQL without persisting the exchange snapshot. Django never describes
+projection, lot, or event evidence as current Binance Spot truth.
+
+Healthcheck capacity fields are bot-produced and retain their existing KPI
+definitions. Fresh complete values are current only as of `healthcheck_at`;
+stale values are exposed only under `historical_global`, with `global: null`.
+Missing and partial fields remain unavailable/null; Django does not infer slot
+occupancy from portfolio rows or FIFO quantities. The bot repository has an
+active `position_generations` model used by its comparison tool, but no
+generation read model is mapped in this Django application, so active
+generation facts remain explicitly unavailable here. Lot evidence freshness
+is unknown because the mapped lot rows have no update timestamp.
+
+Inventory reads are separate ORM statements in Django's normal autocommit
+mode. PostgreSQL's default statement-level snapshots permit bot writes between
+the healthcheck, event, portfolio, and lot reads. The response therefore sets
+`consistency.atomic` to false and labels portfolio-versus-lot comparison as
+`not_synchronized`; callers must use each source timestamp and must not treat
+the response as one reconciliation snapshot. A repeatable-read transaction
+was not added because this is advisory HTTP evidence, not a bot-side
+reconciliation result, and the API does not need to block or coordinate bot
+writes.
 
 Authenticated dashboard Disk Usage and Telegram `/health` Disk Usage are also
 side-effect-free, but they are not part of the public `/health/` liveness

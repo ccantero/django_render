@@ -1,9 +1,12 @@
 from django.urls import path
+from dashboard.bot_diagnostics_api import BotHealthAPIView, ETHInventoryAPIView
 
 from dashboard import views
 
 
 urlpatterns = [
+    path("api/bot/health", BotHealthAPIView.as_view(), name="bot-api-health"),
+    path("api/bot/inventory/ETHUSDT", ETHInventoryAPIView.as_view(), name="bot-api-eth-inventory"),
     path("dashboard/", views.dashboard, name="dashboard"),
     path("dashboard/analytics/", views.dashboard_analytics, name="dashboard_analytics"),
     path("dashboard/exit-status/", views.dashboard_exit_status, name="dashboard_exit_status"),
