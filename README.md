@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.31
+doc_version: 1.1.32
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-17
+last_verified_at: 2026-10-18
 source_repo: django_render
 ---
 
@@ -491,6 +491,10 @@ authorized Docker account:
 ```bash
 ./scripts/run_passkey_postgres_disposable_test.sh
 ```
+
+For prerequisites, result interpretation, Work Cloud limitations, and the
+complete safety runbook, see
+[`docs/testing/DISPOSABLE_POSTGRESQL_TESTING.md`](docs/testing/DISPOSABLE_POSTGRESQL_TESTING.md).
 
 The harness uses `.venv/bin/python` by default. To validate a separately
 audited environment, supply its absolute interpreter path through `PYTHON_BIN`;
