@@ -500,6 +500,17 @@ Before documenting or planning Django changes, inspect:
 - pytest or unittest usage
 - Celery, Redis, PostgreSQL, SQLite, Docker, and environment variables
 
+## Disposable PostgreSQL Validation
+
+When a Django change depends on PostgreSQL transactions, row locking, schema
+behavior, or concurrency, SQLite success is not sufficient. Follow
+[`docs/testing/DISPOSABLE_POSTGRESQL_TESTING.md`](docs/testing/DISPOSABLE_POSTGRESQL_TESTING.md)
+and run `scripts/run_passkey_postgres_disposable_test.sh` only from an
+authorized Docker-capable environment. Testing must never target production,
+staging, Supabase, or an existing bot database. If Docker/PostgreSQL is
+unavailable, report the limitation; do not bypass, skip-and-claim-pass, or
+claim PostgreSQL concurrency validation succeeded.
+
 ## Final Output Contract
 
 Every `STANDARD` and `DOCUMENTATION` task must report:
