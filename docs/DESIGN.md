@@ -1,6 +1,6 @@
 ---
 doc_id: design
-doc_version: 1.1.27
+doc_version: 1.1.28
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-18
@@ -147,6 +147,11 @@ ordered as password confirmation, existing-passkey confirmation when needed,
 credential naming, and device authentication. Browser guidance is presentation
 only; the existing server-side proof, ownership, CSRF, and authorization checks
 remain authoritative. The email address alone is not an account-recovery path.
+If password reauthentication fails, the page clears its enrollment guidance
+state and requires the user to repeat the required checks. Credential names are
+trimmed in the field before registration; an empty name is rejected with a
+localized message before a WebAuthn request begins. These client-side checks
+improve guidance only; the server remains authoritative.
 
 The Admin page continues to use Django's standard password form and enforces
 the existing staff/superuser check after passkey login. Device recovery uses

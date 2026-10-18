@@ -162,6 +162,8 @@
     });
   }
 
+  nameInput.addEventListener("input", () => nameInput.setCustomValidity(""));
+
   reauthForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const submitButton = reauthForm.querySelector("button[type=submit]");
@@ -175,6 +177,8 @@
         ? "Contraseña confirmada. Ahora verificá una passkey existente."
         : "Contraseña confirmada. Ahora elegí un nombre para tu passkey.";
     } catch (error) {
+      passwordVerified = false;
+      passkeyVerified = !hasCredentials;
       status.textContent = localizedError(error, "No pudimos verificar la contraseña. Intentá de nuevo.");
     } finally {
       submitButton.disabled = false;
@@ -183,14 +187,18 @@
   });
 
   registerButton.addEventListener("click", async () => {
-    if (!nameInput.value.trim()) {
+    const name = nameInput.value.trim();
+    nameInput.value = name;
+    if (!name) {
+      nameInput.setCustomValidity("Ingresá un nombre para la passkey.");
+      status.textContent = "Ingresá un nombre para continuar con el registro.";
       nameInput.reportValidity();
       return;
     }
+    nameInput.setCustomValidity("");
     registerButton.disabled = true;
     status.textContent = "Seguí las indicaciones de tu dispositivo para registrar la passkey…";
     try {
-      const name = nameInput.value.trim();
       const options = await post(settings.dataset.registerBeginUrl, { name }, false);
       // The server consumes both one-use proofs when registration begins.
       passwordVerified = false;
