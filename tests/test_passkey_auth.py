@@ -78,7 +78,47 @@ class PasskeyEntryPointTests(TestCase):
         response = self.client.get(reverse("login"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Sign in with a passkey")
+        self.assertContains(response, "Iniciar sesión con una passkey")
+        self.assertContains(response, "Contraseña")
+        self.assertContains(response, "Entrar con contraseña")
+        self.assertContains(response, f'data-begin-url="{reverse("passkey_authentication_begin")}"')
+        self.assertContains(response, f'data-complete-url="{reverse("passkey_authentication_complete")}"')
+
+    @override_settings(PASSKEYS_ENABLED=True)
+    def test_empty_passkey_management_page_explains_registration_in_spanish(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("passkey_manage"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Administrar passkeys")
+        self.assertContains(response, "Seguridad / Passkeys")
+        self.assertContains(response, "Confirmá tu contraseña actual")
+        self.assertContains(response, "No tenés passkeys registradas")
+        self.assertContains(response, "La contraseña sigue disponible para iniciar sesión")
+        self.assertContains(response, f'data-reauth-url="{reverse("passkey_reauthenticate")}"')
+        self.assertContains(response, f'data-register-begin-url="{reverse("passkey_registration_begin")}"')
+        self.assertContains(response, f'data-register-complete-url="{reverse("passkey_registration_complete")}"')
+        self.assertContains(response, f'data-step-up-begin-url="{reverse("passkey_enrollment_step_up_begin")}"')
+        self.assertContains(response, f'data-step-up-complete-url="{reverse("passkey_enrollment_step_up_complete")}"')
+
+    @override_settings(PASSKEYS_ENABLED=True)
+    def test_registered_passkey_is_presented_as_a_card_with_deliberate_revocation(self):
+        credential = make_credential(self.user, "phone-credential", name="iPhone personal")
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("passkey_manage"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "iPhone personal")
+        self.assertContains(response, "Agregada")
+        self.assertContains(response, "Último uso")
+        self.assertContains(response, "Nunca")
+        self.assertContains(response, "Revocar passkey")
+        self.assertContains(response, reverse("passkey_revoke", args=[credential.pk]))
+        self.assertContains(response, "Contraseña actual")
+        self.assertContains(response, "Verificá una passkey existente")
+        self.assertContains(response, "1 registrada")
 
     @override_settings(PASSKEYS_ENABLED=True)
     def test_credential_management_requires_a_login(self):
@@ -659,7 +699,7 @@ class PasskeyFlowTests(TestCase):
         response = self.client.get("/admin/login/?next=/admin/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Sign in with a passkey")
+        self.assertContains(response, "Iniciar sesión con una passkey")
 
     def test_logout_invalidates_passkey_session(self):
         self.helper.credential = make_credential(self.user, "logout-credential")

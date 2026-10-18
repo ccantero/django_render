@@ -3,7 +3,7 @@
 {{ block.super }}
 {% if passkeys_enabled %}
   <div class="submit-row">
-    <a href="{% url 'login' %}?next={{ next|urlencode }}">Sign in with a passkey</a>
+    <a href="{% url 'login' %}?next={{ next|urlencode }}">Iniciar sesión con una passkey</a>
   </div>
 {% endif %}
 {% endblock %}

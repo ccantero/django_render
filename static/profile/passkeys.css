@@ -1,0 +1,491 @@
+.passkey-page,
+.passkey-login-page {
+  --pk-ink: #182531;
+  --pk-muted: #586a78;
+  --pk-border: #dce5ea;
+  --pk-surface: #f7fafb;
+  --pk-accent: #1459a6;
+  --pk-accent-hover: #10477f;
+  --pk-danger: #a33737;
+}
+
+.passkey-page {
+  color: var(--pk-ink);
+  padding: 1.25rem 1rem 3rem;
+}
+
+.passkey-layout {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.passkey-header {
+  margin: 0 0 1.5rem;
+}
+
+.passkey-eyebrow {
+  margin: 0 0 .55rem;
+  color: var(--pk-muted);
+  font-size: .875rem;
+  font-weight: 600;
+  letter-spacing: .025em;
+}
+
+.passkey-header h1 {
+  margin: 0;
+  font-size: clamp(1.7rem, 5vw, 2.2rem);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.passkey-lede {
+  max-width: 620px;
+  margin: .7rem 0 0;
+  color: var(--pk-muted);
+  font-size: 1.05rem;
+  line-height: 1.55;
+}
+
+.passkey-recovery,
+.passkey-help {
+  margin-top: 1rem;
+  border: 1px solid var(--pk-border);
+  border-radius: .75rem;
+  background: #fff;
+}
+
+.passkey-recovery summary,
+.passkey-help summary {
+  min-height: 44px;
+  padding: .75rem 1rem;
+  color: var(--pk-accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.passkey-recovery p,
+.passkey-help p {
+  margin: 0;
+  padding: 0 1rem 1rem;
+  color: var(--pk-muted);
+  line-height: 1.55;
+}
+
+.passkey-section {
+  margin-top: 1.25rem;
+  padding: 1.25rem;
+  border: 1px solid var(--pk-border);
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(24, 37, 49, .045);
+}
+
+.passkey-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.passkey-section-heading h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.passkey-section-heading p {
+  margin: .35rem 0 0;
+  color: var(--pk-muted);
+  line-height: 1.45;
+}
+
+.passkey-count {
+  flex: 0 0 auto;
+  padding: .3rem .65rem;
+  border-radius: 999px;
+  background: #edf4f8;
+  color: #35536a;
+  font-size: .8rem;
+  font-weight: 600;
+}
+
+.passkey-credential-list,
+.passkey-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.passkey-credential-list {
+  display: grid;
+  gap: .75rem;
+}
+
+.passkey-credential-card {
+  display: grid;
+  grid-template-columns: 2.6rem minmax(0, 1fr);
+  align-items: start;
+  gap: .9rem;
+  padding: 1rem;
+  border: 1px solid var(--pk-border);
+  border-radius: .8rem;
+  background: var(--pk-surface);
+}
+
+.passkey-credential-mark,
+.passkey-empty-mark {
+  display: grid;
+  width: 2.6rem;
+  height: 2.6rem;
+  place-items: center;
+  border-radius: .75rem;
+  background: #e7f0f7;
+  color: var(--pk-accent);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.passkey-credential-main {
+  min-width: 0;
+}
+
+.passkey-credential-main h3,
+.passkey-empty h3,
+.passkey-step h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.passkey-credential-meta {
+  display: grid;
+  gap: .45rem;
+  margin: .65rem 0 0;
+}
+
+.passkey-credential-meta div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem .45rem;
+  font-size: .9rem;
+}
+
+.passkey-credential-meta dt {
+  color: var(--pk-muted);
+  font-weight: 500;
+}
+
+.passkey-credential-meta dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.passkey-revoke {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--pk-border);
+  padding-top: .7rem;
+}
+
+.passkey-revoke summary {
+  display: inline-block;
+  min-height: 42px;
+  padding: .6rem .85rem;
+  border: 1px solid #d8aaaa;
+  border-radius: .55rem;
+  color: var(--pk-danger);
+  font-size: .92rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.passkey-revoke-panel {
+  margin-top: .75rem;
+  padding: .9rem;
+  border: 1px solid #ead4d4;
+  border-radius: .65rem;
+  background: #fffafa;
+}
+
+.passkey-revoke-panel p,
+.passkey-step-content > p {
+  margin: 0 0 .75rem;
+  color: var(--pk-muted);
+  line-height: 1.45;
+}
+
+.passkey-revoke-panel form,
+.passkey-form {
+  display: grid;
+  gap: .55rem;
+}
+
+.passkey-page label {
+  display: block;
+  margin: 0;
+  color: var(--pk-ink);
+  font-size: .95rem;
+  font-weight: 600;
+}
+
+.passkey-page input[type="password"],
+.passkey-page input[name="name"] {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: .7rem .8rem;
+  border: 1px solid #9eacb6;
+  border-radius: .55rem;
+  background: #fff;
+  color: var(--pk-ink);
+  font: inherit;
+  font-size: 16px;
+}
+
+.passkey-page input:disabled {
+  background: #f0f3f5;
+  color: #667782;
+}
+
+.passkey-page button {
+  min-height: 46px;
+  padding: .7rem 1rem;
+  border: 1px solid var(--pk-accent);
+  border-radius: .55rem;
+  background: var(--pk-accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 650;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.passkey-page button:hover:not(:disabled) {
+  background: var(--pk-accent-hover);
+  border-color: var(--pk-accent-hover);
+}
+
+.passkey-page button:disabled {
+  border-color: #aab5bc;
+  background: #d9e0e4;
+  color: #53616a;
+  cursor: not-allowed;
+}
+
+.passkey-page button:focus-visible,
+.passkey-page summary:focus-visible,
+.passkey-page input:focus-visible {
+  outline: 3px solid #f0bb45;
+  outline-offset: 2px;
+}
+
+.passkey-revoke-panel button {
+  border-color: var(--pk-danger);
+  background: var(--pk-danger);
+}
+
+.passkey-revoke-panel button:hover:not(:disabled) {
+  border-color: #812b2b;
+  background: #812b2b;
+}
+
+.passkey-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: .9rem;
+  padding: 1rem;
+  border: 1px dashed #b8c7d0;
+  border-radius: .8rem;
+  background: var(--pk-surface);
+}
+
+.passkey-empty p {
+  margin: .35rem 0 0;
+  color: var(--pk-muted);
+  line-height: 1.45;
+}
+
+.passkey-steps {
+  display: grid;
+  gap: 0;
+}
+
+.passkey-step {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: .8rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--pk-border);
+}
+
+.passkey-step:first-child {
+  border-top: 0;
+  padding-top: .25rem;
+}
+
+.passkey-step-number {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 50%;
+  background: #e7f0f7;
+  color: var(--pk-accent);
+  font-weight: 700;
+}
+
+.passkey-step-content {
+  display: grid;
+  gap: .65rem;
+  min-width: 0;
+}
+
+.passkey-step-content > p {
+  margin: -.2rem 0 0;
+}
+
+.passkey-form-row {
+  display: grid;
+  gap: .55rem;
+}
+
+.passkey-button-secondary {
+  justify-self: start;
+  border-color: #9eacb6 !important;
+  background: #fff !important;
+  color: var(--pk-accent) !important;
+}
+
+.passkey-status {
+  min-height: 1.5rem;
+  margin: .3rem 0 0;
+  color: #314b5c;
+  font-size: .95rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.passkey-no-script {
+  margin: .75rem 0 0;
+  color: var(--pk-muted);
+}
+
+.passkey-login-page {
+  padding-top: 2rem;
+  padding-bottom: 3rem;
+}
+
+.passkey-login-card {
+  padding: 1.25rem;
+  border: 1px solid var(--pk-border);
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(24, 37, 49, .06);
+}
+
+.passkey-login-card h1 {
+  margin: 0 0 .45rem;
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.passkey-login-intro {
+  margin: 0 0 1.25rem;
+  color: var(--pk-muted);
+  line-height: 1.5;
+}
+
+.passkey-login-card .form-group {
+  margin-bottom: 1rem;
+}
+
+.passkey-login-card label {
+  display: block;
+  margin-bottom: .4rem;
+  font-weight: 600;
+}
+
+.passkey-login-card input {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+.passkey-login-card .btn {
+  min-height: 48px;
+  padding: .7rem 1rem;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.passkey-login-card [hidden] {
+  display: none !important;
+}
+
+.passkey-login-divider {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin: 1rem 0;
+  color: var(--pk-muted);
+  font-size: .9rem;
+}
+
+.passkey-login-divider::before,
+.passkey-login-divider::after {
+  height: 1px;
+  flex: 1;
+  background: var(--pk-border);
+  content: "";
+}
+
+.passkey-login-status {
+  min-height: 1.4rem;
+  color: var(--pk-muted);
+}
+
+@media (min-width: 640px) {
+  .passkey-page {
+    padding: 2rem 1.5rem 4rem;
+  }
+
+  .passkey-section {
+    padding: 1.5rem;
+  }
+
+  .passkey-credential-card {
+    grid-template-columns: 2.6rem minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .passkey-revoke {
+    grid-column: 3;
+    grid-row: 1;
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .passkey-revoke[open] {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    border-top: 1px solid var(--pk-border);
+    padding-top: .7rem;
+  }
+
+  .passkey-form-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .passkey-form-row button,
+  .passkey-step-content > button {
+    justify-self: start;
+  }
+
+  .passkey-login-page {
+    padding-top: 3rem;
+  }
+
+  .passkey-login-card {
+    padding: 2rem;
+  }
+}

@@ -27,9 +27,29 @@
       body: json ? JSON.stringify(data) : new URLSearchParams(data)
     });
     let result = {};
-    try { result = await response.json(); } catch (_) { /* controlled fallback below */ }
-    if (!response.ok) throw new Error(result.detail || "The passkey operation could not be completed.");
+    try { result = await response.json(); } catch (_) { /* use a localized fallback below */ }
+    if (!response.ok) throw new Error(result.detail || "operation-failed");
     return result;
+  }
+
+  const errorMessages = {
+    "Too many attempts. Try again later.": "Hubo demasiados intentos. Probá de nuevo más tarde.",
+    "Authentication required.": "Volvé a iniciar sesión para continuar.",
+    "Re-enter your password before adding a passkey.": "Confirmá tu contraseña actual antes de agregar una passkey.",
+    "Enter a passkey name of 1 to 80 characters.": "Ingresá un nombre de entre 1 y 80 caracteres.",
+    "Verify with an existing passkey before adding another.": "Verificá una passkey existente antes de agregar otra.",
+    "Reauthentication expired. Verify again before adding a passkey.": "La verificación venció. Confirmá de nuevo tu contraseña y tu passkey.",
+    "Passkey registration could not be completed.": "No pudimos completar el registro. Intentá de nuevo.",
+    "Passkey verification could not be completed.": "No pudimos verificar la passkey. Intentá de nuevo.",
+    "Register your first passkey with your password.": "Confirmá tu contraseña para registrar la primera passkey.",
+    "Sign-in could not be completed.": "No pudimos iniciar sesión con la passkey. Podés usar tu contraseña.",
+    "Reauthentication failed.": "La contraseña no coincide. Probá de nuevo.",
+    "Reauthentication could not be completed.": "No pudimos verificar la contraseña. Intentá de nuevo.",
+    "operation-failed": "No pudimos completar la operación. Intentá de nuevo."
+  };
+
+  function localizedError(error, fallback) {
+    return errorMessages[error.message] || fallback;
   }
 
   function serializeCredential(credential, registering) {
@@ -73,21 +93,23 @@
 
   const loginButton = document.getElementById("passkey-login");
   if (loginButton) {
-    if (window.PublicKeyCredential) loginButton.hidden = false;
+    if (window.PublicKeyCredential && navigator.credentials) loginButton.hidden = false;
     loginButton.addEventListener("click", async () => {
       const status = document.getElementById("passkey-login-status");
       loginButton.disabled = true;
-      status.textContent = "Waiting for your authenticator…";
+      status.textContent = "Preparando la verificación del dispositivo…";
       try {
         const options = await post(loginButton.dataset.beginUrl, {}, true);
         const credential = await navigator.credentials.get({ publicKey: requestOptions(options) });
-        if (!credential) throw new Error("No passkey was selected.");
+        if (!credential) throw new Error("Sin passkey seleccionada.");
         const completeUrl = new URL(loginButton.dataset.completeUrl, window.location.origin);
         if (loginButton.dataset.next) completeUrl.searchParams.set("next", loginButton.dataset.next);
         const result = await post(completeUrl.toString(), serializeCredential(credential, false), true);
         window.location.assign(result.redirect_url || "/dashboard/");
       } catch (error) {
-        status.textContent = error.name === "NotAllowedError" ? "Passkey sign-in was cancelled or unavailable. You can use your password instead." : error.message;
+        status.textContent = error.name === "NotAllowedError"
+          ? "La solicitud se canceló o no está disponible. Podés iniciar sesión con tu contraseña."
+          : localizedError(error, "No pudimos iniciar sesión con la passkey. Podés usar tu contraseña.");
         loginButton.disabled = false;
       }
     });
@@ -97,44 +119,107 @@
   if (!settings) return;
   const status = document.getElementById("passkey-settings-status");
   const registerButton = document.getElementById("passkey-register");
-  if (window.PublicKeyCredential) registerButton.disabled = false;
+  const nameInput = document.getElementById("passkey-name");
+  const reauthForm = document.getElementById("passkey-reauth-form");
+  const reauthPassword = document.getElementById("reauth-password");
   const deviceReauth = document.getElementById("passkey-reauth-device");
+  const hasCredentials = settings.dataset.hasCredentials === "true";
+  const webAuthnAvailable = Boolean(window.PublicKeyCredential && navigator.credentials);
+  let passwordVerified = false;
+  let passkeyVerified = !hasCredentials;
+
+  function updateEnrollmentControls() {
+    const proofsVerified = passwordVerified && passkeyVerified;
+    nameInput.disabled = !proofsVerified || !webAuthnAvailable;
+    registerButton.disabled = !proofsVerified || !webAuthnAvailable;
+    if (deviceReauth) deviceReauth.disabled = !passwordVerified || !webAuthnAvailable;
+    if (!webAuthnAvailable) {
+      status.textContent = "Este navegador no permite registrar passkeys. Podés seguir usando tu contraseña.";
+    }
+  }
+
+  updateEnrollmentControls();
+
   if (deviceReauth) {
     deviceReauth.addEventListener("click", async () => {
       deviceReauth.disabled = true;
-      status.textContent = "Verify with one of your registered passkeys…";
+      status.textContent = "Confirmá con Face ID, huella, el bloqueo del dispositivo o una llave de seguridad…";
       try {
         const options = await post(settings.dataset.stepUpBeginUrl, {}, true);
         const credential = await navigator.credentials.get({ publicKey: requestOptions(options) });
-        if (!credential) throw new Error("No passkey was selected.");
+        if (!credential) throw new Error("Sin passkey seleccionada.");
         await post(settings.dataset.stepUpCompleteUrl, serializeCredential(credential, false), true);
-        status.textContent = "Passkey proof accepted. Enter your current password to authorize one enrollment.";
-      } catch (error) { status.textContent = error.message; }
-      finally { deviceReauth.disabled = false; }
+        passkeyVerified = true;
+        status.textContent = "Passkey verificada. Ahora elegí un nombre para la nueva passkey.";
+      } catch (error) {
+        passkeyVerified = false;
+        status.textContent = error.name === "NotAllowedError"
+          ? "La verificación se canceló o no está disponible. Podés intentarlo de nuevo."
+          : localizedError(error, "No pudimos verificar la passkey. Intentá de nuevo.");
+      } finally {
+        updateEnrollmentControls();
+      }
     });
   }
-  document.getElementById("passkey-reauth-form").addEventListener("submit", async (event) => {
+
+  nameInput.addEventListener("input", () => nameInput.setCustomValidity(""));
+
+  reauthForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const password = document.getElementById("reauth-password").value;
+    const submitButton = reauthForm.querySelector("button[type=submit]");
+    submitButton.disabled = true;
+    status.textContent = "Verificando tu contraseña…";
     try {
-      await post(settings.dataset.reauthUrl, { password }, false);
-      status.textContent = "Password proof accepted. If you have an existing passkey, verify it too before registering.";
-      document.getElementById("reauth-password").value = "";
-    } catch (error) { status.textContent = error.message; }
+      await post(settings.dataset.reauthUrl, { password: reauthPassword.value }, false);
+      passwordVerified = true;
+      reauthPassword.value = "";
+      status.textContent = hasCredentials
+        ? "Contraseña confirmada. Ahora verificá una passkey existente."
+        : "Contraseña confirmada. Ahora elegí un nombre para tu passkey.";
+    } catch (error) {
+      passwordVerified = false;
+      passkeyVerified = !hasCredentials;
+      status.textContent = localizedError(error, "No pudimos verificar la contraseña. Intentá de nuevo.");
+    } finally {
+      submitButton.disabled = false;
+      updateEnrollmentControls();
+    }
   });
-  document.getElementById("passkey-register-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
+
+  registerButton.addEventListener("click", async () => {
+    const name = nameInput.value.trim();
+    nameInput.value = name;
+    if (!name) {
+      nameInput.setCustomValidity("Ingresá un nombre para la passkey.");
+      status.textContent = "Ingresá un nombre para continuar con el registro.";
+      nameInput.reportValidity();
+      return;
+    }
+    nameInput.setCustomValidity("");
     registerButton.disabled = true;
-    status.textContent = "Waiting for your authenticator…";
+    status.textContent = "Seguí las indicaciones de tu dispositivo para registrar la passkey…";
     try {
-      const name = document.getElementById("passkey-name").value.trim();
       const options = await post(settings.dataset.registerBeginUrl, { name }, false);
+      // The server consumes both one-use proofs when registration begins.
+      passwordVerified = false;
+      passkeyVerified = !hasCredentials;
       const credential = await navigator.credentials.create({ publicKey: creationOptions(options) });
-      if (!credential) throw new Error("No passkey was created.");
+      if (!credential) throw new Error("No se creó la passkey.");
       await post(settings.dataset.registerCompleteUrl, serializeCredential(credential, true), true);
-      status.textContent = "Passkey registered.";
-      window.location.reload();
-    } catch (error) { status.textContent = error.name === "NotAllowedError" ? "Passkey registration was cancelled or unavailable." : error.message; }
-    finally { registerButton.disabled = !window.PublicKeyCredential; }
+      status.textContent = "Passkey registrada correctamente.";
+      window.setTimeout(() => window.location.reload(), 2000);
+    } catch (error) {
+      passwordVerified = false;
+      passkeyVerified = !hasCredentials;
+      const message = error.name === "NotAllowedError"
+        ? "El registro se canceló."
+        : localizedError(error, "No pudimos completar el registro.");
+      const retryGuidance = hasCredentials
+        ? "Volvé a confirmar tu contraseña y una passkey antes de intentarlo otra vez."
+        : "Volvé a confirmar tu contraseña antes de intentarlo otra vez.";
+      status.textContent = `${message} ${retryGuidance}`;
+    } finally {
+      updateEnrollmentControls();
+    }
   });
 })();
