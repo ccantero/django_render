@@ -1,68 +1,47 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block content %}
-<div class="container py-5">
-	<div class="row justify-content-center">
-		<div class="col-md-5">
-			<h1 class="h3 mb-4">Login</h1>
-
-			{% if form.errors %}
-			<div class="alert alert-danger">
-				Email o password inválidos.
-			</div>
-			{% endif %}
-
-			<form method="post">
-				{% csrf_token %}
-				<input type="hidden" name="next" value="{{ next }}">
-
-				<div class="form-group">
-					<label for="{{ form.username.id_for_label }}">Email</label>
-					<input
-						type="email"
-						name="{{ form.username.html_name }}"
-						id="{{ form.username.id_for_label }}"
-						class="form-control"
-						autocomplete="email"
-						required
-						autofocus
-					>
-				</div>
-
-				<div class="form-group">
-					<label for="{{ form.password.id_for_label }}">Password</label>
-					<input
-						type="password"
-						name="{{ form.password.html_name }}"
-						id="{{ form.password.id_for_label }}"
-						class="form-control"
-						autocomplete="current-password"
-						required
-					>
-				</div>
-
-				<button type="submit" class="btn btn-primary btn-block">Entrar</button>
-			</form>
-			{% if passkeys_enabled %}
-			<hr>
-			<button
-				type="button"
-				id="passkey-login"
-				class="btn btn-outline-primary btn-block"
-				data-begin-url="{% url 'passkey_authentication_begin' %}"
-				data-complete-url="{% url 'passkey_authentication_complete' %}"
-				data-next="{{ next }}"
-				hidden
-			>Sign in with a passkey</button>
-			<p id="passkey-login-status" class="small mt-2" role="status" aria-live="polite"></p>
-			<noscript><p>Passkey sign-in requires JavaScript. You can still sign in with your email and password.</p></noscript>
-			{% endif %}
-		</div>
-	</div>
-</div>
+{% block extra_head %}
+{% if passkeys_enabled %}<link rel="stylesheet" href="{% static 'profile/passkeys.css' %}"><script defer src="{% static 'profile/passkeys.js' %}"></script>{% endif %}
 {% endblock %}
 
-{% block extra_head %}
-{% if passkeys_enabled %}<script defer src="{% static 'profile/passkeys.js' %}"></script>{% endif %}
+{% block content %}
+<main class="container passkey-login-page">
+  <div class="row justify-content-center">
+    <div class="col-sm-10 col-md-7 col-lg-5">
+      <section class="passkey-login-card" aria-labelledby="login-title">
+        <h1 id="login-title">Iniciar sesión</h1>
+        <p class="passkey-login-intro">Usá tu correo y contraseña para entrar a tu cuenta.</p>
+
+        {% if form.errors %}
+          <div class="alert alert-danger" role="alert">El correo o la contraseña no son correctos.</div>
+        {% endif %}
+
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ next }}">
+
+          <div class="form-group">
+            <label for="{{ form.username.id_for_label }}">Correo electrónico</label>
+            <input type="email" name="{{ form.username.html_name }}" id="{{ form.username.id_for_label }}" class="form-control" autocomplete="email" required>
+          </div>
+
+          <div class="form-group">
+            <label for="{{ form.password.id_for_label }}">Contraseña</label>
+            <input type="password" name="{{ form.password.html_name }}" id="{{ form.password.id_for_label }}" class="form-control" autocomplete="current-password" required>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block">Entrar con contraseña</button>
+        </form>
+
+        {% if passkeys_enabled %}
+          <div class="passkey-login-divider" aria-hidden="true">o</div>
+          <button type="button" id="passkey-login" class="btn btn-outline-primary btn-block" data-begin-url="{% url 'passkey_authentication_begin' %}" data-complete-url="{% url 'passkey_authentication_complete' %}" data-next="{{ next }}" aria-describedby="passkey-login-status" hidden>Iniciar sesión con una passkey</button>
+          <p id="passkey-login-status" class="passkey-login-status small mt-2" role="status" aria-live="polite" aria-atomic="true"></p>
+          <noscript><p class="small text-muted">Para iniciar sesión con una passkey necesitás JavaScript. Podés usar el formulario de correo y contraseña.</p></noscript>
+        {% endif %}
+      </section>
+    </div>
+  </div>
+</main>
 {% endblock %}

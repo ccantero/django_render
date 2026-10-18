@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.26
+doc_version: 1.1.27
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-15
+last_verified_at: 2026-10-18
 source_repo: django_render
 ---
 
@@ -139,6 +139,15 @@ CSRF-protected POSTs. Subsequent enrollment also requires a dedicated
 user-bound WebAuthn assertion; proof grants are short-lived and atomically
 one-use. The step-up flow does not invoke normal login or rotate/change the
 authenticated identity.
+
+The passkey settings page is mobile-first and Spanish-language. It presents
+registered credentials with their name, creation date, last-use date, and a
+deliberate password-authorized revocation disclosure. Enrollment guidance is
+ordered as password confirmation, existing-passkey confirmation when needed,
+credential naming, and device authentication. Browser guidance is presentation
+only; the existing server-side proof, ownership, CSRF, and authorization checks
+remain authoritative. The email address alone is not an account-recovery path.
+
 The Admin page continues to use Django's standard password form and enforces
 the existing staff/superuser check after passkey login. Device recovery uses
 another registered credential or established operator identity verification;
