@@ -6834,8 +6834,9 @@ class LastOperationsCommandTests(TransactionTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        with connection.cursor() as cursor:
-            cursor.execute("ATTACH DATABASE ':memory:' AS bot")
+        if connection.vendor == "sqlite":
+            with connection.cursor() as cursor:
+                cursor.execute("ATTACH DATABASE ':memory:' AS bot")
         with connection.schema_editor() as schema_editor:
             schema_editor.create_model(TradeOperation)
             schema_editor.create_model(LotClosure)
@@ -6845,8 +6846,9 @@ class LastOperationsCommandTests(TransactionTestCase):
         with connection.schema_editor() as schema_editor:
             schema_editor.delete_model(LotClosure)
             schema_editor.delete_model(TradeOperation)
-        with connection.cursor() as cursor:
-            cursor.execute("DETACH DATABASE bot")
+        if connection.vendor == "sqlite":
+            with connection.cursor() as cursor:
+                cursor.execute("DETACH DATABASE bot")
         super().tearDownClass()
 
     def setUp(self):
@@ -6857,10 +6859,10 @@ class LastOperationsCommandTests(TransactionTestCase):
     def _insert_operation(self, symbol, executed_at):
         with connection.cursor() as cursor:
             cursor.execute(
-                'INSERT INTO "bot"."trade_operations" (symbol, side, status, executed_at, created_at, raw_payload) VALUES (%s, %s, %s, %s, %s, %s)',
+                'INSERT INTO "bot"."trade_operations" (symbol, side, status, executed_at, created_at, raw_payload) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id',
                 [symbol, 'SELL', 'FILLED', executed_at, executed_at, '{}'],
             )
-            return cursor.lastrowid
+            return cursor.fetchone()[0]
 
     def _insert_closure(self, operation_id, pnl, index):
         with connection.cursor() as cursor:

@@ -4,7 +4,7 @@ import json
 from typing import List
 from urllib.parse import urlencode
 
-from django.db import DatabaseError, connection
+from django.db import DatabaseError, connection, transaction
 from django.db.models import (
 	Case,
 	CharField,
@@ -134,16 +134,20 @@ def get_dust_detail_context(filters=None):
 	}
 
 	try:
-		queryset = _filtered_group_detections(filters)
-		grouped_rows = _grouped_detections(queryset, limit=1)
-		grouped_rows = _with_correction_state(grouped_rows)
-		context["group_summary"] = grouped_rows[0] if grouped_rows else None
-		context["review"] = _review_for_identity(filters)
-		if context["review"]:
-			context["review_status"] = context["review"].status
-		context["raw_detections"] = _with_raw_detection_correction_state(
-			_latest_raw_detections(queryset)
-		)
+		# Missing/unavailable bot-owned read tables are a degraded-read condition.
+		# A savepoint lets PostgreSQL recover after the expected read failure while
+		# preserving the surrounding request/test transaction.
+		with transaction.atomic():
+			queryset = _filtered_group_detections(filters)
+			grouped_rows = _grouped_detections(queryset, limit=1)
+			grouped_rows = _with_correction_state(grouped_rows)
+			context["group_summary"] = grouped_rows[0] if grouped_rows else None
+			context["review"] = _review_for_identity(filters)
+			if context["review"]:
+				context["review_status"] = context["review"].status
+			context["raw_detections"] = _with_raw_detection_correction_state(
+				_latest_raw_detections(queryset)
+			)
 	except DatabaseError as exc:
 		context["dust_error"] = "Query too slow"
 		context["data_error"] = f"Query too slow: {exc}"

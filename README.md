@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.19
+doc_version: 1.1.31
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-15
+last_verified_at: 2026-10-17
 source_repo: django_render
 ---
 
@@ -200,6 +200,11 @@ before `pip install -r requirements.txt`. If the Render service has a
 `PYTHON_VERSION` environment variable set, it takes precedence over
 `.python-version`; remove or update old values such as Python 3.7/3.9 before
 redeploying.
+
+`requirements.txt` also declares security floors for Django, Django REST
+Framework, and their runtime `sqlparse` and `urllib3` dependency paths. The
+project intentionally has no lockfile, so deployments must install from the
+tracked requirements file and should be audited after dependency resolution.
 
 Required environment variables:
 
@@ -450,6 +455,88 @@ state and markdown contracts.
 - State-changing actions must be POST-only and CSRF-protected.
 - Public/demo views must never expose sensitive data.
 - Database grants should be reviewed so public roles cannot mutate bot-owned accounting tables.
+
+### Optional Passkeys
+
+Passkeys are an opt-in addition to existing email/password accounts. Set
+`PASSKEYS_ENABLED=true`, `PASSKEY_RP_ID` to the relying-party hostname, and
+`PASSKEY_ALLOWED_ORIGINS` to comma-separated exact HTTPS origins before
+enabling in production. Run the Django migrations during a normal deploy;
+they add Django-owned rate-limit, one-use enrollment-proof, and WebAuthn
+challenge tables without rewriting users or bot tables.
+
+An existing signed-in user manages credentials at `/security/passkeys/`.
+Adding or revoking requires the current password; adding a later credential
+also requires a dedicated, five-minute WebAuthn step-up against a key owned by
+the same user. Password and passkey proofs are consumed atomically for one
+registration. Device loss requires
+another registered passkey or the operator's established identity-verification
+and account recovery process. Email possession alone is not recovery.
+
+`/admin/` retains Django Admin's normal password login and staff/superuser
+authorization. Its login page links to passkey login, which creates a normal
+Django session before Admin applies its normal staff gate. Password login is
+the recovery path. Before relying on `SECURE_PROXY_SSL_HEADER`, verify that the
+deployment proxy overwrites `X-Forwarded-Proto` and the app server is not
+directly reachable.
+
+For rollback, set `PASSKEYS_ENABLED=false` and redeploy; retain migrations and
+credential rows. Existing accounts, sessions, passwords, permissions, and API
+tokens remain in place. Verify Safari/iOS and desktop authenticator
+interoperability after deployment.
+
+For loopback-only PostgreSQL validation, run the disposable harness from an
+authorized Docker account:
+
+```bash
+./scripts/run_passkey_postgres_disposable_test.sh
+```
+
+The harness uses `.venv/bin/python` by default. To validate a separately
+audited environment, supply its absolute interpreter path through `PYTHON_BIN`;
+relative paths are rejected:
+
+```bash
+PYTHON_BIN=/absolute/path/to/python \
+  ./scripts/run_passkey_postgres_disposable_test.sh
+```
+
+It creates uniquely named PostgreSQL 16 Docker resources, uses an isolated
+loopback-only test database, runs the PostgreSQL row-lock regression tests and
+full Django suite, then removes only the resources it created. Its deployment
+system check uses a long synthetic key and production-like settings with
+`DEBUG` disabled, so security warnings fail validation rather than being
+confused with development-mode test behavior. The test suites run with
+`DEBUG=True`, matching their normal request expectations. Django clones its
+explicitly named test database from an ordinary,
+run-owned PostgreSQL template database that already contains the `django`
+schema; no globally reusable PostgreSQL template is created. It refuses
+inherited database URLs and does not load `.env`. See `IMPLEMENTATION_WORK.md`
+for the remaining HTTPS Safari/iPhone smoke-test procedure.
+
+After successful disposable database initialization and fresh migrations, the
+harness reports migration consistency, deployment security checks, each
+PostgreSQL concurrency case individually, the combined and repeated
+concurrency runs, the full Django suite, and Django test-database cleanup as
+independent `PASS`, `FAIL`, or `NOT_RUN` stages. Migration drift is still a
+required failure: a known `core` drift is labeled as pre-existing
+`origin/main` drift while remaining checks continue. The final result is
+nonzero if any required stage fails.
+
+The run-owned test template contains both `django` and `bot` schemas, while
+the PostgreSQL search path remains `django,public`; bot tables are always
+schema-qualified. Django clones that template for each test database, and a
+PostgreSQL-only session fixture fails before tests if either expected schema is
+absent. Its historical `django.dust_signal_reviews` table and disposable
+`bot.dust_signal_reviews` fixture table are explicitly included in Django's
+PostgreSQL flush set so their foreign keys to the Django-owned user table are
+truncated in the same statement;
+the Django-managed tables are explicitly qualified with the `django` schema to
+avoid relying on connection search-path resolution. The cleanup path does not
+use `CASCADE` or alter bot-table ownership. The `bot` schema and any test
+tables in it are disposable only; the harness never connects to or changes an
+external bot database. PostgreSQL runtime confirmation of this isolation path
+remains required from an authorized Docker-capable operator.
 
 ---
 

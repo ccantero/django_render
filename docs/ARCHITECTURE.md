@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.12
+doc_version: 1.1.14
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-08-29
+last_verified_at: 2026-10-15
 source_repo: django_render
 ---
 
@@ -342,6 +342,41 @@ Recommended:
 
 - Dedicated read-only dashboard DB user
 - Explicit write permission only on safe dashboard/request tables
+
+### Passkeys
+
+The custom `profile.UserProfile` remains `AUTH_USER_MODEL`; password hashes,
+IDs, staff/superuser flags, groups, permissions, and DRF token records are not
+changed. `django-otp-webauthn` owns credential and user-handle models with
+foreign keys to that user. `profile.PasskeyRateLimit` is Django-owned and
+contains only an HMAC of the rate-limit scope/identity, a time window, and a
+counter. `PasskeyEnrollmentProof` stores only HMACed one-use proof tokens,
+user/session binding, proof type, and timestamps. `PasskeyEnrollmentChallenge`
+stores short-lived verifier state for the enrollment step-up and is consumed
+under a row lock. No credential private key material is stored by the
+dashboard.
+
+The browser login and management flows use the library's WebAuthn verification
+and create ordinary Django sessions. The custom helper requires user
+verification and discoverable registration. Login and registration ceremonies
+are short-lived and session-bound; enrollment step-up state is server-side,
+user/session-bound, and atomically consumed before verification. Password and
+passkey proof tokens are independently stored HMACed and consumed together
+under database row locks when an additional credential registration starts.
+This does not call Django's login flow or change the authenticated user.
+Exact allowed origins and RP ID are configured explicitly. Enrollment and
+revocation require password reauthentication; adding another key also requires
+a current user's passkey assertion. Revocation is user-scoped and POST/CSRF
+protected. Rate limits use database row locks, fail closed if enforcement fails,
+and prune expired rows at most once per process per five minutes.
+
+Passkeys default off. Production enablement requires explicit HTTPS origins
+and RP ID. Verify proxy forwarding sanitizes `X-Forwarded-Proto` before the
+production `SECURE_PROXY_SSL_HEADER` is trusted. Admin retains Django's native
+password page and permissions; the passkey login creates a normal session and
+Admin itself enforces staff/superuser access. Password remains the documented
+operator recovery path. Disable with `PASSKEYS_ENABLED=false`; keep migrations
+and credential rows for a reversible rollback.
 
 ---
 
