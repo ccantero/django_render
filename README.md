@@ -1,6 +1,6 @@
 ---
 doc_id: readme
-doc_version: 1.1.30
+doc_version: 1.1.31
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-17
@@ -200,6 +200,11 @@ before `pip install -r requirements.txt`. If the Render service has a
 `PYTHON_VERSION` environment variable set, it takes precedence over
 `.python-version`; remove or update old values such as Python 3.7/3.9 before
 redeploying.
+
+`requirements.txt` also declares security floors for Django, Django REST
+Framework, and their runtime `sqlparse` and `urllib3` dependency paths. The
+project intentionally has no lockfile, so deployments must install from the
+tracked requirements file and should be audited after dependency resolution.
 
 Required environment variables:
 
@@ -485,6 +490,15 @@ authorized Docker account:
 
 ```bash
 ./scripts/run_passkey_postgres_disposable_test.sh
+```
+
+The harness uses `.venv/bin/python` by default. To validate a separately
+audited environment, supply its absolute interpreter path through `PYTHON_BIN`;
+relative paths are rejected:
+
+```bash
+PYTHON_BIN=/absolute/path/to/python \
+  ./scripts/run_passkey_postgres_disposable_test.sh
 ```
 
 It creates uniquely named PostgreSQL 16 Docker resources, uses an isolated

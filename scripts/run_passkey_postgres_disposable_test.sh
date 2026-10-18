@@ -89,7 +89,9 @@ trap cleanup EXIT
 
 command -v docker >/dev/null || fail 'docker is required on the authorized development host'
 command -v openssl >/dev/null || fail 'openssl is required to generate non-printed disposable credentials'
-[[ -x "${repo_root}/.venv/bin/python" ]] || fail 'expected virtualenv Python at .venv/bin/python'
+python_bin="${PYTHON_BIN:-${repo_root}/.venv/bin/python}"
+[[ "${python_bin}" = /* ]] || fail 'PYTHON_BIN must be an absolute path'
+[[ -x "${python_bin}" ]] || fail "expected executable Python at ${python_bin}"
 
 # The harness deliberately refuses any caller-provided database target.
 for forbidden_name in DATABASE_URL SUPABASE_DATABASE_URL PASSKEY_TEST_DATABASE_URL; do
@@ -277,7 +279,6 @@ stage_status[database_initialization]=PASS
 printf '%s\n' 'VALIDATION_STAGE_database_initialization = PASS'
 
 test_url="postgresql://${database_user}:${test_password}@127.0.0.1:${host_port}/${database_name}"
-python_bin="${repo_root}/.venv/bin/python"
 run_django_test() {
     env -i \
         PATH="${PATH}" \

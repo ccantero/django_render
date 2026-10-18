@@ -1,7 +1,7 @@
 # Secure Passkeys Implementation Work
 
-Date: 2026-10-15  
-Branch: `feat/secure-passkey-auth-20261015`  
+Date: 2026-10-15
+Branch: `feat/secure-passkey-auth-20261015`
 Status: review blockers addressed in the existing PR branch; regression suite passed.
 
 ## 1. Architecture before and after
@@ -292,7 +292,7 @@ development certificate. It does not use production credentials or data.
    export PASSKEY_RP_ID=passkeys.test
    export PASSKEY_ALLOWED_ORIGINS=https://passkeys.test
    export CC_DEBUG=true
-   export SECRET_KEY='replace-with-a-long-random-development-only-key'
+   export SECRET_KEY='<generate-a-long-local-development-key>'
    export TUTORIAL_BOT_TOKEN=local-placeholder
    export TELEGRAM_WEBHOOK_TOKEN=local-placeholder
    python manage.py migrate --noinput
