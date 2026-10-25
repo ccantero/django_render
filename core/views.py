@@ -148,13 +148,54 @@ def _safe_control_redirect(request):
 	return reverse("dashboard") + "#control-seguro"
 
 
+def _json_object(request):
+	content_type = (request.content_type or "").split(";", 1)[0].strip().lower()
+	if content_type != "application/json":
+		return None
+	try:
+		body = json.loads(request.body.decode() or "null")
+	except (TypeError, ValueError, UnicodeDecodeError):
+		return {}
+	if not isinstance(body, dict):
+		return {}
+	return body
+
+
+def _pause_is_confirmed(request):
+	if request.POST.get("confirm") == "yes":
+		return True
+	body = _json_object(request)
+	if not body:
+		return False
+	return body.get("confirm") in ("yes", True)
+
+
+def _submitted_reason(request):
+	if request.POST:
+		return request.POST.get("reason", "")
+	body = _json_object(request)
+	if body and isinstance(body.get("reason"), str):
+		return body["reason"]
+	return ""
+
+
 def _apply_control(request, *, paused):
 	control = BotControl.get_solo()
 	control.is_paused = paused
-	control.reason = request.POST.get("reason", "")
+	control.reason = _submitted_reason(request)
 	control.updated_by = request.user
 	control.save(update_fields=BOT_CONTROL_UPDATE_FIELDS)
 	return control
+
+
+def _confirmation_required(request):
+	if _client_wants_html(request):
+		messages.error(request, PAUSE_CONFIRM_MESSAGE)
+		return redirect(_safe_control_redirect(request))
+	return JsonResponse(
+		{"error": "confirmation_required", "detail": PAUSE_CONFIRM_MESSAGE},
+		status=400,
+	)
 
 
 def _control_response(request, control, *, message):
@@ -174,9 +215,8 @@ def bot_status(request):
 @login_required
 @require_POST
 def bot_stop(request):
-	if _client_wants_html(request) and request.POST.get("confirm") != "yes":
-		messages.error(request, PAUSE_CONFIRM_MESSAGE)
-		return redirect(_safe_control_redirect(request))
+	if not _pause_is_confirmed(request):
+		return _confirmation_required(request)
 	control = _apply_control(request, paused=True)
 	return _control_response(request, control, message=PAUSE_REQUESTED_MESSAGE)
 

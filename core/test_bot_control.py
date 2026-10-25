@@ -181,7 +181,7 @@ class BotControlHttpTests(TestCase):
 
         response = self.client.post(
             self.pause_url,
-            {"reason": "api"},
+            {"confirm": "yes", "reason": "api"},
             HTTP_ACCEPT="application/json",
         )
 
@@ -212,26 +212,70 @@ class BotControlHttpTests(TestCase):
         with patch.object(BotControl, "save", record_save):
             response = self.client.post(
                 self.pause_url,
-                {"reason": "column-lock"},
+                {"confirm": "yes", "reason": "column-lock"},
                 HTTP_ACCEPT="application/json",
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(update_fields, [["is_paused", "reason", "updated_by", "updated_at"]])
 
-    def test_json_pause_does_not_require_confirmation(self):
+    def test_json_pause_without_confirmation_returns_400_and_does_not_write(self):
         self.client.force_login(self.user)
+        existing = BotControl.get_solo()
+        existing.reason = "anterior"
+        existing.save(update_fields=["reason", "updated_at"])
 
         response = self.client.post(
             self.pause_url,
-            {"reason": ""},
+            {"reason": "sin-confirmacion"},
             content_type="application/x-www-form-urlencoded",
             HTTP_ACCEPT="application/json, text/html;q=0.8",
         )
 
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "confirmation_required")
+        self.assertIn("No se registró ningún cambio", response.json()["detail"])
+        existing.refresh_from_db()
+        self.assertFalse(existing.is_paused)
+        self.assertEqual(existing.reason, "anterior")
+
+    def test_json_body_pause_accepts_confirm_yes_or_true(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.pause_url,
+            data='{"confirm": "yes", "reason": "desde-json"}',
+            content_type="application/json",
+            HTTP_ACCEPT="application/json",
+        )
+
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            set(response.json()),
+            {"is_paused", "status", "updated_at", "updated_by", "reason"},
+        )
         self.assertTrue(response.json()["is_paused"])
-        self.assertEqual(response.json()["reason"], "")
+        self.assertEqual(response.json()["reason"], "desde-json")
+
+        BotControl.objects.all().delete()
+        boolean_confirm = self.client.post(
+            self.pause_url,
+            data='{"confirm": true, "reason": "bool"}',
+            content_type="application/json",
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(boolean_confirm.status_code, 200)
+        self.assertEqual(boolean_confirm.json()["reason"], "bool")
+
+        BotControl.objects.all().delete()
+        rejected = self.client.post(
+            self.pause_url,
+            data='{"confirm": "no", "reason": "no"}',
+            content_type="application/json",
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(rejected.status_code, 400)
+        self.assertFalse(BotControl.objects.filter(is_paused=True).exists())
 
     def test_browser_like_accept_never_returns_raw_json(self):
         self.client.force_login(self.user)
@@ -248,7 +292,15 @@ class BotControlHttpTests(TestCase):
     def test_wildcard_accept_keeps_json_for_existing_clients(self):
         self.client.force_login(self.user)
 
-        response = self.client.post(self.pause_url, {"reason": "curl"}, HTTP_ACCEPT="*/*")
+        rejected = self.client.post(self.pause_url, {"reason": "curl"}, HTTP_ACCEPT="*/*")
+        self.assertEqual(rejected.status_code, 400)
+        self.assertFalse(BotControl.objects.filter(is_paused=True).exists())
+
+        response = self.client.post(
+            self.pause_url,
+            {"confirm": "yes", "reason": "curl"},
+            HTTP_ACCEPT="*/*",
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "paused")
@@ -257,7 +309,11 @@ class BotControlHttpTests(TestCase):
     def test_missing_accept_keeps_json_for_existing_clients(self):
         self.client.force_login(self.user)
 
-        response = self.client.post(self.pause_url, {"reason": "no-accept"})
+        rejected = self.client.post(self.pause_url, {"reason": "no-accept"})
+        self.assertEqual(rejected.status_code, 400)
+        self.assertFalse(BotControl.objects.filter(is_paused=True).exists())
+
+        response = self.client.post(self.pause_url, {"confirm": "yes", "reason": "no-accept"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["reason"], "no-accept")
@@ -300,6 +356,11 @@ class BotControlDashboardTests(TestCase):
         self.assertContains(response, 'name="confirm"')
         self.assertContains(response, 'name="reason"')
         self.assertContains(response, 'name="next"')
+        self.assertContains(response, 'data-status-url="/bot/status/"')
+        self.assertContains(response, "bot_control.js")
+        self.assertContains(response, "data-bot-control-retry")
+        self.assertContains(response, "Reintentar el pedido")
+        self.assertNotContains(response, "form.submit")
         self.assertNotContains(response, ">Stop<")
         self.assertNotContains(response, ">Resume<")
         self.assertNotContains(response, "Bot pausado")
