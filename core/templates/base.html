@@ -44,6 +44,13 @@
 	</nav>
 
 	<div class="container-fluid">
+		{% if messages %}
+			{% if not request.resolver_match or request.resolver_match.url_name != "dashboard" %}
+		<div class="pt-3">
+			{% include "includes/messages.html" %}
+		</div>
+			{% endif %}
+		{% endif %}
 		{% block content %}
 	
 	<div class="container-fluid">

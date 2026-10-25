@@ -1,6 +1,6 @@
 ---
 doc_id: architecture
-doc_version: 1.1.19
+doc_version: 1.1.20
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -142,7 +142,9 @@ Local development defaults to SQLite through `dj_database_url`. Production-style
 
 ```text
 Browser dashboard pages -> django_render.urls -> dashboard.urls -> dashboard.views -> read model/forms -> templates
-Browser core pages/bot controls -> django_render.urls -> core.urls -> core.views
+Browser bot-control form -> POST /bot/stop/ or /bot/resume/ -> core.views -> core_botcontrol desired state -> same-origin redirect and flash message
+JSON bot-control client -> same URLs with Accept: application/json, or without a text/html Accept -> existing JSON payload
+Browser core pages -> django_render.urls -> core.urls -> core.views
 External keepalive cron -> /health/ -> core.views.health -> JSON liveness response
 Public deploy check -> /version/ -> core.views.version -> version, short commit, explicit deployed_at or null, timestamp_source, display
 Telegram webhook -> /telegramapi/listener/ -> secret validation -> safe update parsing -> best-effort audit persistence/deduplication -> static `/help` or lazy diagnostic dispatch -> bounded outbound Telegram API call -> HTTP acknowledgement
@@ -157,6 +159,8 @@ individual command failures use an operator-safe fallback response.
 ```
 
 State-changing dashboard actions are protected with login, staff checks where required, POST-only decorators where present, and Django CSRF except for the Telegram webhook listener, which uses the Telegram secret-token header.
+
+Pause and resume write only `core_botcontrol.is_paused`, `reason`, `updated_by`, and `updated_at`. `is_paused` is the desired state. The dashboard does not receive an acknowledgement from the bot and does not claim the bot has stopped or resumed. HTML form posts require `confirm=yes` before recording a pause request, then redirect to a safe same-origin `next` or `Referer`, falling back to `/dashboard/#control-seguro`. The redirect carries "Pausa solicitada" or "Reanudación solicitada". The control card shows that requested state, the row time in America/Buenos_Aires (ART), the user email, and the reason. With JavaScript, the same POST is sent as `Accept: application/json` and the card updates in place; if that request fails, the browser submits the form and follows the redirect. Clients that do not advertise `text/html` keep the previous JSON response and do not need the confirmation field. Login and CSRF rules are unchanged, including for authenticated non-staff users.
 
 `/health/` is public and side-effect-free. It reports only Django web-process liveness for hosting keepalive checks; bot operational health remains sourced from `bot.bot_healthcheck` in dashboard views.
 

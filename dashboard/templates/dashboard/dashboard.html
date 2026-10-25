@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load control_time %}
 
 {% block content %}
 <style>
@@ -71,6 +72,33 @@
 	.dashboard-page .dust-row-info {
 		background-color: #f6fbff !important;
 	}
+
+	.dashboard-page .bot-control-form .form-control,
+	.dashboard-page .bot-control-form .btn {
+		font-size: 16px;
+		min-height: 44px;
+	}
+
+	.dashboard-page .bot-control-confirm {
+		display: flex;
+		align-items: flex-start;
+		gap: 12px;
+		min-height: 44px;
+		margin-bottom: 12px;
+	}
+
+	.dashboard-page .bot-control-confirm input {
+		width: 22px;
+		height: 22px;
+		margin-top: 2px;
+		flex: 0 0 auto;
+	}
+
+	@media (max-width: 767.98px) {
+		.dashboard-page .bot-control-form .btn {
+			width: 100%;
+		}
+	}
 </style>
 
 <div class="container-fluid py-3 dashboard-page">
@@ -108,6 +136,150 @@
 			<strong>No se pudo leer la base compartida.</strong>
 			<div class="small mt-1">{{ data_error }}</div>
 		</div>
+	{% endif %}
+
+	{% if not is_demo %}
+	<div class="op-card mb-3" id="control-seguro">
+		<div class="op-card-body">
+			<h2 class="section-title">Control seguro</h2>
+			<p class="text-muted small mb-2">
+				Estos botones solo escriben en la tabla local de control. No ejecutan ordenes ni llaman a Binance.
+			</p>
+			<p class="text-muted small mb-3">Esto solo guarda el estado solicitado. No hay confirmación de que el bot lo haya aplicado.</p>
+			{% include "includes/messages.html" %}
+			<div data-bot-control-flash role="status"></div>
+			<p class="mb-1" data-bot-control-state data-status="{% if not bot_control %}unknown{% elif bot_control.is_paused %}paused{% else %}running{% endif %}">Estado solicitado: {% if not bot_control %}desconocido{% elif bot_control.is_paused %}pausado{% else %}en ejecución{% endif %}</p>
+			<p class="mb-1">Registrado:
+				{% if bot_control and bot_control.updated_at %}
+				<time data-bot-control-updated datetime="{{ bot_control.updated_at|date:'c' }}">{{ bot_control.updated_at|art_timestamp }}</time>
+				{% else %}
+				<time data-bot-control-updated>sin registro</time>
+				{% endif %}
+			</p>
+			<p class="mb-1">Por: <span data-bot-control-updated-by>{% if bot_control and bot_control.updated_by %}{{ bot_control.updated_by }}{% else %}—{% endif %}</span></p>
+			<p class="mb-3">Motivo: <span data-bot-control-reason>{% if bot_control and bot_control.reason %}{{ bot_control.reason }}{% else %}—{% endif %}</span></p>
+			<form method="post" action="{% url 'bot_stop' %}" class="bot-control-form mb-3" data-bot-control-action="pause">
+				{% csrf_token %}
+				<input type="hidden" name="next" value="{{ request.get_full_path }}">
+				<label for="bot-pause-reason">Motivo (opcional)</label>
+				<input id="bot-pause-reason" class="form-control mb-2" type="text" name="reason" maxlength="500" autocomplete="off">
+				<label class="bot-control-confirm" for="bot-pause-confirm">
+					<input id="bot-pause-confirm" type="checkbox" name="confirm" value="yes" required>
+					<span>Confirmo solicitar la pausa.</span>
+				</label>
+				<button type="submit" class="btn btn-outline-danger">Solicitar pausa</button>
+			</form>
+			<form method="post" action="{% url 'bot_resume' %}" class="bot-control-form" data-bot-control-action="resume">
+				{% csrf_token %}
+				<input type="hidden" name="next" value="{{ request.get_full_path }}">
+				<label for="bot-resume-reason">Motivo (opcional)</label>
+				<input id="bot-resume-reason" class="form-control mb-2" type="text" name="reason" maxlength="500" autocomplete="off">
+				<button type="submit" class="btn btn-outline-success">Solicitar reanudación</button>
+			</form>
+		</div>
+		<script>
+			(function () {
+				var panel = document.getElementById("control-seguro");
+				if (!panel || !window.fetch || !window.FormData) {
+					return;
+				}
+				panel.addEventListener("submit", function (event) {
+					var form = event.target;
+					if (!form || !form.classList || !form.classList.contains("bot-control-form")) {
+						return;
+					}
+					if (typeof form.reportValidity === "function" && !form.reportValidity()) {
+						event.preventDefault();
+						return;
+					}
+					event.preventDefault();
+					var data = new FormData(form);
+					fetch(form.action, {
+						method: "POST",
+						body: data,
+						credentials: "same-origin",
+						headers: {
+							"Accept": "application/json",
+							"X-CSRFToken": data.get("csrfmiddlewaretoken") || ""
+						}
+					}).then(function (response) {
+						var type = response.headers.get("Content-Type") || "";
+						if (!response.ok || type.indexOf("application/json") === -1) {
+							throw new Error("fallback");
+						}
+						return response.json();
+					}).then(function (payload) {
+						var paused = payload.is_paused === true;
+						var state = panel.querySelector("[data-bot-control-state]");
+						if (state) {
+							state.textContent = "Estado solicitado: " + (paused ? "pausado" : "en ejecución");
+							state.setAttribute("data-status", paused ? "paused" : "running");
+						}
+						var when = panel.querySelector("[data-bot-control-updated]");
+						if (when) {
+							when.textContent = formatArt(payload.updated_at);
+							if (payload.updated_at) {
+								when.setAttribute("datetime", payload.updated_at);
+							}
+						}
+						var who = panel.querySelector("[data-bot-control-updated-by]");
+						if (who) {
+							who.textContent = payload.updated_by || "—";
+						}
+						var reason = panel.querySelector("[data-bot-control-reason]");
+						if (reason) {
+							reason.textContent = payload.reason || "—";
+						}
+						var flash = panel.querySelector("[data-bot-control-flash]");
+						if (flash) {
+							flash.textContent = form.getAttribute("data-bot-control-action") === "pause" ? "Pausa solicitada" : "Reanudación solicitada";
+							flash.className = "alert alert-success py-2 mt-2 mb-3";
+						}
+					}).catch(function () {
+						form.submit();
+					});
+				});
+
+				function formatArt(iso) {
+					if (!iso) {
+						return "sin registro";
+					}
+					var date = new Date(iso);
+					if (isNaN(date.getTime())) {
+						return iso;
+					}
+					var zones = ["America/Buenos_Aires", "America/Argentina/Buenos_Aires"];
+					for (var z = 0; z < zones.length; z += 1) {
+						try {
+							var parts = new Intl.DateTimeFormat("en-GB", {
+								timeZone: zones[z],
+								year: "numeric",
+								month: "2-digit",
+								day: "2-digit",
+								hour: "2-digit",
+								minute: "2-digit",
+								hourCycle: "h23"
+							}).formatToParts(date);
+							function value(type) {
+								for (var i = 0; i < parts.length; i += 1) {
+									if (parts[i].type === type) {
+										return parts[i].value;
+									}
+								}
+								return "";
+							}
+							return value("day") + "/" + value("month") + "/" + value("year") + " " + value("hour") + ":" + value("minute") + " ART";
+						} catch (error) {}
+					}
+					var shifted = new Date(date.getTime() - (3 * 60 * 60 * 1000));
+					function pad(number) {
+						return (number < 10 ? "0" : "") + number;
+					}
+					return pad(shifted.getUTCDate()) + "/" + pad(shifted.getUTCMonth() + 1) + "/" + shifted.getUTCFullYear() + " " + pad(shifted.getUTCHours()) + ":" + pad(shifted.getUTCMinutes()) + " ART";
+				}
+			})();
+		</script>
+	</div>
 	{% endif %}
 
 	<div class="row">
@@ -495,37 +667,5 @@
 		</div>
 	</div>
 
-	{% if not is_demo %}
-	<div class="op-card">
-		<div class="op-card-body">
-			<div class="d-flex flex-wrap justify-content-between align-items-center">
-				<div>
-					<h2 class="section-title">Control seguro</h2>
-					<p class="text-muted small mb-0">
-						Estos botones solo escriben en la tabla local de control. No ejecutan ordenes ni llaman a Binance.
-					</p>
-				</div>
-				<div class="mt-2 mt-md-0">
-					<span class="mr-2">
-						Control:
-						{% if bot_control %}
-							<strong>{% if bot_control.is_paused %}paused{% else %}running{% endif %}</strong>
-						{% else %}
-							<strong>unknown</strong>
-						{% endif %}
-					</span>
-					<form method="post" action="{% url 'bot_stop' %}" class="d-inline">
-						{% csrf_token %}
-						<button type="submit" class="btn btn-outline-danger btn-sm">Stop</button>
-					</form>
-					<form method="post" action="{% url 'bot_resume' %}" class="d-inline">
-						{% csrf_token %}
-						<button type="submit" class="btn btn-outline-success btn-sm">Resume</button>
-					</form>
-				</div>
-			</div>
-		</div>
-	</div>
-	{% endif %}
 </div>
 {% endblock %}

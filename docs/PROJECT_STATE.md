@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.35
+doc_version: 1.1.36
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -39,8 +39,8 @@ The results panel also shows the current official USD and UVA values used by
 the calculator.
 
 The deployed app version is SemVer in the root `VERSION` file. `1.0.0` is the
-initial baseline, not a later minor bump, and it is not the per-document
-`doc_version`. The shared base footer and `GET /version/` show that version
+initial baseline and `1.1.0` is the current pause/resume request release. Neither
+number is the per-document `doc_version`. The shared base footer and `GET /version/` show that version
 and a 7-character `RENDER_GIT_COMMIT` build suffix or `dev`. A Buenos Aires
 clock time is included only when `DEPLOYED_AT` or `python manage.py stamp_build`
 recorded a UTC instant. Otherwise the time is unknown. File mtime and process
@@ -71,6 +71,7 @@ Detected Django apps:
 Implemented capabilities:
 
 - Authenticated dashboard pages
+- Dashboard pause/resume requests write the desired `core_botcontrol` row only. The control card shows "Estado solicitado", the recorded time in America/Buenos_Aires, who changed it, and the reason. HTML posts redirect back into the dashboard with "Pausa solicitada" or "Reanudación solicitada"; a pause request requires confirmation. There is no bot acknowledgement. JSON clients that ask for `application/json`, or that do not send `text/html`, still receive the previous payload.
 - Main dashboard as a concise operator console: normalized Bot Health badge, Disk Usage, Inventory Integrity, compact Analytics link card, active issues, informational residual counts, and latest activity
 - Main dashboard does not compute full-history KPI data during initial render; KPI calculations are deferred to the Analytics dashboard
 - Main dashboard uses bounded homepage read paths: recent operations are fetched in a small capped window, SELL diagnostics are disabled by default, and dust overview loads only a capped recent candidate set without a homepage `COUNT(*)`

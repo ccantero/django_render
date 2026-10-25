@@ -1,6 +1,6 @@
 ---
 doc_id: readme
-doc_version: 1.1.35
+doc_version: 1.1.36
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -18,6 +18,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 ## Current Scope
 
 - Authenticated dashboard overview
+- Pause and resume requests from the dashboard. They record only the desired `core_botcontrol` state, ask for confirmation before a pause request, and keep an HTML browser on the dashboard. They do not confirm that the bot applied the request.
 - Compact operator console homepage with Bot Health, Disk Usage, Inventory Integrity, and Performance Snapshot cards
 - Valuation consistency between `bot.portfolio` projection value and open `bot.position_lots` accounting value
 - Recent operations/latest trade, capped to the latest four operations on the homepage
@@ -436,13 +437,14 @@ app release sequence.
 
 `1.0.0` is the initial baseline. The MAJOR, MINOR, and PATCH rules below apply
 to behavior changes after that baseline. Introducing `VERSION`, and correcting
-the timestamp so it is only an explicit value, stay on `1.0.0`.
+the timestamp so it is only an explicit value, stay on `1.0.0`. The current
+file is `1.1.0` for the dashboard pause/resume request flow.
 
 Render sets `RENDER_GIT_COMMIT` at build and runtime
 ([default environment variables](https://render.com/docs/environment-variables)).
 The footer and `/version/` use the first 7 hex characters as SemVer build
-metadata, for example `v1.0.0+a1b2c3d`. With no commit available, the label
-uses `dev` (`v1.0.0+dev`). That short commit is what shows whether a new
+metadata, for example `v1.1.0+a1b2c3d`. With no commit available, the label
+uses `dev` (`v1.1.0+dev`). That short commit is what shows whether a new
 commit was deployed. Render does not provide a deploy timestamp, and this app
 does not treat a file modification time or the process start time as one.
 
@@ -480,7 +482,7 @@ curl https://<your-render-host>/version/
 ```
 
 ```json
-{"version":"1.0.0","commit":"a1b2c3d","deployed_at":"2026-10-25T14:30:00-03:00","timestamp_source":"build_stamp","display":"v1.0.0+a1b2c3d · 25/10 14:30 ART"}
+{"version":"1.1.0","commit":"a1b2c3d","deployed_at":"2026-10-25T14:30:00-03:00","timestamp_source":"build_stamp","display":"v1.1.0+a1b2c3d · 25/10 14:30 ART"}
 ```
 
 `/health/` is unchanged. The version payload does not include service IDs,
@@ -558,6 +560,7 @@ state and markdown contracts.
 - Dashboard must require login.
 - Manual correction request creation is staff/superuser-only.
 - State-changing actions must be POST-only and CSRF-protected.
+- Pause and resume stay login-only, POST-only, and CSRF-protected. An HTML form post redirects to a same-origin page and shows "Pausa solicitada" or "Reanudación solicitada". A client that sends `Accept: application/json`, or that does not advertise `text/html`, still receives the existing JSON payload. The row is the desired state only.
 - Public/demo views must never expose sensitive data.
 - Database grants should be reviewed so public roles cannot mutate bot-owned accounting tables.
 
