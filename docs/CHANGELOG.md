@@ -34,6 +34,7 @@ Operator impact:
 
 Validation:
 - `tests/test_analytics_cache.py` failed first with `LookupError: No installed app with label 'trading_read'` on the cached request. After the change, 2 passed.
+- Full `pytest`: 378 passed, 3 skipped, 33 subtests passed. The existing DRF unordered-pagination warning remains.
 
 ## 2026-10-25 - Stop tracking collected static files
 
