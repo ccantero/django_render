@@ -164,6 +164,7 @@ TEMPLATES = [
                 'django.template.context_processors.debug',
                 'django.template.context_processors.request',
                 'profile.passkeys.passkey_context',
+                'django_render.context_processors.deploy_version',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
             ],

@@ -38,27 +38,44 @@ def pwa_manifest(request):
 
 
 def pwa_service_worker(request):
-    script = """const CACHE = 'calculadora-uva-v1';
+    script = """const CACHE = 'calculadora-uva-v2';
 const PUBLIC_PAGES = [
   '/currencyconverter/calculadora_uva/',
   '/currencyconverter/exchangerates/'
 ];
 
+function precache(cache, path) {
+  return fetch(new Request(path, {cache: 'no-store'})).then(response => {
+    if (response.ok) return cache.put(path, response);
+  });
+}
+
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(PUBLIC_PAGES)));
+  event.waitUntil(caches.open(CACHE).then(cache => Promise.all(PUBLIC_PAGES.map(path => precache(cache, path)))));
   self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key))))
+      .then(() => self.clients.claim())
+  );
 });
 
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin || event.request.method !== 'GET') return;
+  if (url.pathname === '/version/' || url.pathname.endsWith('/service-worker.js')) {
+    event.respondWith(fetch(event.request, {cache: 'no-store'}));
+    return;
+  }
+  const isNavigation = event.request.mode === 'navigate';
   event.respondWith(
-    fetch(event.request).then(response => {
-      if (response.ok && url.pathname.startsWith('/currencyconverter/')) {
+    fetch(event.request, isNavigation ? {cache: 'no-store'} : undefined).then(response => {
+      const cacheable = response.ok
+        && url.pathname.startsWith('/currencyconverter/')
+        && !url.pathname.endsWith('/service-worker.js');
+      if (cacheable) {
         const copy = response.clone();
         caches.open(CACHE).then(cache => cache.put(event.request, copy));
       }

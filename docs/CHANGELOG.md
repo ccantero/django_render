@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.46
+doc_version: 1.1.48
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -8,6 +8,65 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-25 - Keep the deploy clock explicit
+
+Type: behavior
+Runtime version: 1.0.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+- AGENTS.md
+
+Summary:
+- `/version/` and the footer show a clock time only from `DEPLOYED_AT` or from `build_info.json` written by `python manage.py stamp_build`.
+- `deployed_at` is null and `timestamp_source` is `unknown` when neither source is valid. File modification time and process start are not reported as a deploy time.
+- `timestamp_source` is `explicit` or `build_stamp` when a time is present. The same display string is used in the footer.
+- `1.0.0` remains the initial SemVer baseline. The MAJOR/MINOR/PATCH rules apply to behavior changes after it. This correction does not bump `VERSION`.
+- Version tests use temporary directories and scoped environment patches.
+
+Operator impact:
+- No Render change is required. The short commit still shows whether a new commit is deployed.
+- To show an exact build time, append `&& python manage.py stamp_build` to the Render Build Command. A later restart keeps that stamp until the next build. Optional `DEPLOYED_AT` overrides the stamp.
+- Without that step, the footer time stays `unknown` instead of showing a file or process time.
+
+Validation:
+- `tests/test_deploy_version.py` failed first because `resolve_timestamp` did not exist, then 16 passed.
+- Full `pytest`: 401 passed, 3 skipped, 33 subtests passed. The existing DRF unordered-pagination warning remains.
+
+## 2026-10-25 - Show the deployed SemVer on the site and at /version/
+
+Type: behavior
+Runtime version: 1.0.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+- AGENTS.md
+
+Summary:
+- Added root `VERSION` (`1.0.0`) as the only app SemVer source. Document `doc_version` headers are unchanged in meaning.
+- The shared base footer shows `v1.0.0+<short sha>` and a `America/Buenos_Aires` timestamp, including the calculator standalone view that hides navigation. `GET /version/` returns `version`, `commit`, `deployed_at`, and `display` with `Cache-Control: no-store`.
+- Missing `RENDER_GIT_COMMIT` uses `dev`. Missing deploy time uses `unknown` / `null`. Render service IDs, branches, and secrets are not exposed. `/health/` stays `{"status":"ok"}`.
+- The currency-converter service worker fetches navigations and `/version/` with `cache: 'no-store'`, does not cache its own script, and drops older caches on activate.
+- No Render dashboard change is required for the commit label. The timestamp rule in this entry was corrected by the entry above: file mtime and process start are not a deploy time.
+
+Operator impact:
+- After a deploy, the phone PWA and the website footer show the new short commit and Buenos Aires time without opening Render. `curl /version/` returns the same facts.
+- The short SHA is the commit identity. The clock-time rule in the original summary was corrected by the entry above.
+
+Validation:
+- `tests/test_deploy_version.py` failed first with `ModuleNotFoundError: No module named 'django_render.version'`, then passed (11 tests).
+- Full `pytest`: 396 passed, 3 skipped, 33 subtests passed. The existing DRF unordered-pagination warning remains.
 
 ## 2026-10-25 - Tighten analytics cache equivalence and failure handling
 

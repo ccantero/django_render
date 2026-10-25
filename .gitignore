@@ -20,6 +20,10 @@ htmlcov/
 # Django
 db.sqlite3
 
+# Optional build timestamp written by `python manage.py stamp_build`.
+# It is not a source file. Render can create it during the build.
+build_info.json
+
 # collectstatic output (STATIC_ROOT). WhiteNoise serves this directory in
 # production after the Render build runs collectstatic. Do not commit it.
 staticfiles/
