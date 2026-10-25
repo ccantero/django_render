@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'profile/passkeys.css' %}">
+{% endblock %}
+
+{% block content %}
+<main class="passkey-page" id="passkey-settings"
+      data-reauth-url="{% url 'passkey_reauthenticate' %}"
+      data-register-begin-url="{% url 'passkey_registration_begin' %}"
+      data-register-complete-url="{% url 'passkey_registration_complete' %}"
+      data-step-up-begin-url="{% url 'passkey_enrollment_step_up_begin' %}"
+      data-step-up-complete-url="{% url 'passkey_enrollment_step_up_complete' %}"
+      data-has-credentials="{% if credentials %}true{% else %}false{% endif %}">
+  <div class="passkey-layout">
+    <header class="passkey-header">
+      <p class="passkey-eyebrow">Cuenta <span aria-hidden="true">/</span> Seguridad</p>
+      <h1>Administrar passkeys</h1>
+      <p class="passkey-lede">Entrá con Face ID, huella, el bloqueo de tu dispositivo o una llave de seguridad.</p>
+      <details class="passkey-recovery">
+        <summary>Información para recuperar el acceso</summary>
+        <p>La contraseña sigue disponible para iniciar sesión. Si perdés todos tus dispositivos, contactá al operador para seguir el proceso de verificación de identidad. Tener acceso al correo, por sí solo, no restablece la cuenta.</p>
+      </details>
+    </header>
+
+    <section class="passkey-section" aria-labelledby="registered-passkeys-title">
+      <div class="passkey-section-heading">
+        <div>
+          <h2 id="registered-passkeys-title">Tus passkeys</h2>
+          <p>Dispositivos y llaves registrados en esta cuenta.</p>
+        </div>
+        {% if credentials %}<span class="passkey-count">{% if credentials|length == 1 %}1 registrada{% else %}{{ credentials|length }} registradas{% endif %}</span>{% endif %}
+      </div>
+
+      {% if credentials %}
+        <ul class="passkey-credential-list">
+          {% for credential in credentials %}
+            <li>
+              <article class="passkey-credential-card">
+                <div class="passkey-credential-mark" aria-hidden="true">P</div>
+                <div class="passkey-credential-main">
+                  <h3>{{ credential.name|default:"Passkey sin nombre" }}</h3>
+                  <dl class="passkey-credential-meta">
+                    <div><dt>Agregada</dt><dd>{{ credential.created_at|date:"d/m/Y H:i" }}</dd></div>
+                    <div><dt>Último uso</dt><dd>{% if credential.last_used_at %}{{ credential.last_used_at|date:"d/m/Y H:i" }}{% else %}Nunca{% endif %}</dd></div>
+                  </dl>
+                </div>
+                <details class="passkey-revoke">
+                  <summary>Revocar passkey</summary>
+                  <div class="passkey-revoke-panel">
+                    <p>Para confirmar la revocación, ingresá tu contraseña actual.</p>
+                    <form method="post" action="{% url 'passkey_revoke' credential.pk %}">
+                      {% csrf_token %}
+                      <label for="revoke-password-{{ credential.pk }}">Contraseña actual</label>
+                      <input id="revoke-password-{{ credential.pk }}" type="password" name="password" autocomplete="current-password" required>
+                      <button type="submit">Confirmar revocación</button>
+                    </form>
+                  </div>
+                </details>
+              </article>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="passkey-empty">
+          <div class="passkey-empty-mark" aria-hidden="true">＋</div>
+          <div>
+            <h3>No tenés passkeys registradas</h3>
+            <p>Podés agregar una para iniciar sesión con la verificación de tu dispositivo.</p>
+          </div>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="passkey-section passkey-enrollment" aria-labelledby="add-passkey-title">
+      <div class="passkey-section-heading">
+        <div>
+          <h2 id="add-passkey-title">Agregar una passkey</h2>
+          <p>Confirmá tu identidad y después seguí las indicaciones del dispositivo.</p>
+        </div>
+      </div>
+
+      <ol class="passkey-steps">
+        <li class="passkey-step">
+          <span class="passkey-step-number" aria-hidden="true">1</span>
+          <div class="passkey-step-content">
+            <h3>Confirmá tu contraseña actual</h3>
+            <form id="passkey-reauth-form" class="passkey-form">
+              {% csrf_token %}
+              <label for="reauth-password">Contraseña actual</label>
+              <div class="passkey-form-row">
+                <input id="reauth-password" type="password" name="password" autocomplete="current-password" required>
+                <button type="submit">Confirmar contraseña</button>
+              </div>
+            </form>
+          </div>
+        </li>
+
+        {% if credentials %}
+          <li class="passkey-step">
+            <span class="passkey-step-number" aria-hidden="true">2</span>
+            <div class="passkey-step-content">
+              <h3>Verificá una passkey existente</h3>
+              <p>Necesitás confirmar con una passkey ya registrada antes de agregar otra.</p>
+              <button id="passkey-reauth-device" class="passkey-button-secondary" type="button" disabled>Verificar con una passkey</button>
+            </div>
+          </li>
+        {% endif %}
+
+        <li class="passkey-step">
+          <span class="passkey-step-number" aria-hidden="true">{% if credentials %}3{% else %}2{% endif %}</span>
+          <div class="passkey-step-content">
+            <h3>Elegí un nombre</h3>
+            <label for="passkey-name">Nombre para reconocer este dispositivo</label>
+            <input id="passkey-name" name="name" maxlength="80" autocomplete="off" placeholder="Por ejemplo: iPhone personal" required disabled>
+          </div>
+        </li>
+
+        <li class="passkey-step">
+          <span class="passkey-step-number" aria-hidden="true">{% if credentials %}4{% else %}3{% endif %}</span>
+          <div class="passkey-step-content">
+            <h3>Registrá el dispositivo</h3>
+            <p>El dispositivo te pedirá confirmar con Face ID, huella, código o una llave de seguridad.</p>
+            <button id="passkey-register" type="button" disabled>Registrar passkey</button>
+          </div>
+        </li>
+      </ol>
+      <p id="passkey-settings-status" class="passkey-status" role="status" aria-live="polite" aria-atomic="true">{% if credentials %}Primero confirmá tu contraseña actual.{% else %}Confirmá tu contraseña actual para continuar.{% endif %}</p>
+      <noscript><p class="passkey-no-script">Para registrar una passkey necesitás JavaScript. También podés seguir iniciando sesión con tu contraseña.</p></noscript>
+      <details class="passkey-help">
+        <summary>¿Qué es una passkey?</summary>
+        <p>Es una credencial protegida por tu dispositivo. El sitio recibe una prueba de autenticación; tu clave privada permanece en el autenticador.</p>
+      </details>
+    </section>
+  </div>
+</main>
+<script defer src="{% static 'profile/passkeys.js' %}"></script>
+{% endblock %}

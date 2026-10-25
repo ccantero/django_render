@@ -19,8 +19,17 @@ htmlcov/
 
 # Django
 db.sqlite3
+
+# collectstatic output (STATIC_ROOT). WhiteNoise serves this directory in
+# production after the Render build runs collectstatic. Do not commit it.
 staticfiles/
+
+# Older Django admin assets and a ManifestStaticFilesStorage manifest that
+# were copied into the source tree. django.contrib.admin supplies admin
+# assets at collectstatic time. Project source stays in static/core,
+# static/currencyconverter, static/profile, and static/favicon.ico.
 static/admin/
+static/staticfiles.json
 
 # Local environment files
 .env

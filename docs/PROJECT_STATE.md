@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.30
+doc_version: 1.1.32
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-17
+last_verified_at: 2026-10-25
 source_repo: django_render
 ---
 
@@ -78,6 +78,14 @@ The results panel also shows the current official USD and UVA values used by
 the calculator.
 
 The Django dashboard is operational as a DB consumer for the Binance Python Bot.
+Optional Passkey authentication is implemented behind `PASSKEYS_ENABLED`,
+defaulting off. The existing `profile.UserProfile` remains the account model;
+library-managed credential rows, Django-owned rate limiting, atomic enrollment
+proofs, and one-use step-up challenge rows are additive. Subsequent enrollment
+requires fresh password and existing-passkey proof bound to the current user
+and session. Password login, Django Admin authorization, and DRF token
+authentication are preserved. Deployment verification is still required for
+the trusted proxy header boundary and real browser/authenticator support.
 The current product focus is shifting from infrastructure stabilization toward
 capital-efficiency and exit-quality observability, while preserving the
 dashboard's read/review/request boundary.
@@ -136,8 +144,10 @@ Implemented capabilities:
   remains text-only fallback behavior.
 - Production guidance is captured in the tracked `Procfile` as one Gunicorn
   worker with two threads and a 30-second timeout for the 512 MB Render
-  service. Actual Render command, boot RSS, and webhook readiness still need
-  deployment verification.
+  service. The `Procfile` is the start command only. Collected static output
+  is not tracked; production depends on the Render Build Command running
+  `python manage.py collectstatic --noinput`. Actual Render command, boot RSS,
+  and webhook readiness still need deployment verification.
 - Telegram diagnostics include a compact command guide and format skipped/rejected
   SELL diagnostics with status, interpretation, suggested action, and raw event details for mobile review.
 - Telegram `/health` includes Disk Usage from latest
@@ -288,7 +298,10 @@ Detected infrastructure and tooling:
 - Redis was not detected.
 - Django management commands were not detected.
 - Templates exist under `core/templates`, `dashboard/templates`, and `currencyconverter/templates`.
-- Static assets exist under `static/`.
+- Project static source assets live under `static/core`,
+  `static/currencyconverter`, `static/profile`, and `static/favicon.ico`.
+  `staticfiles/` is generated `STATIC_ROOT` output and is gitignored. Django
+  admin assets come from the installed package at collect time.
 
 ---
 

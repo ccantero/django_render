@@ -1,13 +1,77 @@
 ---
 doc_id: changelog
-doc_version: 1.1.45
+doc_version: 1.1.46
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-17
+last_verified_at: 2026-10-25
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-25 - Reconcile Diagnostics API PR #3 with main
+
+Type: operations
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/ARCHITECTURE.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Reconciled documentation metadata, both diagnostics API changelog entries,
+  the static-file cleanup entry, and historical workflow evidence.
+- Preserved the diagnostics implementation and tests byte-for-byte, including
+  the dedicated Bearer Token, fixed routes, and read-only evidence semantics.
+- Retained main's Passkey UX, authentication safeguards, security dependency
+  floors, PostgreSQL test isolation, and static source/storage changes.
+- No trading, accounting, schema, shared-contract, KPI, or logging changes.
+
+Operator impact:
+- PR #3 includes current main; this task does not merge the PR or deploy it.
+  Render deployment and Work Cloud connectivity verification remain separate.
+
+Validation:
+- `.venv/bin/pytest dashboard/test_bot_diagnostics_api.py -q --create-db`:
+  16 passed, 11 subtests passed.
+- `.venv/bin/pytest -q --create-db`: 392 passed, 3 skipped (existing
+  PostgreSQL-only concurrency tests), 44 subtests passed.
+- `python manage.py check` with synthetic local settings: no issues.
+- `node --test tests/passkeys_frontend.test.cjs`: 3 passed; `pip check`: clean.
+- API routes/authentication/read-only behavior are covered by the API suite;
+  all other files outside the original nine PR paths match main.
+- Warnings: absent untracked local `staticfiles/` output and an unordered
+  UserProfile queryset in the existing DRF pagination regression test.
+- No production credentials, database access, migrations, or deployment used.
+
+## 2026-10-25 - Stop tracking collected static files
+
+Type: operations
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Removed generated `staticfiles/` output, the copied `static/admin/` tree, and `static/staticfiles.json` from Git.
+- Kept project source assets under `static/core`, `static/currencyconverter`, `static/profile`, and `static/favicon.ico`.
+- Django 5.2 ignores the legacy `STATICFILES_STORAGE` setting, so non-debug settings now select WhiteNoise `CompressedStaticFilesStorage` through `STORAGES["staticfiles"]`.
+- Restored this changelog from the last text revision (`d2621aae`, doc_version 1.1.43). The file on the previous branch tip was binary and did not contain those text entries.
+
+Operator impact:
+- Before merging, confirm the Render web service Build Command runs `python manage.py collectstatic --noinput` after installing requirements. Append that command if it is missing. Leave any existing migrate or other build steps in place.
+- Local `runserver` with `CC_DEBUG=true` still serves source assets through Django's static finders. Production WhiteNoise serves `STATIC_ROOT` (`staticfiles/`) created at build time.
+- Django admin static files now come from the installed Django package instead of the older copy previously committed under `static/admin/`.
+
+Validation:
+- `pytest` — 376 passed, 3 skipped, 33 subtests passed.
+- `CC_DEBUG=false python manage.py collectstatic --noinput` from a clean tree copied 170 files and gzip-compressed 158.
 
 ## 2026-10-17 - Correct Bot Diagnostics Evidence Semantics
 
