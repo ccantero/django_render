@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.32
+doc_version: 1.1.33
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-18
+last_verified_at: 2026-10-25
 source_repo: django_render
 ---
 
@@ -205,6 +205,37 @@ redeploying.
 Framework, and their runtime `sqlparse` and `urllib3` dependency paths. The
 project intentionally has no lockfile, so deployments must install from the
 tracked requirements file and should be audited after dependency resolution.
+
+### Static files
+
+Source assets live in `static/`: `core/`, `currencyconverter/`, `profile/`,
+and `favicon.ico`. Django admin assets are not stored in that tree.
+`collectstatic` copies them from the installed Django package. `staticfiles/`
+is `STATIC_ROOT` and is gitignored.
+
+With `CC_DEBUG=true`, `runserver` serves static files through Django's
+finders, so a local collect is not required for development. With
+`CC_DEBUG=false`, WhiteNoise serves `staticfiles/` using
+`CompressedStaticFilesStorage`: original file names plus sibling `.gz` files,
+and no hashed manifest. Django 5.2 reads that backend from
+`STORAGES["staticfiles"]`.
+
+The Render web service currently uses the following **Build Command**, configured
+in the Render dashboard (not in this repository):
+
+```bash
+pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations
+```
+
+`Procfile` defines only the web start command; there is no `render.yaml`.
+The build installs dependencies, applies Django migrations, generates static
+assets, and displays migration status. Keep `collectstatic` in the Build Command:
+production WhiteNoise serves the generated `staticfiles/` directory, which is
+intentionally not committed to Git. Removing that step would leave production
+without the required CSS, JavaScript, and admin static assets.
+
+The Build Command is managed outside Git, so verify it remains configured in
+Render before deploying changes to static asset handling.
 
 Required environment variables:
 
@@ -410,7 +441,7 @@ review.
 - pytest-django and Django `TestCase`/`TransactionTestCase`
 - SQLite by default through `dj-database-url`
 - PostgreSQL supported through `DATABASE_URL`; Docker Compose defines a PostgreSQL service
-- WhiteNoise for static files
+- WhiteNoise for production static files, using `STORAGES["staticfiles"]` when `CC_DEBUG` is false
 - Bootstrap 3 package
 - No Celery or Redis integration detected
 - No Django management commands detected
