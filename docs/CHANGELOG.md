@@ -34,6 +34,7 @@ Operator impact:
 
 Validation:
 - `tests/test_analytics_cache.py` failed first because the key was still `v1`, cache warnings omitted the error text, and a non-cache `RuntimeError` from `cache.get` was swallowed. After the change, 9 passed.
+- Full `pytest`: 385 passed, 3 skipped, 33 subtests passed. The existing DRF unordered-pagination warning remains.
 
 ## 2026-10-25 - Analytics cache no longer 500s on bot rows
 
