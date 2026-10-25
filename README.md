@@ -220,24 +220,22 @@ finders, so a local collect is not required for development. With
 and no hashed manifest. Django 5.2 reads that backend from
 `STORAGES["staticfiles"]`.
 
-This repository does not define the Render build command. `Procfile` is only
-the web start command, and there is no `render.yaml`. Render does not run
-`collectstatic` unless the service Build Command includes it. Before deploying
-a revision that no longer commits `staticfiles/`, confirm the dashboard Build
-Command installs requirements and then runs:
+The Render web service currently uses the following **Build Command**, configured
+in the Render dashboard (not in this repository):
 
 ```bash
-python manage.py collectstatic --noinput
+pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations
 ```
 
-If the current command is only the dependency install, use:
+`Procfile` defines only the web start command; there is no `render.yaml`.
+The build installs dependencies, applies Django migrations, generates static
+assets, and displays migration status. Keep `collectstatic` in the Build Command:
+production WhiteNoise serves the generated `staticfiles/` directory, which is
+intentionally not committed to Git. Removing that step would leave production
+without the required CSS, JavaScript, and admin static assets.
 
-```bash
-pip install -r requirements.txt && python manage.py collectstatic --noinput
-```
-
-If the service already runs other build steps, append the `collectstatic`
-command and leave those steps in place.
+The Build Command is managed outside Git, so verify it remains configured in
+Render before deploying changes to static asset handling.
 
 Required environment variables:
 
