@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.50
+doc_version: 1.1.51
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -8,6 +8,164 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-25 - Refresh PR #3 against main 1b8b103
+
+Type: operations
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/ARCHITECTURE.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Main advanced after the prior merge to include Analytics fixes, deploy-version
+  visibility, and pause/resume UX. Reconciled four documentation conflicts,
+  keeping complete entries from both parents and incrementing doc versions.
+- Diagnostics source and tests remain unchanged; main's other files are retained.
+- The PR API initially reported base 60bdcc6 while the main ref and branch API
+  reported 1b8b103. Remote refs, not that stale PR base field, identify the target.
+
+Validation:
+- Diagnostics: 16 passed, 11 subtests. Full suite: 437 passed, 3 existing
+  PostgreSQL-only skips, 44 subtests. Django check: no issues. JavaScript: 11 passed.
+- Conflict-marker scan clean; only the nine original PR paths differ from main.
+- No new runtime behavior, tests, schema, contract, logging, or KPI changes.
+- No deployment or merge to main performed.
+
+## 2026-10-25 - Reconcile Diagnostics API PR #3 with main
+
+Type: operations
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/ARCHITECTURE.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Reconciled documentation metadata, both diagnostics API changelog entries,
+  the static-file cleanup entry, and historical workflow evidence.
+- Preserved the diagnostics implementation and tests byte-for-byte, including
+  the dedicated Bearer Token, fixed routes, and read-only evidence semantics.
+- Retained main's Passkey UX, authentication safeguards, security dependency
+  floors, PostgreSQL test isolation, and static source/storage changes.
+- No trading, accounting, schema, shared-contract, KPI, or logging changes.
+
+Operator impact:
+- PR #3 includes current main; this task does not merge the PR or deploy it.
+  Render deployment and Work Cloud connectivity verification remain separate.
+
+Validation:
+- `.venv/bin/pytest dashboard/test_bot_diagnostics_api.py -q --create-db`:
+  16 passed, 11 subtests passed.
+- `.venv/bin/pytest -q --create-db`: 392 passed, 3 skipped (existing
+  PostgreSQL-only concurrency tests), 44 subtests passed.
+- `python manage.py check` with synthetic local settings: no issues.
+- `node --test tests/passkeys_frontend.test.cjs`: 3 passed; `pip check`: clean.
+- API routes/authentication/read-only behavior are covered by the API suite;
+  all other files outside the original nine PR paths match main.
+- Warnings: absent untracked local `staticfiles/` output and an unordered
+  UserProfile queryset in the existing DRF pagination regression test.
+- No production credentials, database access, migrations, or deployment used.
+
+## 2026-10-17 - Correct Bot Diagnostics Evidence Semantics
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/ARCHITECTURE.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Renamed the Spot quantity/timestamp fields to `observed_spot_quantity` and
+  `detected_at`; the age field is `observation_recency`, and the observation
+  still explicitly sets `current_exchange_truth: false`.
+- Stale capacity numbers now appear only under `historical_global`; partial,
+  unavailable, and current-as-of-healthcheck states are explicit.
+- Marked portfolio-versus-lot comparisons as not synchronized and the
+  multi-query inventory response as non-atomic. No read transaction was added.
+- Reviewed the bot repository: complete non-zero Binance balances are fetched
+  into runtime memory; no complete Spot-balance snapshot is persisted. The
+  bot's comparison CLI reads Binance, FIFO lots, and generations without
+  persisting the exchange snapshot. Django remains without an active-generation
+  read model.
+- No Binance client, persistence, KPI formula, database schema, or bot behavior
+  changed. `docs/DATA_CONTRACT.md` and `docs/KPI_REGISTRY.md` were reviewed; no
+  semantic update was needed for these API response corrections. The Django
+  copies are behind current `ccantero/binancebot` main headers
+  (`DATA_CONTRACT.md` 1.0.62 vs 1.0.79; `KPI_REGISTRY.md` 1.0.36 vs 1.0.48);
+  a full paired-document sync is a separate follow-up and was not mixed into
+  this API correction.
+- Documented that custom GPT Actions are distinct from native ChatGPT Work
+  connectivity, and recorded the security and deployment limitations.
+
+Operator impact:
+- An old Spot event can no longer be mistaken for a current exchange balance;
+  stale BUY slot counts are visibly historical and unavailable as current
+  capacity.
+
+Validation:
+- Focused API tests: 16 passed, 11 subtests passed. Django system check: no
+  issues. Full suite on PR branch: 344 passed, 44 subtests passed.
+- Full suite on base `82e32fd`: 328 passed, 33 subtests passed. The earlier
+  report of five `dust_signal_reviews` failures did not reproduce on either
+  branch with the repository's pytest setup; the exact earlier invocation was
+  not recorded.
+- PostgreSQL execution validation was not possible: this runner has no
+  PostgreSQL server/client or container runtime, and package installation was
+  blocked by runner permissions. No production database was accessed.
+- ChatGPT Work Cloud Action/connector compatibility remains **UNVERIFIED**.
+
+## 2026-10-17 - Add Read-only Bot Diagnostics API PoC
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/ARCHITECTURE.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Added authenticated GET-only health and fixed ETHUSDT inventory diagnostics
+  backed by existing managed=False bot read models, including the latest
+  timestamped `bot.dust_detections` Spot quantity observation.
+- Required a dedicated environment bearer secret; user tokens, raw healthcheck
+  details, Binance calls, mutations, and general query/action interfaces are
+  excluded.
+- Exposed persisted freshness and unavailable states so DB projections and
+  lots are not confused with live Binance Spot truth.
+- Included the bot-persisted `effective_positions_count` alongside the other
+  available BUY capacity details; per-symbol active-generation occupancy is
+  not recomputed by Django.
+- Documented from bot repository code that complete per-asset Binance Spot
+  balances are not periodically persisted; the one-off comparison CLI fetches
+  live balances without persisting the snapshot.
+- Recorded direct ChatGPT Work Cloud access as unverified because no connector
+  or cloud-safe credential delivery is configured by this application.
+- Reviewed `docs/KPI_REGISTRY.md`: no KPI/metric definitions or formulas
+  changed; the API exposes existing healthcheck fields with their existing
+  source semantics. No database schema or data-contract changes were made.
+
+Operator impact:
+- An authorized client can retrieve bounded, sanitized persisted ETHUSDT
+  evidence without database or SSH access once the endpoint is deployed and
+  provisioned with a dedicated secret.
+
+Validation:
+- Focused API tests verify authentication, read-only access, missing/stale
+  evidence, malformed valuation, bounded ORM operations, and safe output.
+- Focused API suite: 10/10 passed. Full project test run: 333 passed, 5
+  failed because the SQLite test database does not contain
+  `dust_signal_reviews`.
 
 ## 2026-10-25 - Do not replay an uncertain pause or resume
 

@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.37
+doc_version: 1.1.38
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -8,6 +8,46 @@ source_repo: django_render
 ---
 
 # Django Dashboard — Project State
+
+## Read-only Bot Diagnostics API PoC
+
+Two fixed GET resources are implemented for an external diagnostics client:
+`/api/bot/health` and `/api/bot/inventory/ETHUSDT`; HEAD and OPTIONS are also
+non-mutating, while write methods are rejected. A separate bearer token is
+required; `BOT_DIAGNOSTICS_API_TOKEN` is unset by default, fails closed when
+missing/short, and is not the Django user-token credential. Health uses the
+latest persisted bot healthcheck. ETH inventory joins the portfolio projection
+with an aggregate of positive FIFO lot quantities and exposes persisted
+classification/capacity evidence only while its healthcheck is fresh. It also
+returns the latest ETHUSDT `bot.dust_detections` event's recorded Spot quantity
+and `detected_at` timestamp when available. Its `observation_recency` is the
+age of that event only; `current_exchange_truth` is always false. Stale BUY
+capacity is returned only as `historical_global`, with `global` null; partial
+fresh values and unavailable states are explicit. Portfolio-versus-lot
+comparison is marked not synchronized, and the response declares that its
+separate reads are not atomic.
+
+The response is bounded, sanitized, decimal-safe, and marked `no-store`.
+The bot does not periodically persist complete per-asset Binance Spot
+balances. `BalanceService` fetches complete non-zero account assets in runtime
+memory, while portfolio and dust services use that response for projection or
+event output; no complete Spot snapshot is persisted. The read-only comparison
+CLI fetches a live balance snapshot and reads local FIFO/generation evidence
+without persisting the exchange snapshot. No current Binance Spot snapshot is
+available to Django. The bot has `position_generations`, but this Django
+application does not map it, so active-generation facts remain unavailable in
+this endpoint. No direct Binance client or new persistence was added.
+Mocked API tests and Django system checks pass. Disposable PostgreSQL query
+execution and model/schema validation remain outstanding because this runner
+has no PostgreSQL server/client or container runtime; no production database
+was accessed.
+
+ChatGPT Work Cloud reachability is unverified. A custom GPT Action is a
+separate potential client surface, not native ChatGPT Work connectivity; it
+would need an OpenAPI schema, Bearer API-key configuration, reachable Render
+HTTPS domain, a dedicated secret supplied through Action configuration, and
+workspace permission for that domain. No cloud request, Action, or production
+secret delivery was tested. Production deployment remains outstanding.
 
 ## Current State
 
