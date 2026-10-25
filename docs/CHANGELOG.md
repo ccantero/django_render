@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.45
+doc_version: 1.1.46
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -8,6 +8,32 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-25 - Tighten analytics cache equivalence and failure handling
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Cold and warm `/dashboard/analytics/` renders now have regression coverage for the fee cards, KPI values, symbol table, and day table. The analytics template reads dict and scalar fields only. It does not call model methods, properties, or relations. The pickle-safe snapshot still copies concrete fields from cached bot rows and drops `save`, `delete`, and relations such as `updated_by`.
+- Cache read, write, and delete now catch cache-boundary errors only: pickle errors, `LookupError`, `AttributeError`, `TypeError`, `ValueError`, `OSError`, and `DatabaseError`. Building the read model stays outside that handler. The bypass log includes the cache key, error type, and error text.
+- The cache key is `dashboard:analytics_context:v2`, so a deploy does not read payloads stored under `v1`.
+- Reviewed `docs/KPI_REGISTRY.md`. No KPI name, formula, source of truth, status, or null behavior changed.
+
+Operator impact:
+- Repeat analytics requests inside 60 seconds should show the same fees, KPIs, and tables as the first request.
+- A cache backend failure still renders the freshly built page, including the shared-database error banner when that read failed.
+- A bug while building the read model still raises instead of being reported as a cache miss.
+- After deploy, open `/dashboard/analytics/` twice. Both responses should succeed with the same numbers, and logs should not show `LookupError: No installed app with label 'trading_read'`.
+
+Validation:
+- `tests/test_analytics_cache.py` failed first because the key was still `v1`, cache warnings omitted the error text, and a non-cache `RuntimeError` from `cache.get` was swallowed. After the change, 9 passed.
 
 ## 2026-10-25 - Analytics cache no longer 500s on bot rows
 

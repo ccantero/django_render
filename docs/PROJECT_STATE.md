@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.32
+doc_version: 1.1.33
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -70,7 +70,7 @@ Implemented capabilities:
 - Analytics dashboard at `/dashboard/analytics/` for performance analysis: KPIs, fees, PnL breakdowns, and historical tables
 - Operational Trading KPIs v2 page at `/dashboard/operational-kpis/` for filtered strategy-version summaries, hold-time analytics, same-symbol churn, and fee-efficiency analysis
 - Operational Trading KPIs v2 groups missing `strategy_version` rows as `unversioned`, excludes identifiable manual/accounting-only corrections from trading-quality metrics, and ignores missing timestamps for hold-time/churn calculations
-- Analytics dashboard context is cached for 60 seconds to avoid recomputing read-only full-history KPI data on every request. The cached snapshot is pickle-safe: unmanaged bot model rows are stored as plain values because their `trading_read` app label is not an installed app. An unreadable cache entry is discarded and the page is rebuilt instead of returning HTTP 500
+- Analytics dashboard context is cached for 60 seconds under `dashboard:analytics_context:v2` to avoid recomputing read-only full-history KPI data on every request. The cached snapshot is pickle-safe: unmanaged bot model rows are stored as plain concrete fields because their `trading_read` app label is not an installed app. The analytics template reads dict and scalar fields, not model methods or relations. Cache-boundary failures are logged and the page is rebuilt or still rendered. An unreadable cache entry is discarded instead of returning HTTP 500
 - Bot status card
 - Portfolio summary
 - Valuation consistency showing portfolio projection value, open-lots accounting value, drift, and missing price counts

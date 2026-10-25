@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from contextlib import nullcontext
 import logging
 import os
+import pickle
 from time import perf_counter
 from types import SimpleNamespace
 from typing import List
@@ -66,8 +67,19 @@ RECENT_OPERATIONS_LIMIT = 20
 SELL_EVENT_MIN_WINDOW = 200
 SELL_EVENT_WINDOW_PER_SYMBOL = 20
 EXIT_STATUS_SELL_EVENT_LIMIT = 1000
-ANALYTICS_CACHE_KEY = "dashboard:analytics_context:v1"
+ANALYTICS_CACHE_KEY = "dashboard:analytics_context:v2"
 ANALYTICS_CACHE_SECONDS = 60
+# Failures from the cache backend or from unpickling a cached payload.
+# Context construction stays outside this tuple so read-model bugs still raise.
+_ANALYTICS_CACHE_ERRORS = (
+	pickle.PickleError,
+	LookupError,
+	AttributeError,
+	TypeError,
+	ValueError,
+	OSError,
+	DatabaseError,
+)
 CHURN_WINDOW_HOURS = 48
 CHURN_GAP_MINUTES = 15
 DISK_USAGE_FILESYSTEM = "/"
@@ -184,33 +196,37 @@ def get_dashboard_analytics_context():
 def _get_cached_analytics_context():
 	try:
 		return cache.get(ANALYTICS_CACHE_KEY)
-	except Exception as exc:
+	except _ANALYTICS_CACHE_ERRORS as exc:
 		_log_analytics_cache_bypass("analytics_cache_unreadable", exc)
-		try:
-			cache.delete(ANALYTICS_CACHE_KEY)
-		except Exception as delete_exc:
-			_log_analytics_cache_bypass("analytics_cache_delete_failed", delete_exc)
+		_delete_cached_analytics_context()
 		return None
 
 
 def _set_cached_analytics_context(context):
+	safe_context = _cache_safe_value(context)
 	try:
-		cache.set(
-			ANALYTICS_CACHE_KEY,
-			_cache_safe_value(context),
-			ANALYTICS_CACHE_SECONDS,
-		)
-	except Exception as exc:
+		cache.set(ANALYTICS_CACHE_KEY, safe_context, ANALYTICS_CACHE_SECONDS)
+	except _ANALYTICS_CACHE_ERRORS as exc:
 		_log_analytics_cache_bypass("analytics_cache_store_failed", exc)
+
+
+def _delete_cached_analytics_context():
+	try:
+		cache.delete(ANALYTICS_CACHE_KEY)
+	except _ANALYTICS_CACHE_ERRORS as exc:
+		_log_analytics_cache_bypass("analytics_cache_delete_failed", exc)
 
 
 def _log_analytics_cache_bypass(event, exc):
 	logger.warning(
 		"dashboard analytics cache bypassed event=%s component=dashboard_read_model "
-		"app_version=unknown schema_version=unknown data_contract_version=unknown "
-		"strategy_version=unknown error_type=%s",
+		"cache_key=%s app_version=unknown schema_version=unknown "
+		"data_contract_version=unknown strategy_version=unknown "
+		"error_type=%s error=%s",
 		event,
+		ANALYTICS_CACHE_KEY,
 		type(exc).__name__,
+		exc,
 	)
 
 
