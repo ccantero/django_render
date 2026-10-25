@@ -1,3 +1,24 @@
+# Follow-up merge resolution against 1b8b103 (2026-10-25)
+
+phases_completed: planner, implementer, tester, documentator
+impact: operations, docs_only
+tests_executed: diagnostics 16 passed and 11 subtests; full suite 437 passed, 3 PostgreSQL-only skips and 44 subtests; Django check clean; Node 11 passed; conflict scan clean; original nine-file PR delta only
+pending_issues: remote verification performed after publication and reported in PR description; no new behavioral regression
+planner: merge latest remote main into existing branch; reconcile docs and keep API/main behavior; no schema, DER, contract, logging or KPI impact; existing suites protect preservation; risk is losing adjacent documentation changes
+tests_created: existing suites retained, no new behavior introduced
+failing_test_proof: not needed for merge-only preservation; initial merge reported four documentation conflicts
+docs_reviewed: README.md, PLAN.md, docs/PROJECT_STATE.md, docs/ARCHITECTURE.md, docs/DATA_CONTRACT.md, docs/DESIGN.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
+docs_updated: README.md 1.1.38, ARCHITECTURE.md 1.1.22, PROJECT_STATE.md 1.1.38, CHANGELOG.md 1.1.51
+changelog: updated
+schema_der: not_applicable: no new schema changes
+data_contract_sync: not_applicable: no shared contract changes
+logging_observability: unchanged
+kpi_registry_reviewed: yes
+kpi_registry_updated: not-needed
+kpi_registry_sync_checked: not-available
+
+---
+
 # Workflow evidence — PR #3 merge-conflict resolution (2026-10-25)
 
 task_mode: STANDARD

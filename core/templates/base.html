@@ -44,6 +44,13 @@
 	</nav>
 
 	<div class="container-fluid">
+		{% if messages %}
+			{% if not request.resolver_match or request.resolver_match.url_name != "dashboard" %}
+		<div class="pt-3">
+			{% include "includes/messages.html" %}
+		</div>
+			{% endif %}
+		{% endif %}
 		{% block content %}
 	
 	<div class="container-fluid">
@@ -60,6 +67,25 @@
 
 	{% endblock %}
 	</div>
+	<footer class="app-version" id="app-version">{{ deploy_version_display }}</footer>
+	<script>
+		(function () {
+			var el = document.getElementById('app-version');
+			if (!el || !window.fetch) {
+				return;
+			}
+			fetch("{% url 'version' %}", {cache: "no-store", credentials: "same-origin"})
+				.then(function (response) {
+					return response.ok ? response.json() : null;
+				})
+				.then(function (payload) {
+					if (payload && typeof payload.display === "string" && payload.display) {
+						el.textContent = payload.display;
+					}
+				})
+				.catch(function () {});
+		})();
+	</script>
 	<script src="{% static 'currencyconverter/js/master.js' %}"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.18
+doc_version: 1.1.22
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -167,6 +167,7 @@ Additional pending visibility work:
 - Django project configured with `core`, `dashboard`, `currencyconverter`, and `profile` apps.
 - Authenticated dashboard, dust/residual review, and manual correction request pages exist in `dashboard`.
 - Home/auth-adjacent pages, Telegram webhook listener, bot-control endpoints, and bot-owned table mappings remain in `core`.
+- Dashboard pause/resume keeps the operator in the HTML UI. The request records desired `core_botcontrol` state only, requires confirmation on every pause POST (HTML and JSON), and does not claim the bot has applied it. A failed browser response is not replayed.
 - DRF endpoints exist for user profiles and currency/exchange-rate resources.
 - drf-spectacular schema and Swagger views are wired at `/api/schema` and `/api/docs`.
 - Test configuration exists for Django test runner and pytest-django.
@@ -218,6 +219,7 @@ Additional pending visibility work:
 - Monitoring cards exist for bot status, portfolio summary, valuation consistency, latest operation/recent trade, and drift alerts.
 - Tests cover dashboard access, manual correction permissions, form validation, model contract alignment, drift prefill behavior, and environment validation.
 - Public `/health/` liveness endpoint exists for Render keepalive/cron pings.
+- Public deploy identity is the root `VERSION` SemVer (`1.0.0` baseline, current `2.0.0`) plus short `RENDER_GIT_COMMIT` build metadata, shown in the shared footer and at `/version/`. A Buenos Aires time is shown only from `DEPLOYED_AT` or `stamp_build`. `/health/` stays liveness-only. `2.0.0` requires confirmation on every pause POST.
 - The dashboard-created `CLOSE_LOTS_EXTERNAL_SELL` request flow was validated on 2026-05-08 with an ASIACOIN / `币安人生USDT` dust-closure case: dashboard request creation, bot CLI dry-run/confirmed apply, and post-apply dashboard state review all preserved the dashboard/bot boundary.
 
 ## P0 Safety / Correctness

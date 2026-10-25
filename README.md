@@ -1,6 +1,6 @@
 ---
 doc_id: readme
-doc_version: 1.1.34
+doc_version: 1.1.38
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -18,6 +18,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 ## Current Scope
 
 - Authenticated dashboard overview
+- Pause and resume requests from the dashboard. They record only the desired `core_botcontrol` state, require confirmation on every pause request, and keep an HTML browser on the dashboard. A failed browser request is not sent again automatically. They do not confirm that the bot applied the request.
 - Compact operator console homepage with Bot Health, Disk Usage, Inventory Integrity, and Performance Snapshot cards
 - Valuation consistency between `bot.portfolio` projection value and open `bot.position_lots` accounting value
 - Recent operations/latest trade, capped to the latest four operations on the homepage
@@ -406,7 +407,8 @@ page is `/currencyconverter/calculadora_uva/`, and
 public currency-converter GET requests only and does not cache dashboard data.
 The calculator keeps the normal site navigation in regular browsers, while
 standalone display mode hides that navigation and uses a single-column,
-touch-sized layout with iOS safe-area padding.
+touch-sized layout with iOS safe-area padding. The shared version footer stays
+visible in that standalone presentation.
 The calculator also shows the current official USD and UVA values used for its
 calculations in the results panel.
 
@@ -461,7 +463,10 @@ intentionally not committed to Git. Removing that step would leave production
 without the required CSS, JavaScript, and admin static assets.
 
 The Build Command is managed outside Git, so verify it remains configured in
-Render before deploying changes to static asset handling.
+Render before deploying changes to static asset handling. An exact build time
+in the version footer is optional. To record one, append `&& python manage.py stamp_build`
+to that command. Without it, the footer still shows the commit and leaves the
+time unknown. See "Deployed application version" below.
 
 Required environment variables:
 
@@ -651,6 +656,77 @@ curl https://<your-render-host>/health/
 
 The endpoint returns `{"status":"ok"}` when the Django web process is reachable. It does not check bot health or database state.
 
+### Deployed application version
+
+The running app version is separate from the `doc_version` headers in this
+repository. The only app-version source is the root `VERSION` file, which
+contains SemVer 2.0.0 core `MAJOR.MINOR.PATCH`. The initial value is `1.0.0`:
+there was no canonical app version or git tag before that file, the app is
+already in production, and the per-document `doc_version` numbers are not an
+app release sequence.
+
+`1.0.0` is the initial baseline. The MAJOR, MINOR, and PATCH rules below apply
+to behavior changes after that baseline. Introducing `VERSION`, and correcting
+the timestamp so it is only an explicit value, stay on `1.0.0`. The current
+file is `2.0.0`. `1.1.0` added the dashboard pause/resume request flow. `2.0.0` is a MAJOR bump because every pause POST now requires confirmation, including JSON clients that `1.0.0` and `1.1.0` accepted without it. The success JSON object is unchanged.
+
+Render sets `RENDER_GIT_COMMIT` at build and runtime
+([default environment variables](https://render.com/docs/environment-variables)).
+The footer and `/version/` use the first 7 hex characters as SemVer build
+metadata, for example `v2.0.0+a1b2c3d`. With no commit available, the label
+uses `dev` (`v2.0.0+dev`). That short commit is what shows whether a new
+commit was deployed. Render does not provide a deploy timestamp, and this app
+does not treat a file modification time or the process start time as one.
+
+A clock time is shown only when a controlled step recorded a UTC instant:
+
+1. `DEPLOYED_AT`, if it is valid ISO-8601. This overrides the build stamp. A value left unchanged in the dashboard does not move on later deploys, so prefer the build stamp unless you need an override.
+2. Otherwise `build_info.json`, written by `python manage.py stamp_build`. The file stores `{"deployed_at":"<UTC>"}` and is gitignored.
+
+To record the build time on Render, change the Build Command from:
+
+```bash
+pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations
+```
+
+to:
+
+```bash
+pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations && python manage.py stamp_build
+```
+
+That change is optional. A restart does not re-run the build, so an existing
+stamp stays the same until the next build. With no `DEPLOYED_AT` and no stamp
+file, the time is `unknown` and `/version/` returns `deployed_at: null` with
+`timestamp_source: "unknown"`. Shown times use `America/Buenos_Aires` and an
+`ART` label. `timestamp_source` is `explicit` or `build_stamp` when a time is
+present.
+
+The shared base template renders a small footer on the regular site and on
+the public calculator, including standalone mode where the navigation is
+hidden. A page may also refresh the label from `/version/` so a cached HTML
+shell does not keep an old deploy. The public JSON is only:
+
+```bash
+curl https://<your-render-host>/version/
+```
+
+```json
+{"version":"2.0.0","commit":"a1b2c3d","deployed_at":"2026-10-25T14:30:00-03:00","timestamp_source":"build_stamp","display":"v2.0.0+a1b2c3d · 25/10 14:30 ART"}
+```
+
+`/health/` is unchanged. The version payload does not include service IDs,
+branches, hostnames, or secrets. No Render dashboard change is required for
+the commit label. Add the `stamp_build` step above only if you want the exact
+build time.
+
+Bump `VERSION` in the same PR that changes deployed behavior after `1.0.0`:
+
+- MAJOR: incompatible public contract (remove or rename `/version/` fields, change the `/health/` JSON shape, remove a public URL, or break existing login or session clients).
+- MINOR: backward-compatible operator-visible feature (new page, endpoint, Telegram command, or additive `/version/` field).
+- PATCH: bugfix or operator-visible correction that does not add a feature or break a contract.
+- Do not bump for documentation-only, test-only, or workflow-only changes. The short commit still changes on every deploy.
+
 Dashboard Disk Usage is separate from the public liveness endpoint. It is
 read from the latest `bot.bot_healthcheck.details.disk_usage` payload, shows the
 payload source, filesystem, used percent, free GB, and status, and degrades to
@@ -714,6 +790,7 @@ state and markdown contracts.
 - Dashboard must require login.
 - Manual correction request creation is staff/superuser-only.
 - State-changing actions must be POST-only and CSRF-protected.
+- Pause and resume stay login-only, POST-only, and CSRF-protected. Staff is not required. Every pause POST requires confirmation: HTML sends `confirm=yes`, and JSON sends that field or `{"confirm":"yes"}` / `{"confirm":true}`. An unconfirmed HTML pause redirects back with an error and does not write. An unconfirmed JSON pause returns HTTP 400 `{"error":"confirmation_required","detail":"..."}` and does not write. Resume does not require confirmation. An HTML post (`Accept` includes `text/html` ahead of `application/json`) redirects to a safe same-origin `next` or `Referer`, or `/dashboard/#control-seguro`, and shows "Pausa solicitada" or "Reanudación solicitada". `Accept: application/json`, `*/*`, or a missing Accept still returns the same JSON object (`is_paused`, `status`, `updated_at`, `updated_by`, `reason`) after a confirmed pause or any resume. No Telegram handler, script, or other module in this repository called `/bot/stop/`, `/bot/resume/`, or `/bot/status/`, so there is no compatibility exception. The row is the desired state only. With JavaScript, a failed or aborted response is not submitted again: the card shows "Resultado incierto", re-reads `GET /bot/status/`, and posts again only if the operator uses "Reintentar el pedido". Without JavaScript, the form posts once and the browser follows the redirect.
 - Public/demo views must never expose sensitive data.
 - Database grants should be reviewed so public roles cannot mutate bot-owned accounting tables.
 

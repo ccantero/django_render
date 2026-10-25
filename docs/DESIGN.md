@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.28
+doc_version: 1.1.34
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-18
+last_verified_at: 2026-10-25
 source_repo: django_render
 ---
 
@@ -22,11 +22,19 @@ Operators and AI tooling should be able to determine runtime version, schema
 version, documentation freshness, contract freshness, and projection freshness
 without manually inspecting repository history.
 
+The deployed app version is the root `VERSION` SemVer. `1.0.0` is the initial
+baseline. The current file is `2.0.0`. `doc_version` in these files is not that version. The shared footer
+and `GET /version/` show the app version and the short commit. The Buenos
+Aires time is the explicit `DEPLOYED_AT` or `stamp_build` instant, or
+`unknown` when neither was recorded. Schema version, strategy version, and
+log `app_version` are still `unknown` until a later task wires them.
+
 ---
 
 ## UX Goals
 
 - Show the current bot status quickly.
+- Show pause and resume as a requested `core_botcontrol` state. Ask for confirmation before recording any pause request, allow an optional reason, and do not present the row as proof that the bot stopped or resumed. If the browser cannot tell whether the request landed, say "Resultado incierto", show the saved row, and let the operator retry explicitly.
 - Surface operational risks before financial KPIs.
 - Make dust/drift signals understandable to a human operator.
 - Prevent accidental direct DB corrections.
@@ -59,7 +67,7 @@ Home dashboard responsibility: concise operator console for health, urgent actio
 ### Analytics dashboard
 
 Analytics dashboard responsibility: Performance analysis: KPIs, fees, PnL breakdowns, historical tables.
-Analytics read-model output may be cached briefly because the page is read-only and historical aggregates are intentionally deferred away from the homepage.
+Analytics read-model output may be cached briefly because the page is read-only and historical aggregates are intentionally deferred away from the homepage. The cache key is `dashboard:analytics_context:v2`. It stores a pickle-safe snapshot rather than live unmanaged model instances. The page consumes dict and scalar KPI, fee, and table fields from that snapshot. A cache read or write that fails at the cache boundary rebuilds or still renders the fresh page. A failure while building the read model is not hidden as a cache miss.
 
 - Performance KPI cards:
   - net realized PnL
@@ -127,6 +135,7 @@ does not reimplement SellService logic or add direct Binance calls.
 - Login and logout pages
 - Public demo dashboard at `/dashboard/demo/`
 - Public app liveness endpoint at `/health/`
+- Public deploy version endpoint at `/version/` and the shared footer label
 - About-me page at `/me`
 - Thanks page at `/thanks/`
 - Optional credential settings at `/security/passkeys/` when `PASSKEYS_ENABLED`

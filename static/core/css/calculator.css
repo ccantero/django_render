@@ -78,6 +78,10 @@
     display: none;
   }
 
+  .calculator-page .app-version {
+    display: block;
+  }
+
   .calculator-page .container-fluid {
     padding-top: 0;
   }

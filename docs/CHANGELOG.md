@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.46
+doc_version: 1.1.51
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -8,6 +8,32 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-25 - Refresh PR #3 against main 1b8b103
+
+Type: operations
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/ARCHITECTURE.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Main advanced after the prior merge to include Analytics fixes, deploy-version
+  visibility, and pause/resume UX. Reconciled four documentation conflicts,
+  keeping complete entries from both parents and incrementing doc versions.
+- Diagnostics source and tests remain unchanged; main's other files are retained.
+- The PR API initially reported base 60bdcc6 while the main ref and branch API
+  reported 1b8b103. Remote refs, not that stale PR base field, identify the target.
+
+Validation:
+- Diagnostics: 16 passed, 11 subtests. Full suite: 437 passed, 3 existing
+  PostgreSQL-only skips, 44 subtests. Django check: no issues. JavaScript: 11 passed.
+- Conflict-marker scan clean; only the nine original PR paths differ from main.
+- No new runtime behavior, tests, schema, contract, logging, or KPI changes.
+- No deployment or merge to main performed.
 
 ## 2026-10-25 - Reconcile Diagnostics API PR #3 with main
 
@@ -45,33 +71,6 @@ Validation:
 - Warnings: absent untracked local `staticfiles/` output and an unordered
   UserProfile queryset in the existing DRF pagination regression test.
 - No production credentials, database access, migrations, or deployment used.
-
-## 2026-10-25 - Stop tracking collected static files
-
-Type: operations
-Runtime version: unknown
-Schema version: unknown
-Docs affected:
-- README.md
-- PLAN.md
-- docs/ARCHITECTURE.md
-- docs/PROJECT_STATE.md
-- docs/CHANGELOG.md
-
-Summary:
-- Removed generated `staticfiles/` output, the copied `static/admin/` tree, and `static/staticfiles.json` from Git.
-- Kept project source assets under `static/core`, `static/currencyconverter`, `static/profile`, and `static/favicon.ico`.
-- Django 5.2 ignores the legacy `STATICFILES_STORAGE` setting, so non-debug settings now select WhiteNoise `CompressedStaticFilesStorage` through `STORAGES["staticfiles"]`.
-- Restored this changelog from the last text revision (`d2621aae`, doc_version 1.1.43). The file on the previous branch tip was binary and did not contain those text entries.
-
-Operator impact:
-- Before merging, confirm the Render web service Build Command runs `python manage.py collectstatic --noinput` after installing requirements. Append that command if it is missing. Leave any existing migrate or other build steps in place.
-- Local `runserver` with `CC_DEBUG=true` still serves source assets through Django's static finders. Production WhiteNoise serves `STATIC_ROOT` (`staticfiles/`) created at build time.
-- Django admin static files now come from the installed Django package instead of the older copy previously committed under `static/admin/`.
-
-Validation:
-- `pytest` — 376 passed, 3 skipped, 33 subtests passed.
-- `CC_DEBUG=false python manage.py collectstatic --noinput` from a clean tree copied 170 files and gzip-compressed 158.
 
 ## 2026-10-17 - Correct Bot Diagnostics Evidence Semantics
 
@@ -167,6 +166,210 @@ Validation:
 - Focused API suite: 10/10 passed. Full project test run: 333 passed, 5
   failed because the SQLite test database does not contain
   `dust_signal_reviews`.
+
+## 2026-10-25 - Do not replay an uncertain pause or resume
+
+Type: behavior
+Runtime version: 2.0.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- The dashboard script no longer calls `form.submit()` when `fetch` fails or the response is unusable. That path shows "Resultado incierto. No se reenvió el pedido.", re-reads `GET /bot/status/`, updates the card from that saved desired state, and posts again only through "Reintentar el pedido".
+- A second submit while a request is in flight is ignored. Pause and resume controls are disabled until the current request finishes. An older response sequence cannot overwrite a newer card.
+- Pause confirmation is now universal. JSON pause requires `confirm=yes` or JSON `confirm` of `"yes"` or `true`. Without it the response is HTTP 400 `confirmation_required` and nothing is written. HTML without confirmation still redirects with the same Spanish error and does not write. Resume still does not require confirmation.
+- This repository has no Telegram handler, script, or other caller of `/bot/stop/`, `/bot/resume/`, or `/bot/status/` besides the dashboard, tests, and docs. There is no compatibility exception.
+- The success JSON object is unchanged. `*/*` and a missing Accept still receive JSON once a pause is confirmed. Login, CSRF, redirect checks, and the non-staff permission are unchanged. The `core_botcontrol` table and columns are unchanged. Copy still says the state is requested, not confirmed by the bot.
+- The `1.1.0` changelog entry below said JSON clients do not need confirmation. That sentence described `1.1.0` only. `2.0.0` replaces it.
+- `VERSION` is `2.0.0` (MAJOR: an unconfirmed pause POST that `1.0.0` and `1.1.0` accepted now returns 400).
+- Reviewed `docs/KPI_REGISTRY.md`; no metric was added or redefined. `docs/DATA_CONTRACT.md` was reviewed and left unchanged. No new logs. No schema or DER change.
+
+Operator impact:
+- From the phone, a lost response no longer sends a second pause or resume by itself. The card says the result is uncertain, then shows whatever row is saved. The operator can retry with the button.
+- Without JavaScript, the form still posts once and the browser follows the safe redirect.
+- A programmatic pause must now send confirmation. Resume payloads stay the same.
+
+Validation:
+- `node --test tests/bot_control_frontend.test.cjs tests/passkeys_frontend.test.cjs`: 11 passed (8 bot-control, 3 passkey).
+- `pytest core/test_bot_control.py tests/test_deploy_version.py`: 36 passed.
+- Full `pytest`: 421 passed, 3 skipped, 33 subtests passed.
+
+## 2026-10-25 - Keep pause and resume inside the dashboard
+
+Type: behavior
+Runtime version: 1.1.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- HTML form posts to `/bot/stop/` and `/bot/resume/` now redirect to a same-origin page and show "Pausa solicitada" or "Reanudación solicitada". They no longer return raw JSON to a phone browser.
+- A pause request from the HTML form requires confirmation and can include a reason. Resume can include a reason and does not require the same confirmation.
+- The dashboard control card shows the desired state ("Estado solicitado"), the row time in America/Buenos_Aires (ART), who recorded it, and the reason. The copy does not say the bot has stopped or resumed. There is no acknowledgement from the bot.
+- Clients that send `Accept: application/json`, or that do not advertise `text/html`, still receive the existing JSON payload and do not need the confirmation field.
+- The write is unchanged: `core_botcontrol.is_paused`, `reason`, `updated_by`, and `updated_at`. Login, POST-only, and CSRF rules are unchanged.
+- `VERSION` is `1.1.0` (MINOR: operator-visible request flow, JSON payload preserved).
+- Reviewed `docs/KPI_REGISTRY.md`; no metric was added or redefined. `docs/DATA_CONTRACT.md` was reviewed and left unchanged.
+
+Operator impact:
+- From the phone, requesting a pause or resume stays on the dashboard. The flash and the card describe a requested state, not an effective bot state.
+- Without JavaScript, the form posts and the browser follows the redirect. With JavaScript, the card updates in place and falls back to that redirect if the request fails.
+- Programmatic clients that already posted without a browser `Accept: text/html` header still get JSON.
+
+Validation:
+- `pytest core/test_bot_control.py tests/test_deploy_version.py`: 35 passed.
+- Full `pytest`: 420 passed, 3 skipped, 33 subtests passed.
+
+## 2026-10-25 - Keep the deploy clock explicit
+
+Type: behavior
+Runtime version: 1.0.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+- AGENTS.md
+
+Summary:
+- `/version/` and the footer show a clock time only from `DEPLOYED_AT` or from `build_info.json` written by `python manage.py stamp_build`.
+- `deployed_at` is null and `timestamp_source` is `unknown` when neither source is valid. File modification time and process start are not reported as a deploy time.
+- `timestamp_source` is `explicit` or `build_stamp` when a time is present. The same display string is used in the footer.
+- `1.0.0` remains the initial SemVer baseline. The MAJOR/MINOR/PATCH rules apply to behavior changes after it. This correction does not bump `VERSION`.
+- Version tests use temporary directories and scoped environment patches.
+
+Operator impact:
+- No Render change is required. The short commit still shows whether a new commit is deployed.
+- To show an exact build time, append `&& python manage.py stamp_build` to the Render Build Command. A later restart keeps that stamp until the next build. Optional `DEPLOYED_AT` overrides the stamp.
+- Without that step, the footer time stays `unknown` instead of showing a file or process time.
+
+Validation:
+- `tests/test_deploy_version.py` failed first because `resolve_timestamp` did not exist, then 16 passed.
+- Full `pytest`: 401 passed, 3 skipped, 33 subtests passed. The existing DRF unordered-pagination warning remains.
+
+## 2026-10-25 - Show the deployed SemVer on the site and at /version/
+
+Type: behavior
+Runtime version: 1.0.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+- AGENTS.md
+
+Summary:
+- Added root `VERSION` (`1.0.0`) as the only app SemVer source. Document `doc_version` headers are unchanged in meaning.
+- The shared base footer shows `v1.0.0+<short sha>` and a `America/Buenos_Aires` timestamp, including the calculator standalone view that hides navigation. `GET /version/` returns `version`, `commit`, `deployed_at`, and `display` with `Cache-Control: no-store`.
+- Missing `RENDER_GIT_COMMIT` uses `dev`. Missing deploy time uses `unknown` / `null`. Render service IDs, branches, and secrets are not exposed. `/health/` stays `{"status":"ok"}`.
+- The currency-converter service worker fetches navigations and `/version/` with `cache: 'no-store'`, does not cache its own script, and drops older caches on activate.
+- No Render dashboard change is required for the commit label. The timestamp rule in this entry was corrected by the entry above: file mtime and process start are not a deploy time.
+
+Operator impact:
+- After a deploy, the phone PWA and the website footer show the new short commit and Buenos Aires time without opening Render. `curl /version/` returns the same facts.
+- The short SHA is the commit identity. The clock-time rule in the original summary was corrected by the entry above.
+
+Validation:
+- `tests/test_deploy_version.py` failed first with `ModuleNotFoundError: No module named 'django_render.version'`, then passed (11 tests).
+- Full `pytest`: 396 passed, 3 skipped, 33 subtests passed. The existing DRF unordered-pagination warning remains.
+
+## 2026-10-25 - Tighten analytics cache equivalence and failure handling
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Cold and warm `/dashboard/analytics/` renders now have regression coverage for the fee cards, KPI values, symbol table, and day table. The analytics template reads dict and scalar fields only. It does not call model methods, properties, or relations. The pickle-safe snapshot still copies concrete fields from cached bot rows and drops `save`, `delete`, and relations such as `updated_by`.
+- Cache read, write, and delete now catch cache-boundary errors only: pickle errors, `LookupError`, `AttributeError`, `TypeError`, `ValueError`, `OSError`, and `DatabaseError`. Building the read model stays outside that handler. The bypass log includes the cache key, error type, and error text.
+- The cache key is `dashboard:analytics_context:v2`, so a deploy does not read payloads stored under `v1`.
+- Reviewed `docs/KPI_REGISTRY.md`. No KPI name, formula, source of truth, status, or null behavior changed.
+
+Operator impact:
+- Repeat analytics requests inside 60 seconds should show the same fees, KPIs, and tables as the first request.
+- A cache backend failure still renders the freshly built page, including the shared-database error banner when that read failed.
+- A bug while building the read model still raises instead of being reported as a cache miss.
+- After deploy, open `/dashboard/analytics/` twice. Both responses should succeed with the same numbers, and logs should not show `LookupError: No installed app with label 'trading_read'`.
+
+Validation:
+- `tests/test_analytics_cache.py` failed first because the key was still `v1`, cache warnings omitted the error text, and a non-cache `RuntimeError` from `cache.get` was swallowed. After the change, 9 passed.
+- Full `pytest`: 385 passed, 3 skipped, 33 subtests passed. The existing DRF unordered-pagination warning remains.
+
+## 2026-10-25 - Analytics cache no longer 500s on bot rows
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- `/dashboard/analytics/` cached the full read-model context, including unmanaged `bot.*` model instances whose `app_label` is `trading_read`.
+- Django cache backends pickle cached values. The following request unpickled those rows through `apps.get_model("trading_read", ...)`, which raises `LookupError` because `trading_read` is not an installed app. Django turned that into HTTP 500. The homepage does not use this cache, so it could keep loading.
+- The analytics cache now stores a pickle-safe snapshot. Model rows are copied to plain attribute objects before `cache.set`. An unreadable cache entry is deleted and the page is rebuilt.
+- Reviewed `docs/KPI_REGISTRY.md`. No KPI name, formula, source of truth, status, or null behavior changed.
+- Checked the merged static-file cleanup (PR #6). Analytics uses the shared base template and does not add a static reference. Current non-debug storage is `CompressedStaticFilesStorage`, which does not raise while rendering `{% static %}`. That change does not explain this 500.
+
+Operator impact:
+- Authenticated `/dashboard/analytics/` keeps loading on repeat requests inside the 60-second cache window when healthcheck or trade rows are present.
+- A shared-database read failure still renders the existing data-error banner. Empty KPI inputs stay empty or N/A.
+- A warning is logged only when the analytics cache cannot be read, deleted, or stored. The line includes `event`, `component`, `error_type`, and unknown version fields. It does not include row payloads or secrets.
+
+Validation:
+- `tests/test_analytics_cache.py` failed first with `LookupError: No installed app with label 'trading_read'` on the cached request. After the change, 2 passed.
+- Full `pytest`: 378 passed, 3 skipped, 33 subtests passed. The existing DRF unordered-pagination warning remains.
+
+## 2026-10-25 - Stop tracking collected static files
+
+Type: operations
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Removed generated `staticfiles/` output, the copied `static/admin/` tree, and `static/staticfiles.json` from Git.
+- Kept project source assets under `static/core`, `static/currencyconverter`, `static/profile`, and `static/favicon.ico`.
+- Django 5.2 ignores the legacy `STATICFILES_STORAGE` setting, so non-debug settings now select WhiteNoise `CompressedStaticFilesStorage` through `STORAGES["staticfiles"]`.
+- Restored this changelog from the last text revision (`d2621aae`, doc_version 1.1.43). The file on the previous branch tip was binary and did not contain those text entries.
+
+Operator impact:
+- Before merging, confirm the Render web service Build Command runs `python manage.py collectstatic --noinput` after installing requirements. Append that command if it is missing. Leave any existing migrate or other build steps in place.
+- Local `runserver` with `CC_DEBUG=true` still serves source assets through Django's static finders. Production WhiteNoise serves `STATIC_ROOT` (`staticfiles/`) created at build time.
+- Django admin static files now come from the installed Django package instead of the older copy previously committed under `static/admin/`.
+
+Validation:
+- `pytest` — 376 passed, 3 skipped, 33 subtests passed.
+- `CC_DEBUG=false python manage.py collectstatic --noinput` from a clean tree copied 170 files and gzip-compressed 158.
 
 ## 2026-10-15 - Scale Telegram BUY Rows to Configured Capacity
 

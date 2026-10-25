@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.32
+doc_version: 1.1.38
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -73,9 +73,19 @@ but it is not currently an installable PWA; authenticated PWA work is a
 separate future security/product item.
 The calculator includes the shared site navigation in regular browsers and a
 standalone-only mobile presentation that hides navigation, uses one column,
-and respects iOS safe-area insets.
+and respects iOS safe-area insets. The shared version footer remains visible
+there.
 The results panel also shows the current official USD and UVA values used by
 the calculator.
+
+The deployed app version is SemVer in the root `VERSION` file. `1.0.0` is the
+initial baseline and `2.0.0` is the current release. `1.1.0` added the pause/resume request flow; `2.0.0` requires confirmation on every pause POST. Neither
+number is the per-document `doc_version`. The shared base footer and `GET /version/` show that version
+and a 7-character `RENDER_GIT_COMMIT` build suffix or `dev`. A Buenos Aires
+clock time is included only when `DEPLOYED_AT` or `python manage.py stamp_build`
+recorded a UTC instant. Otherwise the time is unknown. File mtime and process
+start are not shown as deploy times. `/health/` remains `{status: ok}` and is
+not a version or bot-health payload.
 
 The Django dashboard is operational as a DB consumer for the Binance Python Bot.
 Optional Passkey authentication is implemented behind `PASSKEYS_ENABLED`,
@@ -101,6 +111,7 @@ Detected Django apps:
 Implemented capabilities:
 
 - Authenticated dashboard pages
+- Dashboard pause/resume requests write the desired `core_botcontrol` row only. The control card shows "Estado solicitado", the recorded time in America/Buenos_Aires, who changed it, and the reason. HTML posts redirect back into the dashboard with "Pausa solicitada" or "Reanudación solicitada". Every pause POST requires confirmation; resume does not. There is no bot acknowledgement. Confirmed JSON clients still receive the previous payload. A failed browser response shows "Resultado incierto", re-reads `GET /bot/status/`, and does not send the POST again unless the operator retries.
 - Main dashboard as a concise operator console: normalized Bot Health badge, Disk Usage, Inventory Integrity, compact Analytics link card, active issues, informational residual counts, and latest activity
 - Main dashboard does not compute full-history KPI data during initial render; KPI calculations are deferred to the Analytics dashboard
 - Main dashboard uses bounded homepage read paths: recent operations are fetched in a small capped window, SELL diagnostics are disabled by default, and dust overview loads only a capped recent candidate set without a homepage `COUNT(*)`
@@ -110,7 +121,7 @@ Implemented capabilities:
 - Analytics dashboard at `/dashboard/analytics/` for performance analysis: KPIs, fees, PnL breakdowns, and historical tables
 - Operational Trading KPIs v2 page at `/dashboard/operational-kpis/` for filtered strategy-version summaries, hold-time analytics, same-symbol churn, and fee-efficiency analysis
 - Operational Trading KPIs v2 groups missing `strategy_version` rows as `unversioned`, excludes identifiable manual/accounting-only corrections from trading-quality metrics, and ignores missing timestamps for hold-time/churn calculations
-- Analytics dashboard context is cached for 60 seconds to avoid recomputing read-only full-history KPI data on every request
+- Analytics dashboard context is cached for 60 seconds under `dashboard:analytics_context:v2` to avoid recomputing read-only full-history KPI data on every request. The cached snapshot is pickle-safe: unmanaged bot model rows are stored as plain concrete fields because their `trading_read` app label is not an installed app. The analytics template reads dict and scalar fields, not model methods or relations. Cache-boundary failures are logged and the page is rebuilt or still rendered. An unreadable cache entry is discarded instead of returning HTTP 500
 - Bot status card
 - Portfolio summary
 - Valuation consistency showing portfolio projection value, open-lots accounting value, drift, and missing price counts
@@ -257,6 +268,7 @@ Implemented capabilities:
 - Project-level environment validation for required settings
 - Optional Telegram diagnostics allowlists through `TELEGRAM_ALLOWED_CHAT_IDS` and `TELEGRAM_ALLOWED_USER_IDS`
 - Public Django app liveness endpoint at `/health/` for external keepalive checks
+- Public deploy version at `/version/` and in the shared base footer, including the calculator's standalone presentation. The value is `VERSION` plus a short commit. The Buenos Aires time is present only for an explicit `DEPLOYED_AT` value or a `stamp_build` file, with `timestamp_source` of `explicit`, `build_stamp`, or `unknown`. Service IDs and other Render environment values are not shown.
 - Disk Usage card on the authenticated dashboard and Telegram `/health`, sourced
   from latest `bot.bot_healthcheck.details.disk_usage`. Missing or malformed
   bot-persisted disk data renders `Unavailable`; Django does not measure VPS

@@ -1,6 +1,6 @@
 ---
 doc_id: architecture
-doc_version: 1.1.16
+doc_version: 1.1.22
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -111,9 +111,17 @@ GET requests only and does not cache authenticated dashboard data.
 The calculator template reuses the shared base and calculation view, but adds
 page-scoped responsive CSS: ordinary browsers retain the shared navigation;
 standalone display mode hides it and presents the calculator as a padded,
-single-column touch interface.
+single-column touch interface. The shared `.app-version` footer stays visible
+in that mode.
 The results area displays the official USD and UVA quotes used by the current
 calculation.
+
+The service worker is network-first. Navigations and `/version/` are fetched
+with `cache: 'no-store'`, and the worker script itself is not stored in the
+Cache API. Activate deletes caches other than `calculadora-uva-v2`. Offline
+fallback can still show the last calculator HTML, whose footer is the version
+captured with that response. A controlled page also refreshes the footer from
+`/version/`, which is not cached.
 
 ## 4. Data Access Pattern
 
@@ -134,8 +142,11 @@ Local development defaults to SQLite through `dj_database_url`. Production-style
 
 ```text
 Browser dashboard pages -> django_render.urls -> dashboard.urls -> dashboard.views -> read model/forms -> templates
-Browser core pages/bot controls -> django_render.urls -> core.urls -> core.views
+Browser bot-control form -> POST /bot/stop/ or /bot/resume/ -> core.views -> core_botcontrol desired state -> same-origin redirect and flash message
+JSON bot-control client -> same URLs with Accept: application/json, or without a text/html Accept -> existing JSON payload after a confirmed pause or any resume; an unconfirmed pause returns HTTP 400
+Browser core pages -> django_render.urls -> core.urls -> core.views
 External keepalive cron -> /health/ -> core.views.health -> JSON liveness response
+Public deploy check -> /version/ -> core.views.version -> version, short commit, explicit deployed_at or null, timestamp_source, display
 Telegram webhook -> /telegramapi/listener/ -> secret validation -> safe update parsing -> best-effort audit persistence/deduplication -> static `/help` or lazy diagnostic dispatch -> bounded outbound Telegram API call -> HTTP acknowledgement
 Telegram portfolio chart -> read-only `bot.portfolio_snapshots` rows with `source = "bot_cycle"` and `notes.portfolio_equity_usdt` -> transport-agnostic PNG bytes -> Telegram photo or text fallback
 API client -> django_render.urls -> currencyconverter/profile routers -> DRF viewsets -> serializers/models
@@ -149,6 +160,8 @@ individual command failures use an operator-safe fallback response.
 ```
 
 State-changing dashboard actions are protected with login, staff checks where required, POST-only decorators where present, and Django CSRF except for the Telegram webhook listener, which uses the Telegram secret-token header.
+
+Pause and resume write only `core_botcontrol.is_paused`, `reason`, `updated_by`, and `updated_at`. `is_paused` is the desired state. The dashboard does not receive an acknowledgement from the bot and does not claim the bot has stopped or resumed. Every pause POST requires confirmation. HTML sends `confirm=yes`. JSON accepts that form field, `{"confirm":"yes"}`, or `{"confirm":true}`. Resume does not require confirmation. A missing confirmation does not write: HTML redirects with "Confirmá la solicitud de pausa antes de continuar. No se registró ningún cambio.", and any other client receives HTTP 400 `{"error":"confirmation_required","detail":"<same sentence>"}`. A search of this repository, including Telegram handlers and scripts, found no caller of `/bot/stop/`, `/bot/resume/`, or `/bot/status/` other than the dashboard form, its script, tests, and docs, so JSON has no compatibility exception. A confirmed HTML post then redirects to a safe same-origin `next` or `Referer`, falling back to `/dashboard/#control-seguro`. Targets that point at the pause, resume, or status URLs are rejected. The redirect carries "Pausa solicitada" or "Reanudación solicitada". The control card shows that requested state, the row time in America/Buenos_Aires (ART), the user email, and the reason. With JavaScript, the same POST is sent as `Accept: application/json` and the card updates in place. A failed, non-JSON, or aborted response does not submit the form again. The card shows "Resultado incierto. No se reenvió el pedido.", re-reads `GET /bot/status/`, and keeps that warning. "Reintentar el pedido" is the only later POST. While a request is in flight the pause and resume controls are disabled, and an older response sequence cannot replace a newer card state. Clients that do not advertise `text/html` keep the previous JSON object when the pause is confirmed or the call is a resume. Login and CSRF rules are unchanged, including for authenticated non-staff users. Without JavaScript, the browser submits the form once and follows the redirect.
 
 `/health/` is public and side-effect-free. It reports only Django web-process liveness for hosting keepalive checks; bot operational health remains sourced from `bot.bot_healthcheck` in dashboard views.
 
@@ -210,6 +223,18 @@ the response as one reconciliation snapshot. A repeatable-read transaction
 was not added because this is advisory HTTP evidence, not a bot-side
 reconciliation result, and the API does not need to block or coordinate bot
 writes.
+
+`/version/` is also public and side-effect-free. It reads the root `VERSION`
+file, `RENDER_GIT_COMMIT`, and an explicit UTC instant from `DEPLOYED_AT` or
+from `build_info.json` written by `python manage.py stamp_build`. It does not
+use file modification time or process start time. The response is
+`Cache-Control: no-store` and contains `version`, `commit`, `deployed_at`,
+`timestamp_source` (`explicit`, `build_stamp`, or `unknown`), and `display`.
+`deployed_at` is null when no explicit instant was recorded. It does not read
+bot tables and does not return Render service IDs, branches, hostnames, or
+secrets. The same display string is rendered by the shared base footer outside
+`{% block content %}`, so pages that replace the content or footer blocks
+still show it.
 
 Authenticated dashboard Disk Usage and Telegram `/health` Disk Usage are also
 side-effect-free, but they are not part of the public `/health/` liveness
@@ -311,7 +336,7 @@ The dashboard must display uncertainty and avoid treating approximate exposure a
 
 The main dashboard also compares `bot.portfolio` projection value against open `bot.position_lots` valued with `portfolio.current_price`. Missing prices are counted and shown as warnings; they are not silently converted to zero-value audited PnL.
 
-The Wave 8 Phase 1 KPI section is read-only and deferred to the Analytics dashboard rather than computed during homepage rendering. It uses `bot.lot_closures.realized_pnl` for realized PnL, linked `bot.trade_operations.executed_at` or `created_at` for PnL-by-day grouping, `bot.trade_operations.fee_amount_in_quote` for normalized USDT fee totals, and FILLED BUY quote value as approximate gross deployed capital. Non-USDT or unavailable fee conversions are excluded from normalized totals. Manual/accounting correction PnL is split only when available trade operation metadata identifies it; otherwise it remains included in realized PnL totals with an explicit limitation note. Analytics context is cached for 60 seconds.
+The Wave 8 Phase 1 KPI section is read-only and deferred to the Analytics dashboard rather than computed during homepage rendering. It uses `bot.lot_closures.realized_pnl` for realized PnL, linked `bot.trade_operations.executed_at` or `created_at` for PnL-by-day grouping, `bot.trade_operations.fee_amount_in_quote` for normalized USDT fee totals, and FILLED BUY quote value as approximate gross deployed capital. Non-USDT or unavailable fee conversions are excluded from normalized totals. Manual/accounting correction PnL is split only when available trade operation metadata identifies it; otherwise it remains included in realized PnL totals with an explicit limitation note. Analytics context is cached for 60 seconds under `dashboard:analytics_context:v2` as a pickle-safe snapshot. Unmanaged bot models use app label `trading_read`, which is not installed, so caching the live model instances makes the next cache read raise `LookupError` during unpickle. The snapshot copies concrete model fields and does not keep model methods or relations. The analytics template reads dict and scalar KPI fields only. Cache read, write, and delete catch pickle, lookup, value, and connection errors. An unreadable entry is dropped and the read model is rebuilt. Errors raised while building that read model are not treated as cache misses.
 
 The homepage asks the KPI read model for compact summary data only; detailed
 PnL-by-symbol and PnL-by-day history remains an Analytics-dashboard concern.
