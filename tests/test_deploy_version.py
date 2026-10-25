@@ -36,7 +36,7 @@ class AppVersionSourceTests(SimpleTestCase):
         text = version_path.read_text(encoding="utf-8").strip()
 
         self.assertTrue(is_core_semver(text), text)
-        self.assertEqual(text, "1.0.0")
+        self.assertEqual(text, "2.0.0")
         self.assertNotIn("+", text)
         self.assertNotIn("-", text)
         self.assertEqual(read_app_version(version_path), text)

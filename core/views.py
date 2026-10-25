@@ -1,12 +1,17 @@
-from django.shortcuts import render
+from urllib.parse import urlsplit, urlunsplit
+
+from django.shortcuts import redirect, render
 from django.views.generic import TemplateView
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse, JsonResponse, HttpResponseForbidden
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_GET, require_POST
 from django.db import DatabaseError
+from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 
 import json
 import logging
@@ -63,6 +68,12 @@ def version(request):
 	return response
 
 
+PAUSE_REQUESTED_MESSAGE = "Pausa solicitada"
+RESUME_REQUESTED_MESSAGE = "Reanudación solicitada"
+PAUSE_CONFIRM_MESSAGE = "Confirmá la solicitud de pausa antes de continuar. No se registró ningún cambio."
+BOT_CONTROL_UPDATE_FIELDS = ["is_paused", "reason", "updated_by", "updated_at"]
+
+
 def bot_control_payload(control):
 	return {
 		"is_paused": control.is_paused,
@@ -71,6 +82,127 @@ def bot_control_payload(control):
 		"updated_by": str(control.updated_by) if control.updated_by else None,
 		"reason": control.reason,
 	}
+
+
+def _accept_quality(header, media_type):
+	best = None
+	target = media_type.lower()
+	for part in (header or "").split(","):
+		piece = part.strip()
+		if not piece:
+			continue
+		bits = [bit.strip() for bit in piece.split(";")]
+		if not bits or bits[0].lower() != target:
+			continue
+		quality = 1.0
+		for param in bits[1:]:
+			if param.lower().startswith("q="):
+				try:
+					quality = float(param.split("=", 1)[1])
+				except ValueError:
+					quality = 0.0
+		if best is None or quality > best:
+			best = quality
+	return best
+
+
+def _client_wants_html(request):
+	"""Browser form posts advertise text/html. Explicit JSON stays on the API."""
+	header = request.META.get("HTTP_ACCEPT", "")
+	json_quality = _accept_quality(header, "application/json")
+	html_quality = _accept_quality(header, "text/html")
+	if json_quality is not None and (html_quality is None or json_quality >= html_quality):
+		return False
+	return html_quality is not None
+
+
+def _is_safe_control_target(request, candidate):
+	candidate = (candidate or "").strip()
+	if not candidate:
+		return False
+	if not url_has_allowed_host_and_scheme(
+		candidate,
+		allowed_hosts={request.get_host()},
+		require_https=request.is_secure(),
+	):
+		return False
+	path = urlsplit(candidate).path or ""
+	blocked = {reverse("bot_stop"), reverse("bot_resume"), reverse("bot_status")}
+	return path not in blocked
+
+
+def _with_dashboard_anchor(url):
+	parts = urlsplit(url)
+	if parts.fragment:
+		return url
+	dashboard = reverse("dashboard")
+	if (parts.path or "").rstrip("/") == dashboard.rstrip("/"):
+		return urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, "control-seguro"))
+	return url
+
+
+def _safe_control_redirect(request):
+	for candidate in (request.POST.get("next", ""), request.META.get("HTTP_REFERER", "")):
+		if _is_safe_control_target(request, candidate):
+			return _with_dashboard_anchor(candidate.strip())
+	return reverse("dashboard") + "#control-seguro"
+
+
+def _json_object(request):
+	content_type = (request.content_type or "").split(";", 1)[0].strip().lower()
+	if content_type != "application/json":
+		return None
+	try:
+		body = json.loads(request.body.decode() or "null")
+	except (TypeError, ValueError, UnicodeDecodeError):
+		return {}
+	if not isinstance(body, dict):
+		return {}
+	return body
+
+
+def _pause_is_confirmed(request):
+	if request.POST.get("confirm") == "yes":
+		return True
+	body = _json_object(request)
+	if not body:
+		return False
+	return body.get("confirm") in ("yes", True)
+
+
+def _submitted_reason(request):
+	if request.POST:
+		return request.POST.get("reason", "")
+	body = _json_object(request)
+	if body and isinstance(body.get("reason"), str):
+		return body["reason"]
+	return ""
+
+
+def _apply_control(request, *, paused):
+	control = BotControl.get_solo()
+	control.is_paused = paused
+	control.reason = _submitted_reason(request)
+	control.updated_by = request.user
+	control.save(update_fields=BOT_CONTROL_UPDATE_FIELDS)
+	return control
+
+
+def _confirmation_required(request):
+	if _client_wants_html(request):
+		messages.error(request, PAUSE_CONFIRM_MESSAGE)
+		return redirect(_safe_control_redirect(request))
+	return JsonResponse(
+		{"error": "confirmation_required", "detail": PAUSE_CONFIRM_MESSAGE},
+		status=400,
+	)
+
+
+def _control_response(request, control, *, message):
+	if _client_wants_html(request):
+		messages.success(request, message)
+		return redirect(_safe_control_redirect(request))
+	return JsonResponse(bot_control_payload(control))
 
 
 @login_required
@@ -83,23 +215,17 @@ def bot_status(request):
 @login_required
 @require_POST
 def bot_stop(request):
-	control = BotControl.get_solo()
-	control.is_paused = True
-	control.reason = request.POST.get("reason", "")
-	control.updated_by = request.user
-	control.save(update_fields=["is_paused", "reason", "updated_by", "updated_at"])
-	return JsonResponse(bot_control_payload(control))
+	if not _pause_is_confirmed(request):
+		return _confirmation_required(request)
+	control = _apply_control(request, paused=True)
+	return _control_response(request, control, message=PAUSE_REQUESTED_MESSAGE)
 
 
 @login_required
 @require_POST
 def bot_resume(request):
-	control = BotControl.get_solo()
-	control.is_paused = False
-	control.reason = request.POST.get("reason", "")
-	control.updated_by = request.user
-	control.save(update_fields=["is_paused", "reason", "updated_by", "updated_at"])
-	return JsonResponse(bot_control_payload(control))
+	control = _apply_control(request, paused=False)
+	return _control_response(request, control, message=RESUME_REQUESTED_MESSAGE)
 
 TELEGRAM_URL = "https://api.telegram.org/bot"
 TUTORIAL_BOT_TOKEN = settings.TUTORIAL_BOT_TOKEN

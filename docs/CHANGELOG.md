@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.48
+doc_version: 1.1.50
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -8,6 +8,70 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-25 - Do not replay an uncertain pause or resume
+
+Type: behavior
+Runtime version: 2.0.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- The dashboard script no longer calls `form.submit()` when `fetch` fails or the response is unusable. That path shows "Resultado incierto. No se reenvió el pedido.", re-reads `GET /bot/status/`, updates the card from that saved desired state, and posts again only through "Reintentar el pedido".
+- A second submit while a request is in flight is ignored. Pause and resume controls are disabled until the current request finishes. An older response sequence cannot overwrite a newer card.
+- Pause confirmation is now universal. JSON pause requires `confirm=yes` or JSON `confirm` of `"yes"` or `true`. Without it the response is HTTP 400 `confirmation_required` and nothing is written. HTML without confirmation still redirects with the same Spanish error and does not write. Resume still does not require confirmation.
+- This repository has no Telegram handler, script, or other caller of `/bot/stop/`, `/bot/resume/`, or `/bot/status/` besides the dashboard, tests, and docs. There is no compatibility exception.
+- The success JSON object is unchanged. `*/*` and a missing Accept still receive JSON once a pause is confirmed. Login, CSRF, redirect checks, and the non-staff permission are unchanged. The `core_botcontrol` table and columns are unchanged. Copy still says the state is requested, not confirmed by the bot.
+- The `1.1.0` changelog entry below said JSON clients do not need confirmation. That sentence described `1.1.0` only. `2.0.0` replaces it.
+- `VERSION` is `2.0.0` (MAJOR: an unconfirmed pause POST that `1.0.0` and `1.1.0` accepted now returns 400).
+- Reviewed `docs/KPI_REGISTRY.md`; no metric was added or redefined. `docs/DATA_CONTRACT.md` was reviewed and left unchanged. No new logs. No schema or DER change.
+
+Operator impact:
+- From the phone, a lost response no longer sends a second pause or resume by itself. The card says the result is uncertain, then shows whatever row is saved. The operator can retry with the button.
+- Without JavaScript, the form still posts once and the browser follows the safe redirect.
+- A programmatic pause must now send confirmation. Resume payloads stay the same.
+
+Validation:
+- `node --test tests/bot_control_frontend.test.cjs tests/passkeys_frontend.test.cjs`: 11 passed (8 bot-control, 3 passkey).
+- `pytest core/test_bot_control.py tests/test_deploy_version.py`: 36 passed.
+- Full `pytest`: 421 passed, 3 skipped, 33 subtests passed.
+
+## 2026-10-25 - Keep pause and resume inside the dashboard
+
+Type: behavior
+Runtime version: 1.1.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- HTML form posts to `/bot/stop/` and `/bot/resume/` now redirect to a same-origin page and show "Pausa solicitada" or "Reanudación solicitada". They no longer return raw JSON to a phone browser.
+- A pause request from the HTML form requires confirmation and can include a reason. Resume can include a reason and does not require the same confirmation.
+- The dashboard control card shows the desired state ("Estado solicitado"), the row time in America/Buenos_Aires (ART), who recorded it, and the reason. The copy does not say the bot has stopped or resumed. There is no acknowledgement from the bot.
+- Clients that send `Accept: application/json`, or that do not advertise `text/html`, still receive the existing JSON payload and do not need the confirmation field.
+- The write is unchanged: `core_botcontrol.is_paused`, `reason`, `updated_by`, and `updated_at`. Login, POST-only, and CSRF rules are unchanged.
+- `VERSION` is `1.1.0` (MINOR: operator-visible request flow, JSON payload preserved).
+- Reviewed `docs/KPI_REGISTRY.md`; no metric was added or redefined. `docs/DATA_CONTRACT.md` was reviewed and left unchanged.
+
+Operator impact:
+- From the phone, requesting a pause or resume stays on the dashboard. The flash and the card describe a requested state, not an effective bot state.
+- Without JavaScript, the form posts and the browser follows the redirect. With JavaScript, the card updates in place and falls back to that redirect if the request fails.
+- Programmatic clients that already posted without a browser `Accept: text/html` header still get JSON.
+
+Validation:
+- `pytest core/test_bot_control.py tests/test_deploy_version.py`: 35 passed.
+- Full `pytest`: 420 passed, 3 skipped, 33 subtests passed.
 
 ## 2026-10-25 - Keep the deploy clock explicit
 
