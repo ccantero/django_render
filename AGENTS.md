@@ -301,9 +301,11 @@ Rules:
 
 The deployed application version is SemVer 2.0.0 in the repository-root `VERSION` file. That file is the only app-version source. Documentation `doc_version` headers are independent and must not be copied from or into `VERSION`.
 
-`RENDER_GIT_COMMIT` is appended at runtime as SemVer build metadata (`1.0.0+a1b2c3d`). A missing commit uses `dev`. The public footer and `/version/` expose the short commit and deploy timestamp only. Do not put service IDs, branches, hostnames, or secrets in that surface.
+`1.0.0` is the initial baseline recorded when this file was introduced. The MAJOR, MINOR, and PATCH rules apply to deployed-behavior changes after that baseline. Do not bump `VERSION` again for the baseline introduction itself, or for the follow-up that limited the public clock to an explicit `DEPLOYED_AT` value or a `stamp_build` file.
 
-Bump `VERSION` in the same PR that changes deployed behavior:
+`RENDER_GIT_COMMIT` is appended at runtime as SemVer build metadata (`1.0.0+a1b2c3d`). A missing commit uses `dev`. The public footer and `/version/` expose the short commit and, only when a controlled step recorded one, the build time. They do not present file modification time or process start as a deploy time. Do not put service IDs, branches, hostnames, or secrets in that surface.
+
+Bump `VERSION` in the same PR that changes deployed behavior after the `1.0.0` baseline:
 
 - MAJOR: incompatible change to a public contract. Examples: remove or rename `/version/` fields, change the `/health/` JSON shape, remove a public URL, or break existing login or session clients.
 - MINOR: backward-compatible operator-visible feature. Examples: a new page, endpoint, or Telegram command, or an additive `/version/` field.

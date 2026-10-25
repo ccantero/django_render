@@ -1,6 +1,6 @@
 ---
 doc_id: architecture
-doc_version: 1.1.18
+doc_version: 1.1.19
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -144,7 +144,7 @@ Local development defaults to SQLite through `dj_database_url`. Production-style
 Browser dashboard pages -> django_render.urls -> dashboard.urls -> dashboard.views -> read model/forms -> templates
 Browser core pages/bot controls -> django_render.urls -> core.urls -> core.views
 External keepalive cron -> /health/ -> core.views.health -> JSON liveness response
-Public deploy check -> /version/ -> core.views.version -> version, short commit, Buenos Aires deployed_at, display
+Public deploy check -> /version/ -> core.views.version -> version, short commit, explicit deployed_at or null, timestamp_source, display
 Telegram webhook -> /telegramapi/listener/ -> secret validation -> safe update parsing -> best-effort audit persistence/deduplication -> static `/help` or lazy diagnostic dispatch -> bounded outbound Telegram API call -> HTTP acknowledgement
 Telegram portfolio chart -> read-only `bot.portfolio_snapshots` rows with `source = "bot_cycle"` and `notes.portfolio_equity_usdt` -> transport-agnostic PNG bytes -> Telegram photo or text fallback
 API client -> django_render.urls -> currencyconverter/profile routers -> DRF viewsets -> serializers/models
@@ -161,12 +161,16 @@ State-changing dashboard actions are protected with login, staff checks where re
 `/health/` is public and side-effect-free. It reports only Django web-process liveness for hosting keepalive checks; bot operational health remains sourced from `bot.bot_healthcheck` in dashboard views.
 
 `/version/` is also public and side-effect-free. It reads the root `VERSION`
-file, `RENDER_GIT_COMMIT`, and the deploy timestamp described in `README.md`.
-The response is `Cache-Control: no-store` and contains `version`, `commit`,
-`deployed_at`, and `display`. It does not read bot tables and does not return
-Render service IDs, branches, hostnames, or secrets. The same display string
-is rendered by the shared base footer outside `{% block content %}`, so pages
-that replace the content or footer blocks still show it.
+file, `RENDER_GIT_COMMIT`, and an explicit UTC instant from `DEPLOYED_AT` or
+from `build_info.json` written by `python manage.py stamp_build`. It does not
+use file modification time or process start time. The response is
+`Cache-Control: no-store` and contains `version`, `commit`, `deployed_at`,
+`timestamp_source` (`explicit`, `build_stamp`, or `unknown`), and `display`.
+`deployed_at` is null when no explicit instant was recorded. It does not read
+bot tables and does not return Render service IDs, branches, hostnames, or
+secrets. The same display string is rendered by the shared base footer outside
+`{% block content %}`, so pages that replace the content or footer blocks
+still show it.
 
 Authenticated dashboard Disk Usage and Telegram `/health` Disk Usage are also
 side-effect-free, but they are not part of the public `/health/` liveness

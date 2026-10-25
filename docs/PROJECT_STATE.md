@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.34
+doc_version: 1.1.35
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -38,12 +38,14 @@ there.
 The results panel also shows the current official USD and UVA values used by
 the calculator.
 
-The deployed app version is SemVer in the root `VERSION` file (initially
-`1.0.0`). It is not the per-document `doc_version`. The shared base footer and
-`GET /version/` show that version, a 7-character `RENDER_GIT_COMMIT` build
-suffix or `dev`, and the deploy time in `America/Buenos_Aires` when one is
-known. `/health/` remains `{status: ok}` and is not a version or bot-health
-payload.
+The deployed app version is SemVer in the root `VERSION` file. `1.0.0` is the
+initial baseline, not a later minor bump, and it is not the per-document
+`doc_version`. The shared base footer and `GET /version/` show that version
+and a 7-character `RENDER_GIT_COMMIT` build suffix or `dev`. A Buenos Aires
+clock time is included only when `DEPLOYED_AT` or `python manage.py stamp_build`
+recorded a UTC instant. Otherwise the time is unknown. File mtime and process
+start are not shown as deploy times. `/health/` remains `{status: ok}` and is
+not a version or bot-health payload.
 
 The Django dashboard is operational as a DB consumer for the Binance Python Bot.
 Optional Passkey authentication is implemented behind `PASSKEYS_ENABLED`,
@@ -225,7 +227,7 @@ Implemented capabilities:
 - Project-level environment validation for required settings
 - Optional Telegram diagnostics allowlists through `TELEGRAM_ALLOWED_CHAT_IDS` and `TELEGRAM_ALLOWED_USER_IDS`
 - Public Django app liveness endpoint at `/health/` for external keepalive checks
-- Public deploy version at `/version/` and in the shared base footer, including the calculator's standalone presentation. The value is `VERSION` plus a short commit and a Buenos Aires timestamp. Service IDs and other Render environment values are not shown.
+- Public deploy version at `/version/` and in the shared base footer, including the calculator's standalone presentation. The value is `VERSION` plus a short commit. The Buenos Aires time is present only for an explicit `DEPLOYED_AT` value or a `stamp_build` file, with `timestamp_source` of `explicit`, `build_stamp`, or `unknown`. Service IDs and other Render environment values are not shown.
 - Disk Usage card on the authenticated dashboard and Telegram `/health`, sourced
   from latest `bot.bot_healthcheck.details.disk_usage`. Missing or malformed
   bot-persisted disk data renders `Unavailable`; Django does not measure VPS
