@@ -1,6 +1,6 @@
 ---
 doc_id: architecture
-doc_version: 1.1.15
+doc_version: 1.1.16
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -251,7 +251,7 @@ The dashboard must display uncertainty and avoid treating approximate exposure a
 
 The main dashboard also compares `bot.portfolio` projection value against open `bot.position_lots` valued with `portfolio.current_price`. Missing prices are counted and shown as warnings; they are not silently converted to zero-value audited PnL.
 
-The Wave 8 Phase 1 KPI section is read-only and deferred to the Analytics dashboard rather than computed during homepage rendering. It uses `bot.lot_closures.realized_pnl` for realized PnL, linked `bot.trade_operations.executed_at` or `created_at` for PnL-by-day grouping, `bot.trade_operations.fee_amount_in_quote` for normalized USDT fee totals, and FILLED BUY quote value as approximate gross deployed capital. Non-USDT or unavailable fee conversions are excluded from normalized totals. Manual/accounting correction PnL is split only when available trade operation metadata identifies it; otherwise it remains included in realized PnL totals with an explicit limitation note. Analytics context is cached for 60 seconds.
+The Wave 8 Phase 1 KPI section is read-only and deferred to the Analytics dashboard rather than computed during homepage rendering. It uses `bot.lot_closures.realized_pnl` for realized PnL, linked `bot.trade_operations.executed_at` or `created_at` for PnL-by-day grouping, `bot.trade_operations.fee_amount_in_quote` for normalized USDT fee totals, and FILLED BUY quote value as approximate gross deployed capital. Non-USDT or unavailable fee conversions are excluded from normalized totals. Manual/accounting correction PnL is split only when available trade operation metadata identifies it; otherwise it remains included in realized PnL totals with an explicit limitation note. Analytics context is cached for 60 seconds as a pickle-safe snapshot. Unmanaged bot models use app label `trading_read`, which is not installed, so caching the live model instances makes the next cache read raise `LookupError` during unpickle. An unreadable entry is dropped and the read model is rebuilt.
 
 The homepage asks the KPI read model for compact summary data only; detailed
 PnL-by-symbol and PnL-by-day history remains an Analytics-dashboard concern.

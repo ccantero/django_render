@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.44
+doc_version: 1.1.45
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -8,6 +8,32 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-25 - Analytics cache no longer 500s on bot rows
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- `/dashboard/analytics/` cached the full read-model context, including unmanaged `bot.*` model instances whose `app_label` is `trading_read`.
+- Django cache backends pickle cached values. The following request unpickled those rows through `apps.get_model("trading_read", ...)`, which raises `LookupError` because `trading_read` is not an installed app. Django turned that into HTTP 500. The homepage does not use this cache, so it could keep loading.
+- The analytics cache now stores a pickle-safe snapshot. Model rows are copied to plain attribute objects before `cache.set`. An unreadable cache entry is deleted and the page is rebuilt.
+- Reviewed `docs/KPI_REGISTRY.md`. No KPI name, formula, source of truth, status, or null behavior changed.
+- Checked the merged static-file cleanup (PR #6). Analytics uses the shared base template and does not add a static reference. Current non-debug storage is `CompressedStaticFilesStorage`, which does not raise while rendering `{% static %}`. That change does not explain this 500.
+
+Operator impact:
+- Authenticated `/dashboard/analytics/` keeps loading on repeat requests inside the 60-second cache window when healthcheck or trade rows are present.
+- A shared-database read failure still renders the existing data-error banner. Empty KPI inputs stay empty or N/A.
+- A warning is logged only when the analytics cache cannot be read, deleted, or stored. The line includes `event`, `component`, `error_type`, and unknown version fields. It does not include row payloads or secrets.
+
+Validation:
+- `tests/test_analytics_cache.py` failed first with `LookupError: No installed app with label 'trading_read'` on the cached request. After the change, 2 passed.
 
 ## 2026-10-25 - Stop tracking collected static files
 
