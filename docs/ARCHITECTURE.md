@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.14
+doc_version: 1.1.15
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-15
+last_verified_at: 2026-10-25
 source_repo: django_render
 ---
 
@@ -180,6 +180,27 @@ an external deployment fact that must be verified after release.
 - dolarapi.com quote endpoint in `currencyconverter.views.update_ARSUSD_rate`.
 
 No Celery, Redis, or asynchronous worker service is currently wired in this project.
+
+## 4.3 Static Files
+
+`STATICFILES_DIRS` points at the repository `static/` directory, which holds
+project source assets for `core`, `currencyconverter`, `profile`, and
+`favicon.ico`. `STATIC_ROOT` is `staticfiles/`. That directory is collectstatic
+output and is not part of the Git tree.
+
+`WhiteNoiseMiddleware` is installed immediately after `SecurityMiddleware`.
+`django_render/wsgi.py` does not wrap the application with the old
+`DjangoWhiteNoise` helper. When `CC_DEBUG` is false, `STORAGES["staticfiles"]`
+uses `whitenoise.storage.CompressedStaticFilesStorage`, which keeps original
+filenames and writes sibling `.gz` files. Django 5.2 does not read the legacy
+`STATICFILES_STORAGE` setting. Hashed manifest storage is not enabled. When
+`CC_DEBUG` is true, storage stays `StaticFilesStorage` and `runserver` serves
+files through the static finders.
+
+Django admin assets are collected from `django.contrib.admin`. They are not
+vendored in `static/admin`. Render serves the collected tree only after the
+service Build Command runs `collectstatic`. That command is configured in the
+Render dashboard; this repository has no `render.yaml` and no build script.
 
 ---
 

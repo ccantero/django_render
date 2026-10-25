@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.32
+doc_version: 1.1.33
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-18
+last_verified_at: 2026-10-25
 source_repo: django_render
 ---
 
@@ -205,6 +205,39 @@ redeploying.
 Framework, and their runtime `sqlparse` and `urllib3` dependency paths. The
 project intentionally has no lockfile, so deployments must install from the
 tracked requirements file and should be audited after dependency resolution.
+
+### Static files
+
+Source assets live in `static/`: `core/`, `currencyconverter/`, `profile/`,
+and `favicon.ico`. Django admin assets are not stored in that tree.
+`collectstatic` copies them from the installed Django package. `staticfiles/`
+is `STATIC_ROOT` and is gitignored.
+
+With `CC_DEBUG=true`, `runserver` serves static files through Django's
+finders, so a local collect is not required for development. With
+`CC_DEBUG=false`, WhiteNoise serves `staticfiles/` using
+`CompressedStaticFilesStorage`: original file names plus sibling `.gz` files,
+and no hashed manifest. Django 5.2 reads that backend from
+`STORAGES["staticfiles"]`.
+
+This repository does not define the Render build command. `Procfile` is only
+the web start command, and there is no `render.yaml`. Render does not run
+`collectstatic` unless the service Build Command includes it. Before deploying
+a revision that no longer commits `staticfiles/`, confirm the dashboard Build
+Command installs requirements and then runs:
+
+```bash
+python manage.py collectstatic --noinput
+```
+
+If the current command is only the dependency install, use:
+
+```bash
+pip install -r requirements.txt && python manage.py collectstatic --noinput
+```
+
+If the service already runs other build steps, append the `collectstatic`
+command and leave those steps in place.
 
 Required environment variables:
 
@@ -410,7 +443,7 @@ review.
 - pytest-django and Django `TestCase`/`TransactionTestCase`
 - SQLite by default through `dj-database-url`
 - PostgreSQL supported through `DATABASE_URL`; Docker Compose defines a PostgreSQL service
-- WhiteNoise for static files
+- WhiteNoise for production static files, using `STORAGES["staticfiles"]` when `CC_DEBUG` is false
 - Bootstrap 3 package
 - No Celery or Redis integration detected
 - No Django management commands detected

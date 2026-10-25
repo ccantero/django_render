@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.17
+doc_version: 1.1.18
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-15
+last_verified_at: 2026-10-25
 source_repo: django_render
 ---
 
@@ -101,7 +101,9 @@ completed fixes.
   Exit Status and `/why_not_sell` are useful inputs but not a complete
   freshness/provenance read model.
 - `NEEDS_RUNTIME_VERIFICATION`: deployed `/portfolio_status`, deployed
-  `/last_operations`, Render command/boot readiness, and production DB grants.
+  `/last_operations`, Render command/boot readiness (including a Build Command
+  that runs `collectstatic` before the untracked `staticfiles/` output is
+  deployed), and production DB grants.
 - `BOT_CONTRACT_DEPENDENCY`: authoritative evidence timestamps, price
   provenance, complete per-position lifecycle status, stable BUY decision
   surfaces, trapped-capital/holding-efficiency inputs, and future Daily
