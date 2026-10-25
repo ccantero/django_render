@@ -1,6 +1,6 @@
 ---
 doc_id: design
-doc_version: 1.1.30
+doc_version: 1.1.31
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -21,6 +21,12 @@ diagnostics, and explicit version visibility over implicit operator knowledge.
 Operators and AI tooling should be able to determine runtime version, schema
 version, documentation freshness, contract freshness, and projection freshness
 without manually inspecting repository history.
+
+The deployed app version is the root `VERSION` SemVer. `doc_version` in these
+files is not that version. The shared footer and `GET /version/` show the
+app version, the short commit, and the Buenos Aires deploy time. Schema
+version, strategy version, and log `app_version` are still `unknown` until a
+later task wires them.
 
 ---
 
@@ -127,6 +133,7 @@ does not reimplement SellService logic or add direct Binance calls.
 - Login and logout pages
 - Public demo dashboard at `/dashboard/demo/`
 - Public app liveness endpoint at `/health/`
+- Public deploy version endpoint at `/version/` and the shared footer label
 - About-me page at `/me`
 - Thanks page at `/thanks/`
 - Optional credential settings at `/security/passkeys/` when `PASSKEYS_ENABLED`

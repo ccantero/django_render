@@ -1,6 +1,6 @@
 ---
 doc_id: readme
-doc_version: 1.1.33
+doc_version: 1.1.34
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -180,7 +180,8 @@ page is `/currencyconverter/calculadora_uva/`, and
 public currency-converter GET requests only and does not cache dashboard data.
 The calculator keeps the normal site navigation in regular browsers, while
 standalone display mode hides that navigation and uses a single-column,
-touch-sized layout with iOS safe-area padding.
+touch-sized layout with iOS safe-area padding. The shared version footer stays
+visible in that standalone presentation.
 The calculator also shows the current official USD and UVA values used for its
 calculations in the results panel.
 
@@ -420,6 +421,51 @@ curl https://<your-render-host>/health/
 ```
 
 The endpoint returns `{"status":"ok"}` when the Django web process is reachable. It does not check bot health or database state.
+
+### Deployed application version
+
+The running app version is separate from the `doc_version` headers in this
+repository. The only app-version source is the root `VERSION` file, which
+contains SemVer 2.0.0 core `MAJOR.MINOR.PATCH`. The initial value is `1.0.0`:
+there was no canonical app version or git tag before that file, the app is
+already in production, and the per-document `doc_version` numbers are not an
+app release sequence.
+
+Render sets `RENDER_GIT_COMMIT` at build and runtime
+([default environment variables](https://render.com/docs/environment-variables)).
+The footer and `/version/` use the first 7 hex characters as SemVer build
+metadata, for example `v1.0.0+a1b2c3d`. With no commit available, the label
+uses `dev` (`v1.0.0+dev`). Render does not provide a deploy timestamp.
+`DEPLOYED_AT` may be set to an ISO-8601 instant, but the dashboard does not
+need that variable. On Render (`RENDER=true`), the timestamp is the `VERSION`
+file modification time, which is the source checkout time stored in that
+deploy's slug and does not move if the service restarts without a new build.
+If that file cannot be read, the web process start time is used. Local runs
+and tests show `unknown`. Times are displayed in `America/Buenos_Aires` with
+an `ART` label.
+
+The shared base template renders a small footer on the regular site and on
+the public calculator, including standalone mode where the navigation is
+hidden. A page may also refresh the label from `/version/` so a cached HTML
+shell does not keep an old deploy. The public JSON is only:
+
+```bash
+curl https://<your-render-host>/version/
+```
+
+```json
+{"version":"1.0.0","commit":"a1b2c3d","deployed_at":"2026-10-25T14:30:00-03:00","display":"v1.0.0+a1b2c3d · 25/10 14:30 ART"}
+```
+
+`/health/` is unchanged. The version payload does not include service IDs,
+branches, hostnames, or secrets. No Render dashboard change is required.
+
+Bump `VERSION` in the same PR that changes deployed behavior:
+
+- MAJOR: incompatible public contract (remove or rename `/version/` fields, change the `/health/` JSON shape, remove a public URL, or break existing login or session clients).
+- MINOR: backward-compatible operator-visible feature (new page, endpoint, Telegram command, or additive `/version/` field).
+- PATCH: bugfix or operator-visible correction that does not add a feature or break a contract.
+- Do not bump for documentation-only, test-only, or workflow-only changes. The short commit still changes on every deploy.
 
 Dashboard Disk Usage is separate from the public liveness endpoint. It is
 read from the latest `bot.bot_healthcheck.details.disk_usage` payload, shows the

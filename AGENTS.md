@@ -293,9 +293,24 @@ Rules:
 
 - Increment `doc_version` when the document content changes.
 - Increment or update `schema_version` only when the database contract/schema changed.
-- Do not invent app versions. If the project has no version source yet, use `unknown` and add a follow-up.
+- Do not invent documentation or log versions. The app SemVer lives only in the root `VERSION` file. `doc_version` stays independent. Log fields and `runtime_min_version` stay `unknown` until a task explicitly reads `VERSION` into that surface.
 - If runtime logs show a newer app/schema/docs version than the local documentation, flag stale documentation in the final report.
 - If `docs/DATA_CONTRACT.md` changes in either the bot or dashboard repository, verify and update the paired copy in the same task or record a blocking follow-up.
+
+## Application Version
+
+The deployed application version is SemVer 2.0.0 in the repository-root `VERSION` file. That file is the only app-version source. Documentation `doc_version` headers are independent and must not be copied from or into `VERSION`.
+
+`RENDER_GIT_COMMIT` is appended at runtime as SemVer build metadata (`1.0.0+a1b2c3d`). A missing commit uses `dev`. The public footer and `/version/` expose the short commit and deploy timestamp only. Do not put service IDs, branches, hostnames, or secrets in that surface.
+
+Bump `VERSION` in the same PR that changes deployed behavior:
+
+- MAJOR: incompatible change to a public contract. Examples: remove or rename `/version/` fields, change the `/health/` JSON shape, remove a public URL, or break existing login or session clients.
+- MINOR: backward-compatible operator-visible feature. Examples: a new page, endpoint, or Telegram command, or an additive `/version/` field.
+- PATCH: a bugfix or operator-visible correction that does not add a feature or break a contract.
+- Do not bump for documentation-only, test-only, or workflow-only changes. The short commit still changes on every deploy, so the footer distinguishes those deploys.
+
+`VERSION` must stay `MAJOR.MINOR.PATCH` with no prerelease and no build metadata. Build metadata is added at runtime. Display and timestamp rules are in `README.md`.
 
 ## Logging Governance
 

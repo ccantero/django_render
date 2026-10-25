@@ -7,6 +7,7 @@ from profile import passkeys
 urlpatterns = [
     path('',views.HomePage.as_view(),name='home'),
     path('health/', views.health, name='health'),
+    path('version/', views.version, name='version'),
     path('login/', auth_views.LoginView.as_view(template_name='login.html'), name='login'),
     path('security/passkeys/', passkeys.manage, name='passkey_manage'),
     path('passkeys/reauthenticate/', passkeys.reauthenticate, name='passkey_reauthenticate'),

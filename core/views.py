@@ -12,6 +12,7 @@ import json
 import logging
 import requests
 from core.models import BotControl, TelegramMessage
+from django_render.version import current_release_info
 
 TELEGRAM_WEBHOOK_TOKEN = settings.TELEGRAM_WEBHOOK_TOKEN
 logger = logging.getLogger(__name__)
@@ -53,6 +54,13 @@ def index(request):
 @require_GET
 def health(request):
 	return JsonResponse({"status": "ok"})
+
+
+@require_GET
+def version(request):
+	response = JsonResponse(current_release_info())
+	response["Cache-Control"] = "no-store"
+	return response
 
 
 def bot_control_payload(control):

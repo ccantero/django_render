@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.46
+doc_version: 1.1.47
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -8,6 +8,35 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-25 - Show the deployed SemVer on the site and at /version/
+
+Type: behavior
+Runtime version: 1.0.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+- AGENTS.md
+
+Summary:
+- Added root `VERSION` (`1.0.0`) as the only app SemVer source. Document `doc_version` headers are unchanged in meaning.
+- The shared base footer shows `v1.0.0+<short sha>` and a `America/Buenos_Aires` timestamp, including the calculator standalone view that hides navigation. `GET /version/` returns `version`, `commit`, `deployed_at`, and `display` with `Cache-Control: no-store`.
+- Missing `RENDER_GIT_COMMIT` uses `dev`. Missing deploy time uses `unknown` / `null`. Render service IDs, branches, and secrets are not exposed. `/health/` stays `{"status":"ok"}`.
+- The currency-converter service worker fetches navigations and `/version/` with `cache: 'no-store'`, does not cache its own script, and drops older caches on activate.
+- No Render dashboard change is required. On Render the timestamp is the `VERSION` file modification time in the deploy slug, then process start if that stat fails. `DEPLOYED_AT` remains an optional override.
+
+Operator impact:
+- After a deploy, the phone PWA and the website footer show the new short commit and Buenos Aires time without opening Render. `curl /version/` returns the same facts.
+- A restart without a new build keeps the slug file time, so the timestamp does not by itself look like a new commit. The short SHA is the commit identity.
+
+Validation:
+- `tests/test_deploy_version.py` failed first with `ModuleNotFoundError: No module named 'django_render.version'`, then passed (11 tests).
+- Full `pytest`: 396 passed, 3 skipped, 33 subtests passed. The existing DRF unordered-pagination warning remains.
 
 ## 2026-10-25 - Tighten analytics cache equivalence and failure handling
 
