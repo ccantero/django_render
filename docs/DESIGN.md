@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.28
+doc_version: 1.1.30
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-18
+last_verified_at: 2026-10-25
 source_repo: django_render
 ---
 
@@ -59,7 +59,7 @@ Home dashboard responsibility: concise operator console for health, urgent actio
 ### Analytics dashboard
 
 Analytics dashboard responsibility: Performance analysis: KPIs, fees, PnL breakdowns, historical tables.
-Analytics read-model output may be cached briefly because the page is read-only and historical aggregates are intentionally deferred away from the homepage.
+Analytics read-model output may be cached briefly because the page is read-only and historical aggregates are intentionally deferred away from the homepage. The cache key is `dashboard:analytics_context:v2`. It stores a pickle-safe snapshot rather than live unmanaged model instances. The page consumes dict and scalar KPI, fee, and table fields from that snapshot. A cache read or write that fails at the cache boundary rebuilds or still renders the fresh page. A failure while building the read model is not hidden as a cache miss.
 
 - Performance KPI cards:
   - net realized PnL

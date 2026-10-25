@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from contextlib import nullcontext
 import logging
 import os
+import pickle
 from time import perf_counter
 from types import SimpleNamespace
 from typing import List
@@ -11,7 +12,7 @@ from typing import List
 from django.core.exceptions import FieldError
 from django.core.cache import cache
 from django.db import DatabaseError, connection
-from django.db.models import Count, Sum
+from django.db.models import Count, Model, Sum
 from django.utils import timezone
 
 from dashboard.dust_read_model import get_dust_overview_context
@@ -66,8 +67,19 @@ RECENT_OPERATIONS_LIMIT = 20
 SELL_EVENT_MIN_WINDOW = 200
 SELL_EVENT_WINDOW_PER_SYMBOL = 20
 EXIT_STATUS_SELL_EVENT_LIMIT = 1000
-ANALYTICS_CACHE_KEY = "dashboard:analytics_context:v1"
+ANALYTICS_CACHE_KEY = "dashboard:analytics_context:v2"
 ANALYTICS_CACHE_SECONDS = 60
+# Failures from the cache backend or from unpickling a cached payload.
+# Context construction stays outside this tuple so read-model bugs still raise.
+_ANALYTICS_CACHE_ERRORS = (
+	pickle.PickleError,
+	LookupError,
+	AttributeError,
+	TypeError,
+	ValueError,
+	OSError,
+	DatabaseError,
+)
 CHURN_WINDOW_HOURS = 48
 CHURN_GAP_MINUTES = 15
 DISK_USAGE_FILESYSTEM = "/"
@@ -166,7 +178,7 @@ def get_dashboard_context(include_performance_kpis=False):
 
 def get_dashboard_analytics_context():
 	started = perf_counter()
-	cached_context = cache.get(ANALYTICS_CACHE_KEY)
+	cached_context = _get_cached_analytics_context()
 	if cached_context is not None:
 		logger.info("dashboard analytics read model cache hit in %.2fms", (perf_counter() - started) * 1000)
 		return DashboardReadModel(
@@ -176,9 +188,63 @@ def get_dashboard_analytics_context():
 		)
 
 	read_model = get_dashboard_context(include_performance_kpis=True)
-	cache.set(ANALYTICS_CACHE_KEY, read_model.context, ANALYTICS_CACHE_SECONDS)
+	_set_cached_analytics_context(read_model.context)
 	logger.info("dashboard analytics read model built in %.2fms", (perf_counter() - started) * 1000)
 	return read_model
+
+
+def _get_cached_analytics_context():
+	try:
+		return cache.get(ANALYTICS_CACHE_KEY)
+	except _ANALYTICS_CACHE_ERRORS as exc:
+		_log_analytics_cache_bypass("analytics_cache_unreadable", exc)
+		_delete_cached_analytics_context()
+		return None
+
+
+def _set_cached_analytics_context(context):
+	safe_context = _cache_safe_value(context)
+	try:
+		cache.set(ANALYTICS_CACHE_KEY, safe_context, ANALYTICS_CACHE_SECONDS)
+	except _ANALYTICS_CACHE_ERRORS as exc:
+		_log_analytics_cache_bypass("analytics_cache_store_failed", exc)
+
+
+def _delete_cached_analytics_context():
+	try:
+		cache.delete(ANALYTICS_CACHE_KEY)
+	except _ANALYTICS_CACHE_ERRORS as exc:
+		_log_analytics_cache_bypass("analytics_cache_delete_failed", exc)
+
+
+def _log_analytics_cache_bypass(event, exc):
+	logger.warning(
+		"dashboard analytics cache bypassed event=%s component=dashboard_read_model "
+		"cache_key=%s app_version=unknown schema_version=unknown "
+		"data_contract_version=unknown strategy_version=unknown "
+		"error_type=%s error=%s",
+		event,
+		ANALYTICS_CACHE_KEY,
+		type(exc).__name__,
+		exc,
+	)
+
+
+def _cache_safe_value(value):
+	# trading_read is not an installed app. Cache backends pickle values, and
+	# unpickling these unmanaged models calls apps.get_model("trading_read", ...).
+	if isinstance(value, Model):
+		return SimpleNamespace(**{
+			field.attname: _cache_safe_value(getattr(value, field.attname))
+			for field in value._meta.concrete_fields
+		})
+	if isinstance(value, dict):
+		return {key: _cache_safe_value(item) for key, item in value.items()}
+	if isinstance(value, list):
+		return [_cache_safe_value(item) for item in value]
+	if isinstance(value, tuple):
+		return tuple(_cache_safe_value(item) for item in value)
+	return value
 
 
 def _get_dashboard_context(include_performance_kpis=False, profiler=None):

@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.44
+doc_version: 1.1.46
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-25
@@ -8,6 +8,60 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-25 - Tighten analytics cache equivalence and failure handling
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Cold and warm `/dashboard/analytics/` renders now have regression coverage for the fee cards, KPI values, symbol table, and day table. The analytics template reads dict and scalar fields only. It does not call model methods, properties, or relations. The pickle-safe snapshot still copies concrete fields from cached bot rows and drops `save`, `delete`, and relations such as `updated_by`.
+- Cache read, write, and delete now catch cache-boundary errors only: pickle errors, `LookupError`, `AttributeError`, `TypeError`, `ValueError`, `OSError`, and `DatabaseError`. Building the read model stays outside that handler. The bypass log includes the cache key, error type, and error text.
+- The cache key is `dashboard:analytics_context:v2`, so a deploy does not read payloads stored under `v1`.
+- Reviewed `docs/KPI_REGISTRY.md`. No KPI name, formula, source of truth, status, or null behavior changed.
+
+Operator impact:
+- Repeat analytics requests inside 60 seconds should show the same fees, KPIs, and tables as the first request.
+- A cache backend failure still renders the freshly built page, including the shared-database error banner when that read failed.
+- A bug while building the read model still raises instead of being reported as a cache miss.
+- After deploy, open `/dashboard/analytics/` twice. Both responses should succeed with the same numbers, and logs should not show `LookupError: No installed app with label 'trading_read'`.
+
+Validation:
+- `tests/test_analytics_cache.py` failed first because the key was still `v1`, cache warnings omitted the error text, and a non-cache `RuntimeError` from `cache.get` was swallowed. After the change, 9 passed.
+- Full `pytest`: 385 passed, 3 skipped, 33 subtests passed. The existing DRF unordered-pagination warning remains.
+
+## 2026-10-25 - Analytics cache no longer 500s on bot rows
+
+Type: behavior
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- `/dashboard/analytics/` cached the full read-model context, including unmanaged `bot.*` model instances whose `app_label` is `trading_read`.
+- Django cache backends pickle cached values. The following request unpickled those rows through `apps.get_model("trading_read", ...)`, which raises `LookupError` because `trading_read` is not an installed app. Django turned that into HTTP 500. The homepage does not use this cache, so it could keep loading.
+- The analytics cache now stores a pickle-safe snapshot. Model rows are copied to plain attribute objects before `cache.set`. An unreadable cache entry is deleted and the page is rebuilt.
+- Reviewed `docs/KPI_REGISTRY.md`. No KPI name, formula, source of truth, status, or null behavior changed.
+- Checked the merged static-file cleanup (PR #6). Analytics uses the shared base template and does not add a static reference. Current non-debug storage is `CompressedStaticFilesStorage`, which does not raise while rendering `{% static %}`. That change does not explain this 500.
+
+Operator impact:
+- Authenticated `/dashboard/analytics/` keeps loading on repeat requests inside the 60-second cache window when healthcheck or trade rows are present.
+- A shared-database read failure still renders the existing data-error banner. Empty KPI inputs stay empty or N/A.
+- A warning is logged only when the analytics cache cannot be read, deleted, or stored. The line includes `event`, `component`, `error_type`, and unknown version fields. It does not include row payloads or secrets.
+
+Validation:
+- `tests/test_analytics_cache.py` failed first with `LookupError: No installed app with label 'trading_read'` on the cached request. After the change, 2 passed.
+- Full `pytest`: 378 passed, 3 skipped, 33 subtests passed. The existing DRF unordered-pagination warning remains.
 
 ## 2026-10-25 - Stop tracking collected static files
 
