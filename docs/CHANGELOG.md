@@ -1,13 +1,105 @@
 ---
 doc_id: changelog
-doc_version: 1.1.51
+doc_version: 1.1.54
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-25
+last_verified_at: 2026-10-27
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-27 - Verify position generation schema
+
+Type: contract
+Runtime version: 2.1.0
+Schema version: unknown
+Docs affected:
+- docs/DATA_CONTRACT.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Compared `PositionGeneration` and `position_lots.generation_id` with binancebot `src/sql` at `5c1ac64e63d761a26f794892e9c3ec13dbc2a334`.
+- Aligned the unmanaged model with `VARCHAR` lengths, NOT NULL columns, phase values, and opening-provenance values from files 103 and 105. `generation_id` stays a nullable UUID. Django does not declare the bot foreign key.
+- Applied the table-creating SQL to disposable local PostgreSQL 16 database `position_mode_scratch` and read it with the Telegram formatters.
+
+Operator impact:
+- Telegram wording is unchanged.
+- Production `SELECT` grants are still a deployment blocker. The dashboard role must run `SELECT has_table_privilege(current_user,'bot.position_generations','SELECT'), has_column_privilege(current_user,'bot.position_lots','generation_id','SELECT');` and both results must be true. Tracking issue: https://github.com/ccantero/binancebot/issues/10.
+
+Validation:
+- `test_mapping_is_unmanaged_read_only` failed first because `symbol.null` was true.
+- Disposable Postgres reads for HOLD, TRADING, mixed, generationless, and CLOSED-linked lots completed without error.
+- `/tmp/venv/bin/pytest core/test_telegram_position_modes.py -q`: 24 passed.
+- `/tmp/venv/bin/pytest -q`: 461 passed, 3 skipped, 44 subtests passed.
+- `manage.py check`: no issues. `manage.py makemigrations --check --dry-run`: no changes.
+
+## 2026-10-27 - Position mode review corrections
+
+Type: behavior
+Runtime version: 2.1.0
+Schema version: unknown
+Docs affected:
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/DATA_CONTRACT.md
+- docs/KPI_REGISTRY.md
+- docs/CHANGELOG.md
+
+Summary:
+- Every Telegram chunk for these commands is at most 4096 characters. An overlong line is split outside tags and entities, and `<b>` / `<code>` are closed and reopened across the split.
+- `/position_modes` keeps the phase mode and appends ` · unassigned qty` when positive open quantity is generationless, linked to a `CLOSED` generation, or linked to a generation id missing for that symbol.
+- `Quantity comparison` is `MATCH`, `MISMATCH`, or `UNKNOWN`. It compares open-lot quantity with portfolio quantity only. Closed-generation and missing-generation open quantities are separate lines.
+- `VERSION` stays `2.1.0` because these corrections are part of the same unreleased feature.
+
+Operator impact:
+- A summary mode no longer implies that every open lot is covered by that mode.
+- `MATCH` does not prove accounting integrity or the Binance balance.
+- Deployment blocker: production `SELECT` on `bot.position_generations` is still unverified. Before deploy, the dashboard role must run `SELECT has_table_privilege(current_user,'bot.position_generations','SELECT'), has_column_privilege(current_user,'bot.position_lots','generation_id','SELECT');` and both results must be true. Tracking issue: https://github.com/ccantero/binancebot/issues/10. This repository could not read binancebot `src/sql/103`, `105`, `106`, or `108`, and Docker was not available, so those files were not applied to a disposable Postgres.
+
+Validation:
+- New tests failed first: an overlong line stayed one chunk, the overlong `/position_mode` field rendered 4833 characters, `/position_modes` issued no lot query, and the detail still said `Consistency`.
+- `/tmp/venv/bin/pytest core/test_telegram_position_modes.py -q`: 24 passed.
+- `/tmp/venv/bin/pytest -q`: 461 passed, 3 skipped, 44 subtests passed.
+- `CC_DEBUG=true` with disposable SQLite `DATABASE_URL=sqlite:////tmp/django_render_check.sqlite3`: `manage.py check` reported no issues, and `manage.py makemigrations --check --dry-run` reported no changes.
+
+## 2026-10-27 - Telegram position generation modes
+
+Type: behavior
+Runtime version: 2.1.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/DATA_CONTRACT.md
+- docs/KPI_REGISTRY.md
+- docs/CHANGELOG.md
+
+Summary:
+- Added read-only `/position_modes` and `/position_mode SYMBOL` Telegram diagnostics.
+- Mapped unmanaged `bot.position_generations` and nullable `position_lots.generation_id`. No migration.
+- Mode comes only from active generation phases. `CLOSED` is historical. Missing and stale healthcheck classification are explicit.
+- Generationless open lots are labeled and do not count as an error. A symbol whose open lots are all generationless stays `UNKNOWN (no generation)`.
+- Long `/position_modes` replies split into HTML chunks of at most 4096 characters. A failed chunk send is logged and not retried.
+- Database read errors, including permission denied, return a fixed unavailable reply with no SQL or secrets.
+- `VERSION` is `2.1.0`.
+
+Operator impact:
+- Authorized chats can ask Telegram for the persisted HOLD/TRADING mode of material positions and the per-generation breakdown of one symbol.
+- Take-profit, stop-loss, and trailing percent display as `N/A`. The only per-position stop fields shown are peak since hold and hold stop price.
+- The diagnostics API `active_generation` field is unchanged and still reports unavailable.
+- The `SELECT` grant on `bot.position_generations` is still unverified. Permission denied fails safe.
+
+Validation:
+- Focused tests were red first: `PositionGeneration` was not importable, `/position_modes` was unregistered, and the webhook did not log a failed chunk send.
+- `/tmp/venv/bin/pytest core/test_telegram_position_modes.py -q`: 20 passed.
+- `/tmp/venv/bin/pytest -q`: 457 passed, 3 skipped, 44 subtests passed.
+- `CC_DEBUG=true` with a disposable SQLite `DATABASE_URL`: `manage.py check` reported no issues, and `manage.py makemigrations --check --dry-run` reported no changes.
 
 ## 2026-10-25 - Refresh PR #3 against main 1b8b103
 

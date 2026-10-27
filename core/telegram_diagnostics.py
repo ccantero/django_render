@@ -15,6 +15,7 @@ from core.trading_models import (
 	DustDetection,
 	LotClosure,
 	Portfolio,
+	PositionGeneration,
 	PositionLot,
 	SellDecisionEvent,
 	Snapshot,
@@ -26,6 +27,7 @@ from dashboard.services.telegram_buy_status_formatter import (
 	build_cooldown_diagnostics,
 	build_cooldown_lines,
 	build_inventory_warning_lines,
+	TELEGRAM_TEXT_LIMIT,
 	classify_buy_status_positions,
 	render_buy_status_message,
 )
@@ -49,7 +51,19 @@ DIAGNOSTIC_COMMANDS = {
 	"/buy_status",
 	"/portfolio_status",
 	"/last_operations",
+	"/position_modes",
+	"/position_mode",
 }
+TRADING_PHASES = frozenset({"OPEN", "PARTIAL_PENDING", "RUNNER", "FULL_EXIT_PENDING"})
+HOLD_PHASE = "HOLD"
+CLOSED_PHASE = "CLOSED"
+ACTIVE_PHASES = TRADING_PHASES | {HOLD_PHASE}
+HISTORICAL_GENERATION_LIMIT = 3
+GENERATION_READ_ERROR = "Generation data unavailable (read error)"
+NO_HEALTHCHECK_CLASSIFICATION = (
+	"No healthcheck classification is available. "
+	"Material symbols were not taken from portfolio."
+)
 REJECTED_SELL_EVENTS = [
 	"sell_signal_rejected",
 	"sell_order_skipped",
@@ -110,6 +124,8 @@ def diagnostic_response(text, chat_id, user_id=None):
 		if args and _last_operations_limit(args[0]) is None:
 			return "Usage: /last_operations [1-50]"
 		return format_last_operations(args[0] if args else None)
+	if command in {"/position_modes", "/position_mode"}:
+		return _position_generation_response(command, args, chat_id)
 
 	symbol = args[0] if args else ""
 	if not is_valid_symbol(symbol):
@@ -231,10 +247,12 @@ def format_help():
 		"• /health — bot heartbeat and position counts",
 		"• /buy_status — BUY capacity and blockers",
 		"• /portfolio_status — portfolio performance summary",
+		"• /position_modes — material HOLD/TRADING generation modes",
 		"• /last_operations [N] — recent completed SELL operations (1–50)",
 		"",
 		"<b>Symbol diagnostics</b>",
 		"• /position SYMBOL — quantity, value, and drift",
+		"• /position_mode SYMBOL — per-generation mode breakdown",
 		"• /last_sell SYMBOL — latest SELL diagnostic",
 		"• /why_not_sell SYMBOL — latest skipped/rejected SELL reason",
 		"",
@@ -243,6 +261,449 @@ def format_help():
 		"",
 		"Example: <code>/position XRPUSDT</code>",
 	])
+
+
+def _position_generation_response(command, args, chat_id):
+	try:
+		if command == "/position_modes":
+			return _deliver_position_text(format_position_modes())
+		symbol = args[0] if args else ""
+		if not is_valid_symbol(symbol):
+			return "Invalid symbol. Use uppercase letters/numbers, max 20 chars."
+		return _deliver_position_text(format_position_mode(symbol))
+	except DatabaseError as exc:
+		logger.exception(
+			"Telegram generation data read failed",
+			extra={
+				"stage": "position_generation_read",
+				"command": command,
+				"chat_id": chat_id,
+				"exception_class": type(exc).__name__,
+			},
+		)
+		return GENERATION_READ_ERROR
+
+
+def _deliver_position_text(text):
+	parts = _split_html_messages(text)
+	if len(parts) == 1:
+		return parts[0]
+	return parts
+
+
+_HTML_ATOM_RE = re.compile(r"(<[^>]*>|&(?:[a-zA-Z]+|#\d+|#x[0-9a-fA-F]+);)")
+_HTML_TAG_RE = re.compile(r"<(/?)([a-zA-Z0-9]+)(?:\s[^>]*)?>")
+_BALANCED_TAGS = {"b", "code"}
+QUANTITY_COMPARISON_NOTE = (
+	"Quantity comparison only compares these aggregate quantities from separate reads. "
+	"It does not prove accounting integrity or the Binance balance."
+)
+
+
+def _split_html_messages(text, limit=TELEGRAM_TEXT_LIMIT):
+	if text is None:
+		return []
+	if len(text) <= limit:
+		return [text]
+	lines = []
+	for line in text.split("\n"):
+		if len(line) <= limit:
+			lines.append(line)
+		else:
+			lines.extend(_split_overlong_html_line(line, limit))
+	return _pack_html_lines(lines, limit)
+
+
+def _pack_html_lines(lines, limit):
+	chunks = []
+	current = []
+	current_len = 0
+	for line in lines:
+		addition = len(line) if not current else len(line) + 1
+		if current and current_len + addition > limit:
+			chunks.append("\n".join(current))
+			current = [line]
+			current_len = len(line)
+		else:
+			current.append(line)
+			current_len += addition
+	if current:
+		chunks.append("\n".join(current))
+	return chunks
+
+
+def _html_tag_change(token):
+	match = _HTML_TAG_RE.fullmatch(token)
+	if match is None:
+		return None
+	closing, name = bool(match.group(1)), match.group(2).lower()
+	if name not in _BALANCED_TAGS:
+		return None
+	return closing, name
+
+
+def _tag_prefix(stack):
+	return "".join(f"<{name}>" for name in stack)
+
+
+def _tag_suffix(stack):
+	return "".join(f"</{name}>" for name in reversed(stack))
+
+
+def _split_overlong_html_line(line, limit):
+	tokens = [token for token in _HTML_ATOM_RE.split(line) if token]
+	segments = []
+	stack = []
+	start_stack = []
+	body = []
+	body_len = 0
+
+	def projected(extra, stack_after):
+		return len(_tag_prefix(start_stack)) + body_len + extra + len(_tag_suffix(stack_after))
+
+	def flush():
+		nonlocal body, body_len, start_stack
+		if not body:
+			return
+		segments.append(_tag_prefix(start_stack) + "".join(body) + _tag_suffix(stack))
+		body = []
+		body_len = 0
+		start_stack = list(stack)
+
+	for token in tokens:
+		if token.startswith("<") and token.endswith(">"):
+			change = _html_tag_change(token)
+			stack_after = list(stack)
+			if change is not None:
+				closing, name = change
+				if closing:
+					if stack_after and stack_after[-1] == name:
+						stack_after.pop()
+				else:
+					stack_after.append(name)
+			if body and projected(len(token), stack_after) > limit:
+				flush()
+			body.append(token)
+			body_len += len(token)
+			stack = stack_after
+			continue
+		if token.startswith("&") and token.endswith(";"):
+			if body and projected(len(token), stack) > limit:
+				flush()
+			body.append(token)
+			body_len += len(token)
+			continue
+		remaining = token
+		while remaining:
+			room = limit - len(_tag_prefix(start_stack)) - body_len - len(_tag_suffix(stack))
+			if room <= 0:
+				if body:
+					flush()
+					continue
+				room = 1
+			take = min(len(remaining), room)
+			body.append(remaining[:take])
+			body_len += take
+			remaining = remaining[take:]
+			if remaining:
+				flush()
+	flush()
+	return segments
+
+
+def _healthcheck_freshness(latest):
+	stale_after = timedelta(minutes=getattr(settings, "HEALTHCHECK_STALE_MINUTES", 15))
+	created_at = getattr(latest, "created_at", None) if latest is not None else None
+	if latest is None:
+		return {"state": "missing", "created_at": None, "age": None}
+	if created_at is None:
+		return {"state": "unknown", "created_at": None, "age": None}
+	age = timezone.now() - created_at
+	if age < timedelta(0):
+		return {"state": "unknown", "created_at": created_at, "age": age}
+	if age > stale_after:
+		return {"state": "stale", "created_at": created_at, "age": age}
+	return {"state": "fresh", "created_at": created_at, "age": age}
+
+
+def _latest_healthcheck():
+	return BotHealthcheck.objects.order_by("-created_at", "-id").first()
+
+
+def _material_symbols_from_details(details):
+	if not isinstance(details, dict):
+		return None
+	classification = details.get("position_classification")
+	source = classification if isinstance(classification, dict) else details
+	if "material_symbols" not in source:
+		return None
+	raw = source.get("material_symbols")
+	if not isinstance(raw, list):
+		return None
+	symbols = []
+	seen = set()
+	for item in raw:
+		if not isinstance(item, str):
+			continue
+		symbol = item.strip()
+		if symbol and symbol not in seen:
+			seen.add(symbol)
+			symbols.append(symbol)
+	symbols.sort()
+	return symbols
+
+
+def _classify_generations(generations):
+	unrecognized = False
+	hold_count = 0
+	trading_count = 0
+	for generation in generations:
+		phase = generation.phase
+		if phase == CLOSED_PHASE:
+			continue
+		if phase == HOLD_PHASE:
+			hold_count += 1
+		elif phase in TRADING_PHASES:
+			trading_count += 1
+		else:
+			unrecognized = True
+	if unrecognized or hold_count > 1 or trading_count > 1:
+		return "INCONSISTENT"
+	if hold_count and trading_count:
+		return "HOLD + TRADING"
+	if hold_count:
+		return "HOLD"
+	if trading_count:
+		return "TRADING"
+	return "UNKNOWN"
+
+
+def _mode_text(kind):
+	if kind == "UNKNOWN":
+		return "UNKNOWN (no generation)"
+	return kind
+
+
+def _generation_identity(value):
+	if value is None or value == "":
+		return None
+	return str(value)
+
+
+def _positive_qty(value):
+	qty = to_decimal(value)
+	if qty is None or qty <= 0:
+		return None
+	return qty
+
+
+def _generation_sort_key(generation):
+	created_at = generation.created_at or datetime.min.replace(tzinfo=datetime_timezone.utc)
+	return (created_at, _generation_identity(generation.generation_id) or "")
+
+
+def format_position_modes():
+	latest = _latest_healthcheck()
+	freshness = _healthcheck_freshness(latest)
+	details = latest.details if latest is not None and isinstance(latest.details, dict) else {}
+	symbols = _material_symbols_from_details(details) if latest is not None else None
+	if symbols is None:
+		lines = ["<b>Position generation modes</b>", ""]
+		if freshness["created_at"] is not None:
+			lines.append(f"Healthcheck: <code>{h(format_dt(freshness['created_at']))}</code>")
+		lines.append(NO_HEALTHCHECK_CLASSIFICATION)
+		return "\n".join(lines)
+
+	grouped = {}
+	generations = []
+	if symbols:
+		generations = list(PositionGeneration.objects.filter(symbol__in=symbols))
+		for generation in generations:
+			grouped.setdefault(generation.symbol, []).append(generation)
+	unassigned_symbols = _symbols_with_unassigned_open_qty(symbols, generations)
+	lines = [
+		"<b>Position generation modes</b>",
+		"",
+		f"Material count: <code>{h(len(symbols))}</code>",
+		f"Healthcheck: <code>{h(format_dt(freshness['created_at']))}</code>",
+		f"Freshness: <code>{h(freshness['state'])}</code>",
+	]
+	if freshness["state"] == "stale":
+		lines.append(f"⚠️ Healthcheck stale: last update {h(format_age(freshness['age']))} ago")
+	elif freshness["state"] == "unknown":
+		lines.append("⚠️ Healthcheck freshness unavailable")
+	lines.append("")
+	if not symbols:
+		lines.append("No material positions in the latest healthcheck classification.")
+	for symbol in symbols:
+		mode = _mode_text(_classify_generations(grouped.get(symbol, [])))
+		if symbol in unassigned_symbols:
+			mode = f"{mode} · unassigned qty"
+		lines.append(f"• {h(symbol)} — <code>{h(mode)}</code>")
+	return "\n".join(lines)
+
+
+def _symbols_with_unassigned_open_qty(symbols, generations):
+	flagged = set()
+	if not symbols:
+		return flagged
+	known = {}
+	closed = {}
+	for generation in generations:
+		generation_id = _generation_identity(generation.generation_id)
+		if generation_id is None:
+			continue
+		known.setdefault(generation.symbol, set()).add(generation_id)
+		if generation.phase == CLOSED_PHASE:
+			closed.setdefault(generation.symbol, set()).add(generation_id)
+	for lot in PositionLot.objects.filter(symbol__in=symbols):
+		if _positive_qty(lot.remaining_quantity) is None:
+			continue
+		generation_id = _generation_identity(lot.generation_id)
+		if (
+			generation_id is None
+			or generation_id not in known.get(lot.symbol, set())
+			or generation_id in closed.get(lot.symbol, set())
+		):
+			flagged.add(lot.symbol)
+	return flagged
+
+
+def format_position_mode(symbol):
+	latest = _latest_healthcheck()
+	freshness = _healthcheck_freshness(latest)
+	details = latest.details if latest is not None and isinstance(latest.details, dict) else {}
+	symbols = _material_symbols_from_details(details) if latest is not None else None
+	if symbols is None:
+		material_label = "unavailable"
+	else:
+		material_label = "yes" if symbol in symbols else "no"
+	generations = list(PositionGeneration.objects.filter(symbol=symbol))
+	lots = list(PositionLot.objects.filter(symbol=symbol))
+	portfolio = Portfolio.objects.filter(symbol=symbol).first()
+	price = to_decimal(getattr(portfolio, "current_price", None)) if portfolio is not None else None
+	portfolio_qty = to_decimal(getattr(portfolio, "quantity", None)) if portfolio is not None else None
+
+	qty_by_generation = {}
+	generationless_qty = Decimal("0")
+	open_qty = Decimal("0")
+	for lot in lots:
+		qty = _positive_qty(lot.remaining_quantity)
+		if qty is None:
+			continue
+		open_qty += qty
+		generation_key = _generation_identity(lot.generation_id)
+		if generation_key is None:
+			generationless_qty += qty
+		else:
+			qty_by_generation[generation_key] = qty_by_generation.get(generation_key, Decimal("0")) + qty
+
+	active_ids = {
+		_generation_identity(generation.generation_id)
+		for generation in generations
+		if generation.phase in ACTIVE_PHASES
+	}
+	closed_ids = {
+		_generation_identity(generation.generation_id)
+		for generation in generations
+		if generation.phase == CLOSED_PHASE
+	}
+	known_ids = {
+		_generation_identity(generation.generation_id)
+		for generation in generations
+	}
+	active_qty = sum((qty_by_generation.get(generation_id, Decimal("0")) for generation_id in active_ids), Decimal("0"))
+	closed_open_qty = Decimal("0")
+	missing_open_qty = Decimal("0")
+	for generation_id, qty in qty_by_generation.items():
+		if generation_id in closed_ids:
+			closed_open_qty += qty
+		elif generation_id not in known_ids:
+			missing_open_qty += qty
+	current = [generation for generation in generations if generation.phase != CLOSED_PHASE]
+	closed = [generation for generation in generations if generation.phase == CLOSED_PHASE]
+	current.sort(key=_generation_sort_key)
+	closed.sort(key=_generation_sort_key, reverse=True)
+	mode = _mode_text(_classify_generations(generations))
+
+	lines = [
+		f"<b>Position mode {h(symbol)}</b>",
+		"",
+		f"Mode: <code>{h(mode)}</code>",
+		f"Material list: <code>{h(material_label)}</code>",
+		f"Healthcheck: <code>{h(format_dt(freshness['created_at']))}</code>",
+		f"Freshness: <code>{h(freshness['state'])}</code>",
+	]
+	if freshness["state"] == "stale":
+		lines.append(f"⚠️ Healthcheck stale: last update {h(format_age(freshness['age']))} ago")
+	elif freshness["state"] == "unknown":
+		lines.append("⚠️ Healthcheck freshness unavailable")
+	if symbols is None:
+		lines.extend(["", NO_HEALTHCHECK_CLASSIFICATION])
+	lines.extend(["", "<b>Active generations</b>"])
+	if not current:
+		lines.append("Count: <code>0</code>")
+	for generation in current:
+		generation_key = _generation_identity(generation.generation_id)
+		qty = qty_by_generation.get(generation_key, Decimal("0"))
+		lines.extend([
+			f"ID: <code>{h(generation.generation_id)}</code>",
+			f"Phase: <code>{h(generation.phase)}</code>",
+			f"Opening provenance: <code>{h(generation.opening_provenance)}</code>",
+			f"Created: <code>{h(format_dt(generation.created_at))}</code>",
+			f"Qty: <code>{h(fmt_qty(qty))}</code>",
+			f"Estimated value: <code>{h(fmt_usdt(None if price is None else qty * price))}</code>",
+		])
+		if generation.phase == HOLD_PHASE:
+			lines.extend([
+				f"Peak since hold: <code>{h(fmt_price(generation.peak_price_since_hold))}</code>",
+				f"Hold stop price: <code>{h(fmt_price(generation.hold_stop_price))}</code>",
+				f"Hold stop reason: <code>{h(generation.hold_stop_reason)}</code>",
+				f"Hold admitted: <code>{h(format_dt(generation.hold_admitted_at))}</code>",
+				f"Hold strategy version: <code>{h(generation.hold_strategy_version)}</code>",
+			])
+	lines.extend([
+		"",
+		"TP / SL / trailing %: <code>N/A</code>",
+		"Take-profit, stop-loss, and trailing percent are bot environment settings. They are not stored on the generation or the healthcheck. The only per-position stop fields here are peak since hold and hold stop price.",
+		"",
+		"<b>Historical generations</b>",
+		f"Count: <code>{h(len(closed))}</code>",
+	])
+	for generation in closed[:HISTORICAL_GENERATION_LIMIT]:
+		lines.extend([
+			f"ID: <code>{h(generation.generation_id)}</code>",
+			f"Phase: <code>{h(generation.phase)}</code>",
+			f"Created: <code>{h(format_dt(generation.created_at))}</code>",
+		])
+	lines.extend([
+		"",
+		"<b>Inventory</b>",
+		f"Active generation qty: <code>{h(fmt_qty(active_qty))}</code>",
+		f"Open-lot qty: <code>{h(fmt_qty(open_qty))}</code>",
+		f"generationless (unassigned): <code>{h(fmt_qty(generationless_qty))}</code>",
+		f"Closed-generation open qty: <code>{h(fmt_qty(closed_open_qty))}</code>",
+		f"Missing-generation open qty: <code>{h(fmt_qty(missing_open_qty))}</code>",
+		f"Portfolio qty: <code>{h(fmt_qty(portfolio_qty))}</code>",
+	])
+	if portfolio_qty is None:
+		lines.append("Quantity comparison: <code>UNKNOWN</code>")
+	elif open_qty == portfolio_qty:
+		lines.append("Quantity comparison: <code>MATCH</code>")
+	else:
+		lines.extend([
+			"Quantity comparison: <code>MISMATCH</code>",
+			"Delta (open-lot qty - portfolio qty): "
+			f"<code>{h(fmt_qty(open_qty - portfolio_qty))}</code>",
+		])
+	lines.append(QUANTITY_COMPARISON_NOTE)
+	if not generations and open_qty == 0 and portfolio is None:
+		lines.extend(["", "No position data for this symbol."])
+	lines.extend([
+		"",
+		"These reads are separate and not synchronized. Not live Binance Spot truth. Report only. No reconciliation.",
+	])
+	return "\n".join(lines)
 
 
 def format_buy_status():

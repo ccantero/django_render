@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.38
+doc_version: 1.1.41
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-25
+last_verified_at: 2026-10-27
 source_repo: django_render
 ---
 
@@ -34,9 +34,10 @@ memory, while portfolio and dust services use that response for projection or
 event output; no complete Spot snapshot is persisted. The read-only comparison
 CLI fetches a live balance snapshot and reads local FIFO/generation evidence
 without persisting the exchange snapshot. No current Binance Spot snapshot is
-available to Django. The bot has `position_generations`, but this Django
-application does not map it, so active-generation facts remain unavailable in
-this endpoint. No direct Binance client or new persistence was added.
+available to Django. The bot has `position_generations`. Django maps that
+table read-only for Telegram `/position_modes` and `/position_mode`. This
+inventory endpoint still returns `active_generation` unavailable; that payload
+was left unchanged. No direct Binance client or new persistence was added.
 Mocked API tests and Django system checks pass. Disposable PostgreSQL query
 execution and model/schema validation remain outstanding because this runner
 has no PostgreSQL server/client or container runtime; no production database
@@ -79,8 +80,8 @@ The results panel also shows the current official USD and UVA values used by
 the calculator.
 
 The deployed app version is SemVer in the root `VERSION` file. `1.0.0` is the
-initial baseline and `2.0.0` is the current release. `1.1.0` added the pause/resume request flow; `2.0.0` requires confirmation on every pause POST. Neither
-number is the per-document `doc_version`. The shared base footer and `GET /version/` show that version
+initial baseline and `2.1.0` is the current release. `1.1.0` added the pause/resume request flow; `2.0.0` requires confirmation on every pause POST. `2.1.0` adds read-only Telegram position generation modes. Those release
+numbers are not the per-document `doc_version`. The shared base footer and `GET /version/` show that version
 and a 7-character `RENDER_GIT_COMMIT` build suffix or `dev`. A Buenos Aires
 clock time is included only when `DEPLOYED_AT` or `python manage.py stamp_build`
 recorded a UTC instant. Otherwise the time is unknown. File mtime and process
@@ -145,6 +146,34 @@ Implemented capabilities:
   - `/last_sell SYMBOL`
   - `/last_operations [N]`
   - `/why_not_sell SYMBOL`
+  - `/position_modes`
+  - `/position_mode SYMBOL`
+- `/position_modes` lists every material symbol from the latest healthcheck
+  classification and the HOLD/TRADING mode of its active `position_generations`
+  rows. `/position_mode SYMBOL` shows each active generation separately, a short
+  historical `CLOSED` section, and a non-synchronized inventory comparison.
+  Null `position_lots.generation_id` is labeled `generationless (unassigned)`
+  and is not an error. `/position_modes` keeps the phase mode and appends
+  ` · unassigned qty` when positive open quantity is generationless, linked to
+  a `CLOSED` generation, or linked to a generation id that is not on that
+  symbol. `Quantity comparison` is `MATCH`, `MISMATCH`, or `UNKNOWN` for
+  open-lot quantity versus portfolio quantity only. Closed-generation and
+  missing-generation open quantities are separate lines. Take-profit,
+  stop-loss, and trailing percent render as `N/A` because they are bot
+  environment settings, not stored generation or healthcheck fields. The only
+  per-position stop fields shown are `peak_price_since_hold` and
+  `hold_stop_price`. Every emitted chunk is at most 4096 characters, including
+  a single overlong line, with `<b>` and `<code>` closed and reopened across
+  the split. A failed chunk send is logged and not retried.
+- The `PositionGeneration` column map matches `ccantero/binancebot` `src/sql`
+  at `5c1ac64e63d761a26f794892e9c3ec13dbc2a334`. That schema was applied to
+  disposable local PostgreSQL database `position_mode_scratch`, and the
+  Telegram generation reads completed against it. Deployment blocker: the
+  production dashboard `SELECT` grant is still unverified. Before deploy, the
+  dashboard role must run
+  `SELECT has_table_privilege(current_user,'bot.position_generations','SELECT'), has_column_privilege(current_user,'bot.position_lots','generation_id','SELECT');`
+  and both results must be true. Tracking issue:
+  https://github.com/ccantero/binancebot/issues/10.
 - Telegram webhook resilience: static allowlisted `/help` avoids importing
   database-backed diagnostics, non-text/malformed updates are handled without
   a 500, audit-message persistence is non-blocking, duplicate message IDs are

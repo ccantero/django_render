@@ -32,7 +32,9 @@ HELP_RESPONSE = "\n".join([
     "• /buy_status — BUY capacity and blockers",
     "• /portfolio_status — portfolio performance summary",
     "• /last_operations [N] — recent completed SELL operations (1–50)",
+    "• /position_modes — material HOLD/TRADING generation modes",
     "• /position SYMBOL — quantity, value, and drift",
+    "• /position_mode SYMBOL — per-generation mode breakdown",
     "• /last_sell SYMBOL — latest SELL diagnostic",
     "• /why_not_sell SYMBOL — latest skipped/rejected SELL reason",
     "",
@@ -326,7 +328,21 @@ def listener(request):
 			diagnostic_message = "Diagnostic temporarily unavailable. Please try again shortly."
 		if diagnostic_message is not None:
 			logger.info("Telegram outbound delivery attempt", extra={**context, "stage": "outbound_attempt"})
-			if isinstance(diagnostic_message, dict):
+			if isinstance(diagnostic_message, list):
+				for index, chunk in enumerate(diagnostic_message):
+					delivered = _send_message_with_context(chunk, chat_id, context)
+					if not delivered:
+						logger.warning(
+							"Telegram diagnostic chunk delivery failed",
+							extra={
+								**context,
+								"stage": "outbound_chunk",
+								"chunk_index": index,
+								"delivered": False,
+							},
+						)
+						break
+			elif isinstance(diagnostic_message, dict):
 				message_text = diagnostic_message.get("text") or ""
 				photo = diagnostic_message.get("photo")
 				if photo:

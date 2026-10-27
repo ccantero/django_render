@@ -1,9 +1,9 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.62
+doc_version: 1.0.65
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-09-26
+last_verified_at: 2026-10-27
 source_repo: binanceBot
 ---
 
@@ -477,7 +477,8 @@ The dashboard currently maps bot-owned tables in `core.trading_models` with `man
 
 - `bot.bot_healthcheck`
 - `bot.portfolio`
-- `bot.position_lots`
+- `bot.position_lots` (`generation_id` UUID, nullable, no foreign key)
+- `bot.position_generations`
 - `bot.trade_operations`
 - `bot.trade_fills`
 - `bot.lot_closures`
@@ -491,6 +492,93 @@ The dashboard also maps workflow tables in `core.models`:
 - `bot.manual_corrections`
 
 When the configured database engine is SQLite, `bot_table_name()` maps selected workflow tables to plain table names for local/test compatibility. PostgreSQL deployments use the `bot` schema table names.
+
+`PositionGeneration` is unmanaged and read-only. The column map was checked
+against `ccantero/binancebot` `src/sql` at `5c1ac64e63d761a26f794892e9c3ec13dbc2a334`
+(`103`, `104`, `105`, `106`, and `108`, plus the earlier files that create
+`bot.portfolio`, `bot.position_lots`, and `bot.bot_healthcheck`). Django reads
+`generation_id` UUID primary key, `symbol` `VARCHAR(32)` NOT NULL, `phase`
+`VARCHAR(32)` NOT NULL, `opening_provenance` `VARCHAR(32)` NOT NULL,
+`created_at` and `updated_at` `TIMESTAMPTZ` NOT NULL, nullable
+`hold_admitted_at`, `hold_admission_reason` `VARCHAR(128)`,
+`peak_price_since_hold` `NUMERIC(38,18)`, `hold_stop_price` `NUMERIC(38,18)`,
+`hold_stop_updated_at`, `hold_stop_reason` `VARCHAR(128)`, and
+`hold_strategy_version` `VARCHAR(64)`. The bot check constraint allows phase
+`OPEN`, `PARTIAL_PENDING`, `RUNNER`, `FULL_EXIT_PENDING`, `HOLD`, and
+`CLOSED`. Opening provenance allows `BOT_BUY`, `ADMITTED_OPEN`,
+`MANUAL_IMPORT`, and `EXTERNAL`. `104` does not change this table. `106`
+allows one active TRADING generation and one active `HOLD` generation per
+symbol. `108` creates `bot.bot_control_ack` and does not change these columns.
+`position_lots.generation_id` is UUID NULL. The bot foreign key
+`fk_position_lots_generation` references `position_generations`; the Django
+field stays a nullable UUID with no relation, so Django does not create or
+enforce that key. Bot SQL `012` stores `position_lots` quantity and price
+columns, and `portfolio` quantity and price columns, as `NUMERIC(38,18)`.
+The existing Django fields for those columns remain `max_digits=36`. The
+scratch fixture values fit in both and were read; that pre-existing width was
+not changed. Telegram mode uses bot phase semantics exactly: `OPEN`,
+`PARTIAL_PENDING`, `RUNNER`, and `FULL_EXIT_PENDING` are TRADING; `HOLD` is
+HOLD; those five are active. `CLOSED` is historical and is not an active mode.
+One active HOLD and no active TRADING generation is `HOLD`. One active TRADING
+generation and no active HOLD is `TRADING`. One of each is `HOLD + TRADING`.
+More than one active generation of the same kind, or a phase outside this set,
+is `INCONSISTENT`. No active generation is `UNKNOWN (no generation)`. Mode is
+not inferred from PnL, SELL events, or the SELL reason label "Holding".
+
+A null `position_lots.generation_id` is a valid documented state, not an error.
+One-time generation adoption ran only for BNBUSDT and TRXUSDT, so other symbols
+may still have generationless open lots. `/position_mode` labels that open
+quantity `generationless (unassigned)`. A material symbol whose open lots are
+all generationless stays `UNKNOWN (no generation)`. `/position_modes` keeps
+that phase mode and appends ` · unassigned qty` when positive open quantity has
+a null `generation_id`, is linked to a `CLOSED` generation, or names a
+`generation_id` that is not on a `position_generations` row for that symbol.
+
+`/position_modes` reads material symbols only from the latest
+`bot.bot_healthcheck.details`, using `position_classification.material_symbols`
+when that object is present and otherwise `material_symbols`. It does not fall
+back to `bot.portfolio`. The same healthcheck staleness threshold as
+`/buy_status` (`HEALTHCHECK_STALE_MINUTES`, default 15) marks the list stale.
+The symbol command shows each active generation separately. Estimated value is
+that generation's positive `quantity_open` sum times `portfolio.current_price`,
+or `N/A` when the projection price is missing. Take-profit, stop-loss, and
+trailing percent are bot environment settings. They are not in healthcheck
+details and are not generation columns, so the reply shows `N/A`. The only
+per-position stop values available to Django are `hold_stop_price` and
+`peak_price_since_hold`.
+
+Inventory lines report active-generation quantity, generationless quantity,
+closed-generation open quantity, missing-generation open quantity, open-lot
+quantity, and portfolio quantity from separate reads. They are not
+synchronized, are not live Binance Spot truth, and are not a reconciliation.
+`Quantity comparison` is `MATCH` when open-lot quantity equals portfolio
+quantity, `MISMATCH` with the open-lot minus portfolio delta when they differ,
+and `UNKNOWN` when portfolio quantity is unavailable. `MATCH` only compares
+those aggregates. Closed-generation and missing-generation quantities are
+reported on their own lines, so a match does not prove that every open lot
+belongs to an active generation, that accounting is intact, or that the
+Binance balance agrees.
+
+The same SQL set was applied to a disposable local PostgreSQL 16 database
+named `position_mode_scratch`. Django then read that database through
+`format_position_modes` and `format_position_mode`. Those reads completed, and
+the rendered modes matched the seeded HOLD, TRADING, mixed, generationless,
+and CLOSED-linked rows. A lot whose `generation_id` is not in
+`position_generations` is rejected by `fk_position_lots_generation`. Null
+`generation_id` is accepted. The dashboard role's production `SELECT` grant
+on `bot.position_generations` is still not established by a migration in this
+repository. Production grants remain a deployment blocker until an operator
+runs, as the dashboard role:
+
+```sql
+SELECT has_table_privilege(current_user,'bot.position_generations','SELECT'), has_column_privilege(current_user,'bot.position_lots','generation_id','SELECT');
+```
+
+Both values must be true before deploy. Tracking issue:
+https://github.com/ccantero/binancebot/issues/10. Permission denied and any
+other `DatabaseError` on these commands return `Generation data unavailable
+(read error)` with no SQL or secrets. No Django migration is created for these
+unmanaged mappings, and this change does not grant privileges.
 
 ### Current API serializers
 
