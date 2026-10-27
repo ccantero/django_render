@@ -219,13 +219,14 @@ class PositionGenerationModeTests(TransactionTestCase):
             )
 
     def _generation(self, generation_id, symbol, phase, created_at=None, **extra):
+        created = created_at or timezone.now()
         columns = {
             "generation_id": str(generation_id),
             "symbol": symbol,
             "phase": phase,
-            "opening_provenance": extra.get("opening_provenance"),
-            "created_at": created_at or timezone.now(),
-            "updated_at": extra.get("updated_at"),
+            "opening_provenance": extra.get("opening_provenance") or "BOT_BUY",
+            "created_at": created,
+            "updated_at": extra.get("updated_at") or created,
             "hold_admitted_at": extra.get("hold_admitted_at"),
             "hold_admission_reason": extra.get("hold_admission_reason"),
             "peak_price_since_hold": extra.get("peak_price_since_hold"),
@@ -288,6 +289,37 @@ class PositionGenerationModeTests(TransactionTestCase):
         self.assertEqual(generation_id.db_column, "generation_id")
         self.assertTrue(generation_id.null)
         self.assertIsNone(generation_id.remote_field)
+        self.assertEqual(generation_id.get_internal_type(), "UUIDField")
+        symbol = self.PositionGeneration._meta.get_field("symbol")
+        phase = self.PositionGeneration._meta.get_field("phase")
+        provenance = self.PositionGeneration._meta.get_field("opening_provenance")
+        created_at = self.PositionGeneration._meta.get_field("created_at")
+        updated_at = self.PositionGeneration._meta.get_field("updated_at")
+        admission_reason = self.PositionGeneration._meta.get_field("hold_admission_reason")
+        stop_reason = self.PositionGeneration._meta.get_field("hold_stop_reason")
+        strategy = self.PositionGeneration._meta.get_field("hold_strategy_version")
+        self.assertEqual(symbol.max_length, 32)
+        self.assertFalse(symbol.null)
+        self.assertEqual(phase.max_length, 32)
+        self.assertFalse(phase.null)
+        self.assertEqual(
+            [choice[0] for choice in phase.choices],
+            ["OPEN", "PARTIAL_PENDING", "RUNNER", "FULL_EXIT_PENDING", "HOLD", "CLOSED"],
+        )
+        self.assertEqual(provenance.max_length, 32)
+        self.assertFalse(provenance.null)
+        self.assertEqual(
+            [choice[0] for choice in provenance.choices],
+            ["BOT_BUY", "ADMITTED_OPEN", "MANUAL_IMPORT", "EXTERNAL"],
+        )
+        self.assertFalse(created_at.null)
+        self.assertFalse(updated_at.null)
+        self.assertEqual(admission_reason.max_length, 128)
+        self.assertTrue(admission_reason.null)
+        self.assertEqual(stop_reason.max_length, 128)
+        self.assertTrue(stop_reason.null)
+        self.assertEqual(strategy.max_length, 64)
+        self.assertTrue(strategy.null)
         with self.assertRaises(RuntimeError):
             self.PositionGeneration(generation_id=uuid.uuid4(), symbol="ENAUSDT").save()
 

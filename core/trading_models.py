@@ -72,14 +72,32 @@ class PositionLot(ReadOnlyTradingModel):
 class PositionGeneration(ReadOnlyTradingModel):
 	"""Read-only map of bot.position_generations. The bot owns the schema."""
 
+	PHASES = (
+		"OPEN",
+		"PARTIAL_PENDING",
+		"RUNNER",
+		"FULL_EXIT_PENDING",
+		"HOLD",
+		"CLOSED",
+	)
+	PROVENANCE_VALUES = (
+		"BOT_BUY",
+		"ADMITTED_OPEN",
+		"MANUAL_IMPORT",
+		"EXTERNAL",
+	)
+
 	generation_id = models.UUIDField(primary_key=True)
-	symbol = models.CharField(max_length=32, blank=True, null=True)
-	phase = models.CharField(max_length=64, blank=True, null=True)
-	opening_provenance = models.TextField(blank=True, null=True)
-	created_at = models.DateTimeField(blank=True, null=True)
-	updated_at = models.DateTimeField(blank=True, null=True)
+	symbol = models.CharField(max_length=32)
+	phase = models.CharField(max_length=32, choices=[(value, value) for value in PHASES])
+	opening_provenance = models.CharField(
+		max_length=32,
+		choices=[(value, value) for value in PROVENANCE_VALUES],
+	)
+	created_at = models.DateTimeField()
+	updated_at = models.DateTimeField()
 	hold_admitted_at = models.DateTimeField(blank=True, null=True)
-	hold_admission_reason = models.TextField(blank=True, null=True)
+	hold_admission_reason = models.CharField(max_length=128, blank=True, null=True)
 	peak_price_since_hold = models.DecimalField(
 		max_digits=38,
 		decimal_places=18,
@@ -93,8 +111,8 @@ class PositionGeneration(ReadOnlyTradingModel):
 		null=True,
 	)
 	hold_stop_updated_at = models.DateTimeField(blank=True, null=True)
-	hold_stop_reason = models.TextField(blank=True, null=True)
-	hold_strategy_version = models.TextField(blank=True, null=True)
+	hold_stop_reason = models.CharField(max_length=128, blank=True, null=True)
+	hold_strategy_version = models.CharField(max_length=64, blank=True, null=True)
 
 	class Meta:
 		managed = False

@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.40
+doc_version: 1.1.41
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-27
@@ -165,10 +165,12 @@ Implemented capabilities:
   `hold_stop_price`. Every emitted chunk is at most 4096 characters, including
   a single overlong line, with `<b>` and `<code>` closed and reopened across
   the split. A failed chunk send is logged and not retried.
-- Deployment blocker: the dashboard `SELECT` grant on
-  `bot.position_generations` is still unverified. `ccantero/binancebot` was
-  not readable here, so `src/sql/103`, `105`, `106`, and `108` were not applied
-  to a disposable Postgres. Before deploy, the dashboard role must run
+- The `PositionGeneration` column map matches `ccantero/binancebot` `src/sql`
+  at `5c1ac64e63d761a26f794892e9c3ec13dbc2a334`. That schema was applied to
+  disposable local PostgreSQL database `position_mode_scratch`, and the
+  Telegram generation reads completed against it. Deployment blocker: the
+  production dashboard `SELECT` grant is still unverified. Before deploy, the
+  dashboard role must run
   `SELECT has_table_privilege(current_user,'bot.position_generations','SELECT'), has_column_privilege(current_user,'bot.position_lots','generation_id','SELECT');`
   and both results must be true. Tracking issue:
   https://github.com/ccantero/binancebot/issues/10.

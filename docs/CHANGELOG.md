@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.53
+doc_version: 1.1.54
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-27
@@ -8,6 +8,32 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-27 - Verify position generation schema
+
+Type: contract
+Runtime version: 2.1.0
+Schema version: unknown
+Docs affected:
+- docs/DATA_CONTRACT.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Compared `PositionGeneration` and `position_lots.generation_id` with binancebot `src/sql` at `5c1ac64e63d761a26f794892e9c3ec13dbc2a334`.
+- Aligned the unmanaged model with `VARCHAR` lengths, NOT NULL columns, phase values, and opening-provenance values from files 103 and 105. `generation_id` stays a nullable UUID. Django does not declare the bot foreign key.
+- Applied the table-creating SQL to disposable local PostgreSQL 16 database `position_mode_scratch` and read it with the Telegram formatters.
+
+Operator impact:
+- Telegram wording is unchanged.
+- Production `SELECT` grants are still a deployment blocker. The dashboard role must run `SELECT has_table_privilege(current_user,'bot.position_generations','SELECT'), has_column_privilege(current_user,'bot.position_lots','generation_id','SELECT');` and both results must be true. Tracking issue: https://github.com/ccantero/binancebot/issues/10.
+
+Validation:
+- `test_mapping_is_unmanaged_read_only` failed first because `symbol.null` was true.
+- Disposable Postgres reads for HOLD, TRADING, mixed, generationless, and CLOSED-linked lots completed without error.
+- `/tmp/venv/bin/pytest core/test_telegram_position_modes.py -q`: 24 passed.
+- `/tmp/venv/bin/pytest -q`: 461 passed, 3 skipped, 44 subtests passed.
+- `manage.py check`: no issues. `manage.py makemigrations --check --dry-run`: no changes.
 
 ## 2026-10-27 - Position mode review corrections
 

@@ -1,6 +1,6 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.64
+doc_version: 1.0.65
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-27
@@ -493,12 +493,30 @@ The dashboard also maps workflow tables in `core.models`:
 
 When the configured database engine is SQLite, `bot_table_name()` maps selected workflow tables to plain table names for local/test compatibility. PostgreSQL deployments use the `bot` schema table names.
 
-`PositionGeneration` is unmanaged and read-only. Django reads `generation_id`,
-`symbol`, `phase`, `opening_provenance`, `created_at`, `updated_at`,
-`hold_admitted_at`, `hold_admission_reason`, `peak_price_since_hold`,
-`hold_stop_price`, `hold_stop_updated_at`, `hold_stop_reason`, and
-`hold_strategy_version`. `peak_price_since_hold` and `hold_stop_price` are
-`NUMERIC(38,18)`. Telegram mode uses bot phase semantics exactly: `OPEN`,
+`PositionGeneration` is unmanaged and read-only. The column map was checked
+against `ccantero/binancebot` `src/sql` at `5c1ac64e63d761a26f794892e9c3ec13dbc2a334`
+(`103`, `104`, `105`, `106`, and `108`, plus the earlier files that create
+`bot.portfolio`, `bot.position_lots`, and `bot.bot_healthcheck`). Django reads
+`generation_id` UUID primary key, `symbol` `VARCHAR(32)` NOT NULL, `phase`
+`VARCHAR(32)` NOT NULL, `opening_provenance` `VARCHAR(32)` NOT NULL,
+`created_at` and `updated_at` `TIMESTAMPTZ` NOT NULL, nullable
+`hold_admitted_at`, `hold_admission_reason` `VARCHAR(128)`,
+`peak_price_since_hold` `NUMERIC(38,18)`, `hold_stop_price` `NUMERIC(38,18)`,
+`hold_stop_updated_at`, `hold_stop_reason` `VARCHAR(128)`, and
+`hold_strategy_version` `VARCHAR(64)`. The bot check constraint allows phase
+`OPEN`, `PARTIAL_PENDING`, `RUNNER`, `FULL_EXIT_PENDING`, `HOLD`, and
+`CLOSED`. Opening provenance allows `BOT_BUY`, `ADMITTED_OPEN`,
+`MANUAL_IMPORT`, and `EXTERNAL`. `104` does not change this table. `106`
+allows one active TRADING generation and one active `HOLD` generation per
+symbol. `108` creates `bot.bot_control_ack` and does not change these columns.
+`position_lots.generation_id` is UUID NULL. The bot foreign key
+`fk_position_lots_generation` references `position_generations`; the Django
+field stays a nullable UUID with no relation, so Django does not create or
+enforce that key. Bot SQL `012` stores `position_lots` quantity and price
+columns, and `portfolio` quantity and price columns, as `NUMERIC(38,18)`.
+The existing Django fields for those columns remain `max_digits=36`. The
+scratch fixture values fit in both and were read; that pre-existing width was
+not changed. Telegram mode uses bot phase semantics exactly: `OPEN`,
 `PARTIAL_PENDING`, `RUNNER`, and `FULL_EXIT_PENDING` are TRADING; `HOLD` is
 HOLD; those five are active. `CLOSED` is historical and is not an active mode.
 One active HOLD and no active TRADING generation is `HOLD`. One active TRADING
@@ -541,12 +559,16 @@ reported on their own lines, so a match does not prove that every open lot
 belongs to an active generation, that accounting is intact, or that the
 Binance balance agrees.
 
-The dashboard role's `SELECT` grant on `bot.position_generations` is not
-established by a migration in this repository. This follow-up could not read
-`ccantero/binancebot` `src/sql/103`, `105`, `106`, or `108` (the repository
-returns 404 to this token) and could not apply those files to a disposable
-Postgres database. Production grants remain a deployment blocker until an
-operator runs, as the dashboard role:
+The same SQL set was applied to a disposable local PostgreSQL 16 database
+named `position_mode_scratch`. Django then read that database through
+`format_position_modes` and `format_position_mode`. Those reads completed, and
+the rendered modes matched the seeded HOLD, TRADING, mixed, generationless,
+and CLOSED-linked rows. A lot whose `generation_id` is not in
+`position_generations` is rejected by `fk_position_lots_generation`. Null
+`generation_id` is accepted. The dashboard role's production `SELECT` grant
+on `bot.position_generations` is still not established by a migration in this
+repository. Production grants remain a deployment blocker until an operator
+runs, as the dashboard role:
 
 ```sql
 SELECT has_table_privilege(current_user,'bot.position_generations','SELECT'), has_column_privilege(current_user,'bot.position_lots','generation_id','SELECT');

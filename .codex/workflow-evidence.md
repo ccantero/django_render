@@ -1,3 +1,22 @@
+# Workflow evidence — Position generation schema verification (2026-10-27)
+
+task_mode: STANDARD
+phases_completed: planner, implementer, tester, documentator
+impact: contract
+tests_executed: focused pytest core/test_telegram_position_modes.py 24 passed after test_mapping_is_unmanaged_read_only failed because symbol.null was true; full pytest 461 passed, 3 skipped, 44 subtests; manage.py check no issues; makemigrations --check --dry-run no changes; disposable PostgreSQL 16.15 database position_mode_scratch applied 17 bot SQL files with no failures and Django format_position_modes plus format_position_mode completed
+pending_issues: production SELECT grant remains a deployment blocker. Operator must run SELECT has_table_privilege(current_user,'bot.position_generations','SELECT'), has_column_privilege(current_user,'bot.position_lots','generation_id','SELECT'); tracking issue https://github.com/ccantero/binancebot/issues/10. Existing position_lots and portfolio numeric fields stay max_digits 36 while bot SQL 012 uses NUMERIC(38,18). Diagnostics API active_generation payload left unavailable. Paired binancebot repository was not modified. No generated DER.
+tests_created: extended test_mapping_is_unmanaged_read_only for phase and provenance choices, VARCHAR lengths, and NOT NULL columns from bot SQL 103 and 105
+failing_test_proof: before the model edit, test_mapping_is_unmanaged_read_only failed with AssertionError True is not false on symbol.null
+docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
+docs_updated: docs/DATA_CONTRACT.md 1.0.65, docs/PROJECT_STATE.md 1.1.41, docs/CHANGELOG.md 1.1.54. README.md, PLAN.md, DESIGN.md, ARCHITECTURE.md, and KPI_REGISTRY.md were reviewed and left unchanged because operator formulas and command wording did not change.
+changelog: updated
+schema_der: follow_up: unmanaged read-only mapping; scratch database was disposable and not a generated docs/db snapshot
+data_contract_sync: follow_up: dashboard DATA_CONTRACT.md updated from the supplied SQL; ccantero/binancebot was not modified
+logging_observability: unchanged. Generation read errors and failed chunk sends keep their existing fields.
+kpi_registry_reviewed: yes
+kpi_registry_updated: not-needed
+kpi_registry_sync_checked: not-available
+
 # Workflow evidence — Position mode review corrections (2026-10-27)
 
 task_mode: STANDARD
