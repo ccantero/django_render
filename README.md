@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.38
+doc_version: 1.1.39
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-25
+last_verified_at: 2026-10-27
 source_repo: django_render
 ---
 
@@ -37,7 +37,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Drift alerts between `bot.portfolio` and `bot.position_lots`
 - Compact homepage Active Operational Issues from unresolved critical/warning dust/drift signals only, plus informational residual counts
 - Dust / residual dashboard from `bot.dust_detections`
-- Read-only Telegram mobile diagnostics commands for command discovery, bot health, Disk Usage, BUY capacity status, portfolio performance, positions, latest SELL diagnostics, and why-not-sell explanations
+- Read-only Telegram mobile diagnostics commands for command discovery, bot health, Disk Usage, BUY capacity status, portfolio performance, positions, position generation modes, latest SELL diagnostics, and why-not-sell explanations
 - Read-only “Why positions are not selling” visibility through `/dashboard/exit-status/`; the homepage stays lightweight and links there instead of loading SELL diagnostics by default
 - Read-only `/dashboard/churn/` page for recent SELL→BUY re-entry observability and homepage churn summary counts
 - Dust signal detail page
@@ -127,8 +127,9 @@ generations without persisting that exchange snapshot. Django never calls
 Binance. `bot.portfolio` is a local projection, `bot.position_lots` is FIFO
 accounting evidence, and neither is represented as current exchange truth. Lot
 freshness stays `unknown` because the Django read model has no lot-update
-timestamp. Active generation data stays unavailable because no position
-generation model is mapped here.
+timestamp. `PositionGeneration` is mapped for the read-only Telegram
+`/position_modes` and `/position_mode` commands. This inventory response still
+reports `active_generation` unavailable; that payload was not changed.
 
 BUY capacity is bot-produced healthcheck evidence. Fresh values are labeled
 `current_as_of_healthcheck`; stale values move under `historical_global` and
@@ -660,7 +661,7 @@ The endpoint returns `{"status":"ok"}` when the Django web process is reachable.
 
 The running app version is separate from the `doc_version` headers in this
 repository. The only app-version source is the root `VERSION` file, which
-contains SemVer 2.0.0 core `MAJOR.MINOR.PATCH`. The initial value is `1.0.0`:
+contains SemVer 2.1.0 core `MAJOR.MINOR.PATCH`. The initial value is `1.0.0`:
 there was no canonical app version or git tag before that file, the app is
 already in production, and the per-document `doc_version` numbers are not an
 app release sequence.
@@ -668,13 +669,13 @@ app release sequence.
 `1.0.0` is the initial baseline. The MAJOR, MINOR, and PATCH rules below apply
 to behavior changes after that baseline. Introducing `VERSION`, and correcting
 the timestamp so it is only an explicit value, stay on `1.0.0`. The current
-file is `2.0.0`. `1.1.0` added the dashboard pause/resume request flow. `2.0.0` is a MAJOR bump because every pause POST now requires confirmation, including JSON clients that `1.0.0` and `1.1.0` accepted without it. The success JSON object is unchanged.
+file is `2.1.0`. `1.1.0` added the dashboard pause/resume request flow. `2.0.0` is a MAJOR bump because every pause POST now requires confirmation, including JSON clients that `1.0.0` and `1.1.0` accepted without it. The success JSON object is unchanged. `2.1.0` adds read-only Telegram `/position_modes` and `/position_mode`.
 
 Render sets `RENDER_GIT_COMMIT` at build and runtime
 ([default environment variables](https://render.com/docs/environment-variables)).
 The footer and `/version/` use the first 7 hex characters as SemVer build
-metadata, for example `v2.0.0+a1b2c3d`. With no commit available, the label
-uses `dev` (`v2.0.0+dev`). That short commit is what shows whether a new
+metadata, for example `v2.1.0+a1b2c3d`. With no commit available, the label
+uses `dev` (`v2.1.0+dev`). That short commit is what shows whether a new
 commit was deployed. Render does not provide a deploy timestamp, and this app
 does not treat a file modification time or the process start time as one.
 
@@ -712,7 +713,7 @@ curl https://<your-render-host>/version/
 ```
 
 ```json
-{"version":"2.0.0","commit":"a1b2c3d","deployed_at":"2026-10-25T14:30:00-03:00","timestamp_source":"build_stamp","display":"v2.0.0+a1b2c3d · 25/10 14:30 ART"}
+{"version":"2.1.0","commit":"a1b2c3d","deployed_at":"2026-10-25T14:30:00-03:00","timestamp_source":"build_stamp","display":"v2.1.0+a1b2c3d · 25/10 14:30 ART"}
 ```
 
 `/health/` is unchanged. The version payload does not include service IDs,

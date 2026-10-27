@@ -1,9 +1,9 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.62
+doc_version: 1.0.63
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-09-26
+last_verified_at: 2026-10-27
 source_repo: binanceBot
 ---
 
@@ -477,7 +477,8 @@ The dashboard currently maps bot-owned tables in `core.trading_models` with `man
 
 - `bot.bot_healthcheck`
 - `bot.portfolio`
-- `bot.position_lots`
+- `bot.position_lots` (`generation_id` UUID, nullable, no foreign key)
+- `bot.position_generations`
 - `bot.trade_operations`
 - `bot.trade_fills`
 - `bot.lot_closures`
@@ -491,6 +492,52 @@ The dashboard also maps workflow tables in `core.models`:
 - `bot.manual_corrections`
 
 When the configured database engine is SQLite, `bot_table_name()` maps selected workflow tables to plain table names for local/test compatibility. PostgreSQL deployments use the `bot` schema table names.
+
+`PositionGeneration` is unmanaged and read-only. Django reads `generation_id`,
+`symbol`, `phase`, `opening_provenance`, `created_at`, `updated_at`,
+`hold_admitted_at`, `hold_admission_reason`, `peak_price_since_hold`,
+`hold_stop_price`, `hold_stop_updated_at`, `hold_stop_reason`, and
+`hold_strategy_version`. `peak_price_since_hold` and `hold_stop_price` are
+`NUMERIC(38,18)`. Telegram mode uses bot phase semantics exactly: `OPEN`,
+`PARTIAL_PENDING`, `RUNNER`, and `FULL_EXIT_PENDING` are TRADING; `HOLD` is
+HOLD; those five are active. `CLOSED` is historical and is not an active mode.
+One active HOLD and no active TRADING generation is `HOLD`. One active TRADING
+generation and no active HOLD is `TRADING`. One of each is `HOLD + TRADING`.
+More than one active generation of the same kind, or a phase outside this set,
+is `INCONSISTENT`. No active generation is `UNKNOWN (no generation)`. Mode is
+not inferred from PnL, SELL events, or the SELL reason label "Holding".
+
+A null `position_lots.generation_id` is a valid documented state, not an error.
+One-time generation adoption ran only for BNBUSDT and TRXUSDT, so other symbols
+may still have generationless open lots. `/position_mode` labels that open
+quantity `generationless (unassigned)`. A material symbol whose open lots are
+all generationless stays `UNKNOWN (no generation)`.
+
+`/position_modes` reads material symbols only from the latest
+`bot.bot_healthcheck.details`, using `position_classification.material_symbols`
+when that object is present and otherwise `material_symbols`. It does not fall
+back to `bot.portfolio`. The same healthcheck staleness threshold as
+`/buy_status` (`HEALTHCHECK_STALE_MINUTES`, default 15) marks the list stale.
+The symbol command shows each active generation separately. Estimated value is
+that generation's positive `quantity_open` sum times `portfolio.current_price`,
+or `N/A` when the projection price is missing. Take-profit, stop-loss, and
+trailing percent are bot environment settings. They are not in healthcheck
+details and are not generation columns, so the reply shows `N/A`. The only
+per-position stop values available to Django are `hold_stop_price` and
+`peak_price_since_hold`.
+
+Inventory lines compare active-generation quantity, generationless quantity,
+open-lot quantity, and portfolio quantity from separate reads. They are not
+synchronized, are not live Binance Spot truth, and are not a reconciliation.
+`OK` means active generation quantity plus generationless quantity equals
+open-lot quantity and portfolio quantity. Otherwise the reply shows `MISMATCH`
+and the deltas, or `UNKNOWN` when portfolio quantity is unavailable.
+
+The dashboard role's `SELECT` grant on `bot.position_generations` is not
+established by a migration in this repository. Permission denied and any other
+`DatabaseError` on these commands return `Generation data unavailable (read
+error)` with no SQL or secrets. No Django migration is created for these
+unmanaged mappings.
 
 ### Current API serializers
 

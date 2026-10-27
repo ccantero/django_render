@@ -1,3 +1,22 @@
+# Workflow evidence — Telegram position generation modes (2026-10-27)
+
+task_mode: STANDARD
+phases_completed: planner, implementer, tester, documentator
+impact: behavior, contract, logging
+tests_executed: focused pytest core/test_telegram_position_modes.py 20 passed after a red run (3 failed, 17 errors: PositionGeneration missing, commands unregistered, chunk send not logged); full pytest 457 passed, 3 skipped, 44 subtests; manage.py check no issues; makemigrations --check --dry-run no changes
+pending_issues: SELECT grant on bot.position_generations is unverified and fails safe; diagnostics API active_generation payload left unavailable; paired binancebot DATA_CONTRACT and KPI registry were not updated because that repo is out of scope; no generated DER because no bot database was connected; AGENTS.md still says VERSION 2.0.0 and was not edited because it is protected workflow infrastructure
+tests_created: core/test_telegram_position_modes.py covers HOLD, TRADING, mixed, inconsistent, unrecognized phase, CLOSED historical, unknown, generationless lots, quantity mismatch, invalid symbols, message split, DatabaseError, permission denied, authorization, stale and missing healthcheck, chunk send failure, and existing command regression
+failing_test_proof: initial pytest of the new file failed before implementation with ImportError for PositionGeneration, AssertionError that /position_modes was not registered, unauthorized returning None, and no WARNING log for chunk delivery
+docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
+docs_updated: README.md 1.1.39, PLAN.md 1.1.23, docs/PROJECT_STATE.md 1.1.39, docs/ARCHITECTURE.md 1.1.23, docs/DESIGN.md 1.1.35, docs/DATA_CONTRACT.md 1.0.63, docs/CHANGELOG.md 1.1.52, docs/KPI_REGISTRY.md 1.0.37
+changelog: updated
+schema_der: follow_up: unmanaged read-only mapping only; makemigrations --check clean; no live bot database, so docs/db snapshots were not generated
+data_contract_sync: follow_up: dashboard DATA_CONTRACT.md documents the new read model; ccantero/binancebot was not modified
+logging_observability: generation read failures log stage, command, chat_id, and exception_class via logger.exception; chunk delivery failure logs stage outbound_chunk, delivered false, and existing webhook context; replies omit SQL and secrets; app_version remains unknown on this path, matching other Telegram diagnostics
+kpi_registry_reviewed: yes
+kpi_registry_updated: yes
+kpi_registry_sync_checked: not-available
+
 # Follow-up merge resolution against 1b8b103 (2026-10-25)
 
 phases_completed: planner, implementer, tester, documentator

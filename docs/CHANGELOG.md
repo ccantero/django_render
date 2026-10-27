@@ -1,13 +1,49 @@
 ---
 doc_id: changelog
-doc_version: 1.1.51
+doc_version: 1.1.52
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-25
+last_verified_at: 2026-10-27
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-27 - Telegram position generation modes
+
+Type: behavior
+Runtime version: 2.1.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/PROJECT_STATE.md
+- docs/DATA_CONTRACT.md
+- docs/KPI_REGISTRY.md
+- docs/CHANGELOG.md
+
+Summary:
+- Added read-only `/position_modes` and `/position_mode SYMBOL` Telegram diagnostics.
+- Mapped unmanaged `bot.position_generations` and nullable `position_lots.generation_id`. No migration.
+- Mode comes only from active generation phases. `CLOSED` is historical. Missing and stale healthcheck classification are explicit.
+- Generationless open lots are labeled and do not count as an error. A symbol whose open lots are all generationless stays `UNKNOWN (no generation)`.
+- Long `/position_modes` replies split into HTML chunks of at most 4096 characters. A failed chunk send is logged and not retried.
+- Database read errors, including permission denied, return a fixed unavailable reply with no SQL or secrets.
+- `VERSION` is `2.1.0`.
+
+Operator impact:
+- Authorized chats can ask Telegram for the persisted HOLD/TRADING mode of material positions and the per-generation breakdown of one symbol.
+- Take-profit, stop-loss, and trailing percent display as `N/A`. The only per-position stop fields shown are peak since hold and hold stop price.
+- The diagnostics API `active_generation` field is unchanged and still reports unavailable.
+- The `SELECT` grant on `bot.position_generations` is still unverified. Permission denied fails safe.
+
+Validation:
+- Focused tests were red first: `PositionGeneration` was not importable, `/position_modes` was unregistered, and the webhook did not log a failed chunk send.
+- `/tmp/venv/bin/pytest core/test_telegram_position_modes.py -q`: 20 passed.
+- `/tmp/venv/bin/pytest -q`: 457 passed, 3 skipped, 44 subtests passed.
+- `CC_DEBUG=true` with a disposable SQLite `DATABASE_URL`: `manage.py check` reported no issues, and `manage.py makemigrations --check --dry-run` reported no changes.
 
 ## 2026-10-25 - Refresh PR #3 against main 1b8b103
 

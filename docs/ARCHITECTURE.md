@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.22
+doc_version: 1.1.23
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-25
+last_verified_at: 2026-10-27
 source_repo: django_render
 ---
 
@@ -209,9 +209,11 @@ definitions. Fresh complete values are current only as of `healthcheck_at`;
 stale values are exposed only under `historical_global`, with `global: null`.
 Missing and partial fields remain unavailable/null; Django does not infer slot
 occupancy from portfolio rows or FIFO quantities. The bot repository has an
-active `position_generations` model used by its comparison tool, but no
-generation read model is mapped in this Django application, so active
-generation facts remain explicitly unavailable here. Lot evidence freshness
+active `position_generations` model used by its comparison tool. Django maps
+that table read-only as `PositionGeneration` for Telegram `/position_modes`
+and `/position_mode`. Those commands classify material symbols from active
+generations only. This inventory endpoint still returns `active_generation`
+unavailable; that payload was not changed. Lot evidence freshness
 is unknown because the mapped lot rows have no update timestamp.
 
 Inventory reads are separate ORM statements in Django's normal autocommit

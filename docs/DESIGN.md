@@ -1,9 +1,9 @@
 ---
 doc_id: design
-doc_version: 1.1.34
+doc_version: 1.1.35
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-25
+last_verified_at: 2026-10-27
 source_repo: django_render
 ---
 
@@ -23,7 +23,7 @@ version, documentation freshness, contract freshness, and projection freshness
 without manually inspecting repository history.
 
 The deployed app version is the root `VERSION` SemVer. `1.0.0` is the initial
-baseline. The current file is `2.0.0`. `doc_version` in these files is not that version. The shared footer
+baseline. The current file is `2.1.0`. `doc_version` in these files is not that version. The shared footer
 and `GET /version/` show the app version and the short commit. The Buenos
 Aires time is the explicit `DEPLOYED_AT` or `stamp_build` instant, or
 `unknown` when neither was recorded. Schema version, strategy version, and
@@ -235,8 +235,37 @@ commands:
 - `/buy_status`
 - `/portfolio_status`
 - `/position SYMBOL`
+- `/position_modes`
+- `/position_mode SYMBOL`
 - `/last_sell SYMBOL`
 - `/why_not_sell SYMBOL`
+
+`/position_modes` and `/position_mode` are read-only. They report the persisted
+generation phase of material positions. Mode is `HOLD` when the only active
+generation is `HOLD`, `TRADING` when the only active generation is `OPEN`,
+`PARTIAL_PENDING`, `RUNNER`, or `FULL_EXIT_PENDING`, and `HOLD + TRADING` when
+one of each is active. `CLOSED` generations are historical and do not set the
+mode. No active generation, including a material symbol whose open lots all
+have a null `generation_id`, is `UNKNOWN (no generation)`. More than one active
+generation of the same kind, or a phase outside the known set, is
+`INCONSISTENT`. The material list comes only from the latest healthcheck
+classification. A missing classification is stated explicitly and is not
+replaced with `bot.portfolio`. Stale healthchecks are still shown and labeled
+stale. Null `generation_id` lots are labeled `generationless (unassigned)`;
+that state is valid. One-time generation adoption ran only for BNBUSDT and
+TRXUSDT, so other symbols may have generationless lots. Take-profit, stop-loss,
+and trailing percent are bot environment settings. They are not in healthcheck
+details or generation rows, so the symbol reply shows `N/A`. The only
+per-position stop fields the reply can show are `peak_price_since_hold` and
+`hold_stop_price`.
+
+`/position_modes` does not drop material symbols to fit one Telegram message.
+`diagnostic_response` may return a list of HTML strings. The webhook sends that
+list in order. Each chunk is at most 4096 characters, split on line boundaries,
+and each chunk keeps its own tags balanced. If a chunk send fails, the failure
+is logged and later chunks are not sent. There is no automatic retry. Existing
+commands still return one string, or a `{text, photo}` object for
+`/portfolio_status`.
 
 Messages use Telegram HTML parse mode, escape dynamic values before rendering,
 and should stay compact enough for mobile review. `/help` should act as a compact

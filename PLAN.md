@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.22
+doc_version: 1.1.23
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-25
+last_verified_at: 2026-10-27
 source_repo: django_render
 ---
 
@@ -177,7 +177,10 @@ Additional pending visibility work:
 - Dust / residual dashboard reads `bot.dust_detections`.
 - Telegram mobile diagnostics commands read shared bot state through the existing webhook:
   `/help`, `/health`, `/buy_status`, `/portfolio_status`,
-  `/position SYMBOL`, `/last_sell SYMBOL`, and `/why_not_sell SYMBOL`.
+  `/position SYMBOL`, `/position_modes`, `/position_mode SYMBOL`,
+  `/last_sell SYMBOL`, and `/why_not_sell SYMBOL`.
+  `/position_modes` and `/position_mode` report persisted HOLD/TRADING generation
+  mode only. They do not place orders or change generations.
 - Telegram `/health` includes bot-healthcheck VPS Disk Usage using the same
   payload as the authenticated dashboard.
 - Telegram diagnostics expose a compact `/help` guide and present skipped/rejected
@@ -219,7 +222,7 @@ Additional pending visibility work:
 - Monitoring cards exist for bot status, portfolio summary, valuation consistency, latest operation/recent trade, and drift alerts.
 - Tests cover dashboard access, manual correction permissions, form validation, model contract alignment, drift prefill behavior, and environment validation.
 - Public `/health/` liveness endpoint exists for Render keepalive/cron pings.
-- Public deploy identity is the root `VERSION` SemVer (`1.0.0` baseline, current `2.0.0`) plus short `RENDER_GIT_COMMIT` build metadata, shown in the shared footer and at `/version/`. A Buenos Aires time is shown only from `DEPLOYED_AT` or `stamp_build`. `/health/` stays liveness-only. `2.0.0` requires confirmation on every pause POST.
+- Public deploy identity is the root `VERSION` SemVer (`1.0.0` baseline, current `2.1.0`) plus short `RENDER_GIT_COMMIT` build metadata, shown in the shared footer and at `/version/`. A Buenos Aires time is shown only from `DEPLOYED_AT` or `stamp_build`. `/health/` stays liveness-only. `2.0.0` requires confirmation on every pause POST. `2.1.0` adds read-only Telegram position generation modes.
 - The dashboard-created `CLOSE_LOTS_EXTERNAL_SELL` request flow was validated on 2026-05-08 with an ASIACOIN / `币安人生USDT` dust-closure case: dashboard request creation, bot CLI dry-run/confirmed apply, and post-apply dashboard state review all preserved the dashboard/bot boundary.
 
 ## P0 Safety / Correctness
