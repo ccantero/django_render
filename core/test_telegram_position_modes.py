@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 from datetime import datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
@@ -41,6 +42,11 @@ def _balanced_html(chunk):
     if chunk.count("<") != chunk.count(">"):
         return False
     return "<" not in chunk or not chunk.rstrip().endswith("<")
+
+
+def _entities_complete(chunk):
+    stripped = re.sub(r"&(?:[a-zA-Z]+|#\d+|#x[0-9a-fA-F]+);", "", chunk)
+    return "&" not in stripped
 
 
 class PositionModeDispatchTests(TestCase):
@@ -124,6 +130,22 @@ class PositionModeDispatchTests(TestCase):
         self.assertEqual(failed[0].chat_id, 999)
         self.assertEqual(failed[0].command, "/position_modes")
         mock_diagnostic.assert_called_once()
+
+    def test_overlong_line_is_split_outside_entities_and_tags(self):
+        from core.telegram_diagnostics import _split_html_messages
+
+        payload = "&lt;" * 1500
+        line = f"<b>note</b> Opening provenance: <code>{payload}</code>"
+        self.assertGreater(len(line), TELEGRAM_TEXT_LIMIT)
+        chunks = _split_html_messages(line)
+        self.assertGreater(len(chunks), 1)
+        self.assertEqual(sum(chunk.count("&lt;") for chunk in chunks), 1500)
+        for chunk in chunks:
+            self.assertLessEqual(len(chunk), TELEGRAM_TEXT_LIMIT)
+            self.assertTrue(_balanced_html(chunk))
+            self.assertTrue(_entities_complete(chunk))
+            self.assertNotIn("<code></code>", chunk)
+            self.assertNotIn("<b></b>", chunk)
 
 
 @override_settings(TIME_ZONE="UTC", HEALTHCHECK_STALE_MINUTES=15, TELEGRAM_ALLOWED_CHAT_IDS="999", TELEGRAM_ALLOWED_USER_IDS="")
@@ -316,7 +338,9 @@ class PositionGenerationModeTests(TransactionTestCase):
         self.assertIn("Hold admitted: <code>2026-10-01 12:30 UTC</code>", detail)
         self.assertIn("Hold strategy version: <code>hold-v1</code>", detail)
         self.assertIn("TP / SL / trailing %: <code>N/A</code>", detail)
-        self.assertIn("Consistency: <code>OK</code>", detail)
+        self.assertIn("Quantity comparison: <code>MATCH</code>", detail)
+        self.assertIn("Closed-generation open qty: <code>0</code>", detail)
+        self.assertIn("Missing-generation open qty: <code>0</code>", detail)
         self.assertIn("generationless (unassigned): <code>0</code>", detail)
         self.assertNotIn("<script>", detail)
         self.assertIn("Not live Binance Spot truth", detail)
@@ -371,7 +395,9 @@ class PositionGenerationModeTests(TransactionTestCase):
         self.assertIn("Phase: <code>PARTIAL_PENDING</code>", detail)
         self.assertEqual(detail.count("Hold stop price:"), 1)
         self.assertIn("Active generation qty: <code>3</code>", detail)
-        self.assertIn("Consistency: <code>OK</code>", detail)
+        self.assertIn("Quantity comparison: <code>MATCH</code>", detail)
+        self.assertIn("Closed-generation open qty: <code>0</code>", detail)
+        self.assertIn("Missing-generation open qty: <code>0</code>", detail)
 
     def test_two_active_generations_of_same_kind_are_inconsistent(self):
         self._health(["ENAUSDT", "SOLUSDT"])
@@ -422,7 +448,8 @@ class PositionGenerationModeTests(TransactionTestCase):
         detail = _text(self._run("/position_mode ENAUSDT"))
         listed = _text(self._run("/position_modes"))
         active, _, historical = detail.partition("<b>Historical generations</b>")
-        self.assertIn("ENAUSDT — <code>HOLD</code>", listed)
+        self.assertIn("ENAUSDT — <code>HOLD · unassigned qty</code>", listed)
+        self.assertIn("Closed-generation open qty: <code>9</code>", detail)
         self.assertIn("Mode: <code>HOLD</code>", active)
         self.assertIn(str(HOLD_ID), active)
         self.assertNotIn(str(CLOSED_IDS[0]), active)
@@ -453,13 +480,15 @@ class PositionGenerationModeTests(TransactionTestCase):
         self._portfolio("GENLESSUSDT", Decimal("5"), Decimal("1"))
         listed = _text(self._run("/position_modes"))
         detail = _text(self._run("/position_mode GENLESSUSDT"))
-        self.assertIn("GENLESSUSDT — <code>UNKNOWN (no generation)</code>", listed)
+        self.assertIn("GENLESSUSDT — <code>UNKNOWN (no generation) · unassigned qty</code>", listed)
         self.assertIn("Mode: <code>UNKNOWN (no generation)</code>", detail)
         self.assertIn("generationless (unassigned): <code>5</code>", detail)
         self.assertIn("Open-lot qty: <code>5</code>", detail)
         self.assertIn("Active generation qty: <code>0</code>", detail)
         self.assertIn("Portfolio qty: <code>5</code>", detail)
-        self.assertIn("Consistency: <code>OK</code>", detail)
+        self.assertIn("Quantity comparison: <code>MATCH</code>", detail)
+        self.assertIn("Closed-generation open qty: <code>0</code>", detail)
+        self.assertIn("Missing-generation open qty: <code>0</code>", detail)
         self.assertNotIn("INCONSISTENT", detail)
         self.assertNotIn("MISMATCH", detail)
 
@@ -477,13 +506,134 @@ class PositionGenerationModeTests(TransactionTestCase):
         self.assertIn("Open-lot qty: <code>15</code>", detail)
         self.assertIn("generationless (unassigned): <code>3</code>", detail)
         self.assertIn("Portfolio qty: <code>20</code>", detail)
-        self.assertIn("Consistency: <code>MISMATCH</code>", detail)
-        self.assertIn(
-            "Delta (active generation qty + generationless - open-lot qty): <code>-2</code>",
-            detail,
-        )
+        self.assertIn("Quantity comparison: <code>MISMATCH</code>", detail)
+        self.assertIn("Closed-generation open qty: <code>2</code>", detail)
+        self.assertIn("Missing-generation open qty: <code>0</code>", detail)
         self.assertIn("Delta (open-lot qty - portfolio qty): <code>-5</code>", detail)
+        self.assertIn("does not prove accounting integrity", detail)
+        self.assertNotIn("Consistency:", detail)
         self.assertIn("not synchronized", detail.lower())
+
+    def test_summary_qualifies_mixed_assigned_and_unassigned_lots(self):
+        missing_id = uuid.UUID("66666666-6666-6666-6666-666666666666")
+        self._health(["ENAUSDT", "BTCUSDT", "SOLUSDT", "XRPUSDT"])
+        self._generation(HOLD_ID, "ENAUSDT", "HOLD")
+        self._lot("ena-assigned", "ENAUSDT", Decimal("8"), HOLD_ID)
+        self._lot("ena-null", "ENAUSDT", Decimal("2"))
+        self._portfolio("ENAUSDT", Decimal("10"), Decimal("1"))
+        self._generation(TRADING_ID, "BTCUSDT", "OPEN")
+        self._generation(CLOSED_IDS[0], "BTCUSDT", "CLOSED", created_at=timezone.now() - timedelta(days=1))
+        self._lot("btc-assigned", "BTCUSDT", Decimal("4"), TRADING_ID)
+        self._lot("btc-closed", "BTCUSDT", Decimal("1"), CLOSED_IDS[0])
+        self._portfolio("BTCUSDT", Decimal("5"), Decimal("1"))
+        self._generation(SECOND_ID, "SOLUSDT", "RUNNER")
+        self._lot("sol-assigned", "SOLUSDT", Decimal("3"), SECOND_ID)
+        self._lot("sol-missing", "SOLUSDT", Decimal("1"), missing_id)
+        self._portfolio("SOLUSDT", Decimal("4"), Decimal("1"))
+        self._generation(CLOSED_IDS[1], "XRPUSDT", "HOLD")
+        self._lot("xrp-assigned", "XRPUSDT", Decimal("2"), CLOSED_IDS[1])
+        self._portfolio("XRPUSDT", Decimal("2"), Decimal("1"))
+
+        with CaptureQueriesContext(connection) as captured:
+            listed = _text(self._run("/position_modes"))
+        lot_queries = [query["sql"] for query in captured.captured_queries if "position_lots" in query["sql"]]
+        generation_queries = [
+            query["sql"] for query in captured.captured_queries if "position_generations" in query["sql"]
+        ]
+        portfolio_queries = [query["sql"] for query in captured.captured_queries if "portfolio" in query["sql"].lower()]
+        self.assertEqual(len(lot_queries), 1)
+        self.assertEqual(len(generation_queries), 1)
+        self.assertEqual(portfolio_queries, [])
+        self.assertIn("ENAUSDT — <code>HOLD · unassigned qty</code>", listed)
+        self.assertIn("BTCUSDT — <code>TRADING · unassigned qty</code>", listed)
+        self.assertIn("SOLUSDT — <code>TRADING · unassigned qty</code>", listed)
+        self.assertIn("XRPUSDT — <code>HOLD</code>", listed)
+        self.assertNotIn("XRPUSDT — <code>HOLD · unassigned qty</code>", listed)
+        self.assertNotIn("ENAUSDT — <code>HOLD</code>", listed.replace("HOLD · unassigned qty", "QUALIFIED"))
+
+        ena = _text(self._run("/position_mode ENAUSDT"))
+        self.assertIn("Mode: <code>HOLD</code>", ena)
+        self.assertNotIn("unassigned qty", ena)
+        btc = _text(self._run("/position_mode BTCUSDT"))
+        self.assertIn("Mode: <code>TRADING</code>", btc)
+        self.assertNotIn("HOLD", btc)
+        sol = _text(self._run("/position_mode SOLUSDT"))
+        self.assertIn("Mode: <code>TRADING</code>", sol)
+        self.assertIn("Phase: <code>RUNNER</code>", sol)
+
+    def test_quantity_comparison_reports_bad_associations_when_totals_match(self):
+        missing_id = uuid.UUID("66666666-6666-6666-6666-666666666666")
+        self._health(["ENAUSDT", "SOLUSDT"])
+        self._generation(HOLD_ID, "ENAUSDT", "HOLD")
+        self._generation(CLOSED_IDS[0], "ENAUSDT", "CLOSED", created_at=timezone.now() - timedelta(days=2))
+        self._lot("ena-active", "ENAUSDT", Decimal("8"), HOLD_ID)
+        self._lot("ena-closed", "ENAUSDT", Decimal("2"), CLOSED_IDS[0])
+        self._portfolio("ENAUSDT", Decimal("10"), Decimal("1"))
+        self._generation(TRADING_ID, "SOLUSDT", "FULL_EXIT_PENDING")
+        self._lot("sol-active", "SOLUSDT", Decimal("6"), TRADING_ID)
+        self._lot("sol-missing", "SOLUSDT", Decimal("4"), missing_id)
+        self._portfolio("SOLUSDT", Decimal("10"), Decimal("1"))
+
+        ena = _text(self._run("/position_mode ENAUSDT"))
+        sol = _text(self._run("/position_mode SOLUSDT"))
+        listed = _text(self._run("/position_modes"))
+        self.assertIn("Quantity comparison: <code>MATCH</code>", ena)
+        self.assertIn("Closed-generation open qty: <code>2</code>", ena)
+        self.assertIn("Missing-generation open qty: <code>0</code>", ena)
+        self.assertIn("Active generation qty: <code>8</code>", ena)
+        self.assertIn("Open-lot qty: <code>10</code>", ena)
+        self.assertIn(
+            "Quantity comparison only compares these aggregate quantities from separate reads. "
+            "It does not prove accounting integrity or the Binance balance.",
+            ena,
+        )
+        self.assertNotIn("Consistency:", ena)
+        self.assertNotIn("Delta (open-lot qty - portfolio qty):", ena)
+        self.assertIn("ENAUSDT — <code>HOLD · unassigned qty</code>", listed)
+        self.assertIn("Quantity comparison: <code>MATCH</code>", sol)
+        self.assertIn("Closed-generation open qty: <code>0</code>", sol)
+        self.assertIn("Missing-generation open qty: <code>4</code>", sol)
+        self.assertIn("SOLUSDT — <code>TRADING · unassigned qty</code>", listed)
+        self.assertIn("does not prove accounting integrity", sol)
+        self.assertIn("Binance balance", sol)
+
+    def test_position_mode_overlong_field_and_large_closed_history_is_split(self):
+        provenance = "<" * 1200
+        history_ids = [uuid.UUID(f"77777777-7777-7777-7777-{index:012d}") for index in range(1, 41)]
+        base = timezone.now()
+        self._health(["ENAUSDT"])
+        self._generation(
+            HOLD_ID,
+            "ENAUSDT",
+            "HOLD",
+            created_at=base - timedelta(days=30),
+            opening_provenance=provenance,
+        )
+        self._lot("lot-h", "ENAUSDT", Decimal("1"), HOLD_ID)
+        self._portfolio("ENAUSDT", Decimal("1"), Decimal("1"))
+        for offset, generation_id in enumerate(history_ids):
+            self._generation(
+                generation_id,
+                "ENAUSDT",
+                "CLOSED",
+                created_at=base - timedelta(minutes=offset),
+            )
+        result = self._run("/position_mode ENAUSDT")
+        self.assertIsInstance(result, list)
+        self.assertGreater(len(result), 1)
+        joined = "\n".join(result)
+        self.assertGreater(len(joined), TELEGRAM_TEXT_LIMIT)
+        self.assertEqual(sum(chunk.count("&lt;") for chunk in result), 1200)
+        self.assertIn("Count: <code>40</code>", joined)
+        for generation_id in history_ids[:3]:
+            self.assertTrue(any(str(generation_id) in chunk for chunk in result))
+        self.assertNotIn(str(history_ids[-1]), joined)
+        for chunk in result:
+            self.assertLessEqual(len(chunk), TELEGRAM_TEXT_LIMIT)
+            self.assertTrue(_balanced_html(chunk))
+            self.assertTrue(_entities_complete(chunk))
+            self.assertNotIn("omitted", chunk.lower())
+            self.assertNotIn("truncated", chunk.lower())
 
     def test_invalid_and_unknown_symbols(self):
         self._health(["ENAUSDT"])

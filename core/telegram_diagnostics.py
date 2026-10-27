@@ -291,15 +291,34 @@ def _deliver_position_text(text):
 	return parts
 
 
+_HTML_ATOM_RE = re.compile(r"(<[^>]*>|&(?:[a-zA-Z]+|#\d+|#x[0-9a-fA-F]+);)")
+_HTML_TAG_RE = re.compile(r"<(/?)([a-zA-Z0-9]+)(?:\s[^>]*)?>")
+_BALANCED_TAGS = {"b", "code"}
+QUANTITY_COMPARISON_NOTE = (
+	"Quantity comparison only compares these aggregate quantities from separate reads. "
+	"It does not prove accounting integrity or the Binance balance."
+)
+
+
 def _split_html_messages(text, limit=TELEGRAM_TEXT_LIMIT):
 	if text is None:
 		return []
 	if len(text) <= limit:
 		return [text]
+	lines = []
+	for line in text.split("\n"):
+		if len(line) <= limit:
+			lines.append(line)
+		else:
+			lines.extend(_split_overlong_html_line(line, limit))
+	return _pack_html_lines(lines, limit)
+
+
+def _pack_html_lines(lines, limit):
 	chunks = []
 	current = []
 	current_len = 0
-	for line in text.split("\n"):
+	for line in lines:
 		addition = len(line) if not current else len(line) + 1
 		if current and current_len + addition > limit:
 			chunks.append("\n".join(current))
@@ -311,6 +330,85 @@ def _split_html_messages(text, limit=TELEGRAM_TEXT_LIMIT):
 	if current:
 		chunks.append("\n".join(current))
 	return chunks
+
+
+def _html_tag_change(token):
+	match = _HTML_TAG_RE.fullmatch(token)
+	if match is None:
+		return None
+	closing, name = bool(match.group(1)), match.group(2).lower()
+	if name not in _BALANCED_TAGS:
+		return None
+	return closing, name
+
+
+def _tag_prefix(stack):
+	return "".join(f"<{name}>" for name in stack)
+
+
+def _tag_suffix(stack):
+	return "".join(f"</{name}>" for name in reversed(stack))
+
+
+def _split_overlong_html_line(line, limit):
+	tokens = [token for token in _HTML_ATOM_RE.split(line) if token]
+	segments = []
+	stack = []
+	start_stack = []
+	body = []
+	body_len = 0
+
+	def projected(extra, stack_after):
+		return len(_tag_prefix(start_stack)) + body_len + extra + len(_tag_suffix(stack_after))
+
+	def flush():
+		nonlocal body, body_len, start_stack
+		if not body:
+			return
+		segments.append(_tag_prefix(start_stack) + "".join(body) + _tag_suffix(stack))
+		body = []
+		body_len = 0
+		start_stack = list(stack)
+
+	for token in tokens:
+		if token.startswith("<") and token.endswith(">"):
+			change = _html_tag_change(token)
+			stack_after = list(stack)
+			if change is not None:
+				closing, name = change
+				if closing:
+					if stack_after and stack_after[-1] == name:
+						stack_after.pop()
+				else:
+					stack_after.append(name)
+			if body and projected(len(token), stack_after) > limit:
+				flush()
+			body.append(token)
+			body_len += len(token)
+			stack = stack_after
+			continue
+		if token.startswith("&") and token.endswith(";"):
+			if body and projected(len(token), stack) > limit:
+				flush()
+			body.append(token)
+			body_len += len(token)
+			continue
+		remaining = token
+		while remaining:
+			room = limit - len(_tag_prefix(start_stack)) - body_len - len(_tag_suffix(stack))
+			if room <= 0:
+				if body:
+					flush()
+					continue
+				room = 1
+			take = min(len(remaining), room)
+			body.append(remaining[:take])
+			body_len += take
+			remaining = remaining[take:]
+			if remaining:
+				flush()
+	flush()
+	return segments
 
 
 def _healthcheck_freshness(latest):
@@ -417,9 +515,12 @@ def format_position_modes():
 		return "\n".join(lines)
 
 	grouped = {}
+	generations = []
 	if symbols:
-		for generation in PositionGeneration.objects.filter(symbol__in=symbols):
+		generations = list(PositionGeneration.objects.filter(symbol__in=symbols))
+		for generation in generations:
 			grouped.setdefault(generation.symbol, []).append(generation)
+	unassigned_symbols = _symbols_with_unassigned_open_qty(symbols, generations)
 	lines = [
 		"<b>Position generation modes</b>",
 		"",
@@ -436,8 +537,36 @@ def format_position_modes():
 		lines.append("No material positions in the latest healthcheck classification.")
 	for symbol in symbols:
 		mode = _mode_text(_classify_generations(grouped.get(symbol, [])))
+		if symbol in unassigned_symbols:
+			mode = f"{mode} · unassigned qty"
 		lines.append(f"• {h(symbol)} — <code>{h(mode)}</code>")
 	return "\n".join(lines)
+
+
+def _symbols_with_unassigned_open_qty(symbols, generations):
+	flagged = set()
+	if not symbols:
+		return flagged
+	known = {}
+	closed = {}
+	for generation in generations:
+		generation_id = _generation_identity(generation.generation_id)
+		if generation_id is None:
+			continue
+		known.setdefault(generation.symbol, set()).add(generation_id)
+		if generation.phase == CLOSED_PHASE:
+			closed.setdefault(generation.symbol, set()).add(generation_id)
+	for lot in PositionLot.objects.filter(symbol__in=symbols):
+		if _positive_qty(lot.remaining_quantity) is None:
+			continue
+		generation_id = _generation_identity(lot.generation_id)
+		if (
+			generation_id is None
+			or generation_id not in known.get(lot.symbol, set())
+			or generation_id in closed.get(lot.symbol, set())
+		):
+			flagged.add(lot.symbol)
+	return flagged
 
 
 def format_position_mode(symbol):
@@ -474,7 +603,23 @@ def format_position_mode(symbol):
 		for generation in generations
 		if generation.phase in ACTIVE_PHASES
 	}
+	closed_ids = {
+		_generation_identity(generation.generation_id)
+		for generation in generations
+		if generation.phase == CLOSED_PHASE
+	}
+	known_ids = {
+		_generation_identity(generation.generation_id)
+		for generation in generations
+	}
 	active_qty = sum((qty_by_generation.get(generation_id, Decimal("0")) for generation_id in active_ids), Decimal("0"))
+	closed_open_qty = Decimal("0")
+	missing_open_qty = Decimal("0")
+	for generation_id, qty in qty_by_generation.items():
+		if generation_id in closed_ids:
+			closed_open_qty += qty
+		elif generation_id not in known_ids:
+			missing_open_qty += qty
 	current = [generation for generation in generations if generation.phase != CLOSED_PHASE]
 	closed = [generation for generation in generations if generation.phase == CLOSED_PHASE]
 	current.sort(key=_generation_sort_key)
@@ -537,22 +682,21 @@ def format_position_mode(symbol):
 		f"Active generation qty: <code>{h(fmt_qty(active_qty))}</code>",
 		f"Open-lot qty: <code>{h(fmt_qty(open_qty))}</code>",
 		f"generationless (unassigned): <code>{h(fmt_qty(generationless_qty))}</code>",
+		f"Closed-generation open qty: <code>{h(fmt_qty(closed_open_qty))}</code>",
+		f"Missing-generation open qty: <code>{h(fmt_qty(missing_open_qty))}</code>",
 		f"Portfolio qty: <code>{h(fmt_qty(portfolio_qty))}</code>",
 	])
 	if portfolio_qty is None:
-		lines.append("Consistency: <code>UNKNOWN</code>")
+		lines.append("Quantity comparison: <code>UNKNOWN</code>")
+	elif open_qty == portfolio_qty:
+		lines.append("Quantity comparison: <code>MATCH</code>")
 	else:
-		explained = active_qty + generationless_qty
-		if explained == open_qty and open_qty == portfolio_qty:
-			lines.append("Consistency: <code>OK</code>")
-		else:
-			lines.extend([
-				"Consistency: <code>MISMATCH</code>",
-				"Delta (active generation qty + generationless - open-lot qty): "
-				f"<code>{h(fmt_qty(explained - open_qty))}</code>",
-				"Delta (open-lot qty - portfolio qty): "
-				f"<code>{h(fmt_qty(open_qty - portfolio_qty))}</code>",
-			])
+		lines.extend([
+			"Quantity comparison: <code>MISMATCH</code>",
+			"Delta (open-lot qty - portfolio qty): "
+			f"<code>{h(fmt_qty(open_qty - portfolio_qty))}</code>",
+		])
+	lines.append(QUANTITY_COMPARISON_NOTE)
 	if not generations and open_qty == 0 and portfolio is None:
 		lines.extend(["", "No position data for this symbol."])
 	lines.extend([

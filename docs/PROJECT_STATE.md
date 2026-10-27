@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.39
+doc_version: 1.1.40
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-27
@@ -153,12 +153,25 @@ Implemented capabilities:
   rows. `/position_mode SYMBOL` shows each active generation separately, a short
   historical `CLOSED` section, and a non-synchronized inventory comparison.
   Null `position_lots.generation_id` is labeled `generationless (unassigned)`
-  and is not an error. Take-profit, stop-loss, and trailing percent render as
-  `N/A` because they are bot environment settings, not stored generation or
-  healthcheck fields. The only per-position stop fields shown are
-  `peak_price_since_hold` and `hold_stop_price`. A long `/position_modes`
-  reply is split into HTML messages of at most 4096 characters. A failed chunk
-  send is logged and not retried.
+  and is not an error. `/position_modes` keeps the phase mode and appends
+  ` · unassigned qty` when positive open quantity is generationless, linked to
+  a `CLOSED` generation, or linked to a generation id that is not on that
+  symbol. `Quantity comparison` is `MATCH`, `MISMATCH`, or `UNKNOWN` for
+  open-lot quantity versus portfolio quantity only. Closed-generation and
+  missing-generation open quantities are separate lines. Take-profit,
+  stop-loss, and trailing percent render as `N/A` because they are bot
+  environment settings, not stored generation or healthcheck fields. The only
+  per-position stop fields shown are `peak_price_since_hold` and
+  `hold_stop_price`. Every emitted chunk is at most 4096 characters, including
+  a single overlong line, with `<b>` and `<code>` closed and reopened across
+  the split. A failed chunk send is logged and not retried.
+- Deployment blocker: the dashboard `SELECT` grant on
+  `bot.position_generations` is still unverified. `ccantero/binancebot` was
+  not readable here, so `src/sql/103`, `105`, `106`, and `108` were not applied
+  to a disposable Postgres. Before deploy, the dashboard role must run
+  `SELECT has_table_privilege(current_user,'bot.position_generations','SELECT'), has_column_privilege(current_user,'bot.position_lots','generation_id','SELECT');`
+  and both results must be true. Tracking issue:
+  https://github.com/ccantero/binancebot/issues/10.
 - Telegram webhook resilience: static allowlisted `/help` avoids importing
   database-backed diagnostics, non-text/malformed updates are handled without
   a 500, audit-message persistence is non-blocking, duplicate message IDs are

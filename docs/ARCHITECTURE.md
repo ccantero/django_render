@@ -1,6 +1,6 @@
 ---
 doc_id: architecture
-doc_version: 1.1.23
+doc_version: 1.1.24
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-27
@@ -212,8 +212,11 @@ occupancy from portfolio rows or FIFO quantities. The bot repository has an
 active `position_generations` model used by its comparison tool. Django maps
 that table read-only as `PositionGeneration` for Telegram `/position_modes`
 and `/position_mode`. Those commands classify material symbols from active
-generations only. This inventory endpoint still returns `active_generation`
-unavailable; that payload was not changed. Lot evidence freshness
+generations only. The list also marks positive open quantity that is
+generationless, linked to a `CLOSED` generation, or linked to a missing
+generation id, without treating that quantity as HOLD or TRADING. This
+inventory endpoint still returns `active_generation` unavailable; that payload
+was not changed. Lot evidence freshness
 is unknown because the mapped lot rows have no update timestamp.
 
 Inventory reads are separate ORM statements in Django's normal autocommit

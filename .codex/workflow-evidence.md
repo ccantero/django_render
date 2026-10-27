@@ -1,3 +1,22 @@
+# Workflow evidence — Position mode review corrections (2026-10-27)
+
+task_mode: STANDARD
+phases_completed: planner, implementer, tester, documentator
+impact: behavior, contract
+tests_executed: focused pytest core/test_telegram_position_modes.py 24 passed after a red run (overlong line stayed one chunk, overlong /position_mode field was 4833 characters, /position_modes issued no lot query, detail still said Consistency); full pytest 461 passed, 3 skipped, 44 subtests; manage.py check no issues; makemigrations --check --dry-run no changes
+pending_issues: DEPLOYMENT BLOCKER remains. ccantero/binancebot returned HTTP 404, so src/sql/103, 105, 106, and 108 were not read and were not applied to disposable Postgres. Docker is not installed. Production SELECT was not granted and was not queried. Operator must run SELECT has_table_privilege(current_user,'bot.position_generations','SELECT'), has_column_privilege(current_user,'bot.position_lots','generation_id','SELECT'); tracking issue https://github.com/ccantero/binancebot/issues/10. Diagnostics API active_generation payload left unavailable. Paired binancebot docs were not updated. No generated DER. AGENTS.md was not edited.
+tests_created: core/test_telegram_position_modes.py adds overlong HTML line split, multi-chunk /position_mode with 40 CLOSED generations, mixed assigned and unassigned summary qualifier, and MATCH with closed or missing generation associations
+failing_test_proof: before the fix, test_overlong_line_is_split_outside_entities_and_tags returned one chunk, test_position_mode_overlong_field_and_large_closed_history_is_split failed because a chunk was 4833 characters, test_summary_qualifies_mixed_assigned_and_unassigned_lots found 0 lot queries, and test_quantity_comparison_reports_bad_associations_when_totals_match still rendered Consistency MISMATCH
+docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
+docs_updated: docs/DESIGN.md 1.1.36, docs/DATA_CONTRACT.md 1.0.64, docs/PROJECT_STATE.md 1.1.40, docs/ARCHITECTURE.md 1.1.24, docs/CHANGELOG.md 1.1.53, docs/KPI_REGISTRY.md 1.0.38. README.md and PLAN.md were reviewed and left unchanged because they do not describe chunk boundaries or the comparison label.
+changelog: updated
+schema_der: follow_up: no schema change and no bot SQL files were reachable, so docs/db snapshots were not generated
+data_contract_sync: follow_up: dashboard DATA_CONTRACT.md updated; ccantero/binancebot was not readable and was not modified
+logging_observability: no new log fields. Existing generation read errors and failed chunk sends keep stage, command, chat_id, and exception_class. Replies still omit SQL and secrets. app_version remains unknown on this path, matching other Telegram diagnostics.
+kpi_registry_reviewed: yes
+kpi_registry_updated: yes
+kpi_registry_sync_checked: not-available
+
 # Workflow evidence — Telegram position generation modes (2026-10-27)
 
 task_mode: STANDARD

@@ -1,6 +1,6 @@
 ---
 doc_id: data-contract
-doc_version: 1.0.63
+doc_version: 1.0.64
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-27
@@ -511,7 +511,10 @@ A null `position_lots.generation_id` is a valid documented state, not an error.
 One-time generation adoption ran only for BNBUSDT and TRXUSDT, so other symbols
 may still have generationless open lots. `/position_mode` labels that open
 quantity `generationless (unassigned)`. A material symbol whose open lots are
-all generationless stays `UNKNOWN (no generation)`.
+all generationless stays `UNKNOWN (no generation)`. `/position_modes` keeps
+that phase mode and appends ` · unassigned qty` when positive open quantity has
+a null `generation_id`, is linked to a `CLOSED` generation, or names a
+`generation_id` that is not on a `position_generations` row for that symbol.
 
 `/position_modes` reads material symbols only from the latest
 `bot.bot_healthcheck.details`, using `position_classification.material_symbols`
@@ -526,18 +529,34 @@ details and are not generation columns, so the reply shows `N/A`. The only
 per-position stop values available to Django are `hold_stop_price` and
 `peak_price_since_hold`.
 
-Inventory lines compare active-generation quantity, generationless quantity,
-open-lot quantity, and portfolio quantity from separate reads. They are not
+Inventory lines report active-generation quantity, generationless quantity,
+closed-generation open quantity, missing-generation open quantity, open-lot
+quantity, and portfolio quantity from separate reads. They are not
 synchronized, are not live Binance Spot truth, and are not a reconciliation.
-`OK` means active generation quantity plus generationless quantity equals
-open-lot quantity and portfolio quantity. Otherwise the reply shows `MISMATCH`
-and the deltas, or `UNKNOWN` when portfolio quantity is unavailable.
+`Quantity comparison` is `MATCH` when open-lot quantity equals portfolio
+quantity, `MISMATCH` with the open-lot minus portfolio delta when they differ,
+and `UNKNOWN` when portfolio quantity is unavailable. `MATCH` only compares
+those aggregates. Closed-generation and missing-generation quantities are
+reported on their own lines, so a match does not prove that every open lot
+belongs to an active generation, that accounting is intact, or that the
+Binance balance agrees.
 
 The dashboard role's `SELECT` grant on `bot.position_generations` is not
-established by a migration in this repository. Permission denied and any other
-`DatabaseError` on these commands return `Generation data unavailable (read
-error)` with no SQL or secrets. No Django migration is created for these
-unmanaged mappings.
+established by a migration in this repository. This follow-up could not read
+`ccantero/binancebot` `src/sql/103`, `105`, `106`, or `108` (the repository
+returns 404 to this token) and could not apply those files to a disposable
+Postgres database. Production grants remain a deployment blocker until an
+operator runs, as the dashboard role:
+
+```sql
+SELECT has_table_privilege(current_user,'bot.position_generations','SELECT'), has_column_privilege(current_user,'bot.position_lots','generation_id','SELECT');
+```
+
+Both values must be true before deploy. Tracking issue:
+https://github.com/ccantero/binancebot/issues/10. Permission denied and any
+other `DatabaseError` on these commands return `Generation data unavailable
+(read error)` with no SQL or secrets. No Django migration is created for these
+unmanaged mappings, and this change does not grant privileges.
 
 ### Current API serializers
 

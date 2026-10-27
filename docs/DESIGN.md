@@ -1,6 +1,6 @@
 ---
 doc_id: design
-doc_version: 1.1.35
+doc_version: 1.1.36
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-27
@@ -253,19 +253,32 @@ classification. A missing classification is stated explicitly and is not
 replaced with `bot.portfolio`. Stale healthchecks are still shown and labeled
 stale. Null `generation_id` lots are labeled `generationless (unassigned)`;
 that state is valid. One-time generation adoption ran only for BNBUSDT and
-TRXUSDT, so other symbols may have generationless lots. Take-profit, stop-loss,
-and trailing percent are bot environment settings. They are not in healthcheck
-details or generation rows, so the symbol reply shows `N/A`. The only
-per-position stop fields the reply can show are `peak_price_since_hold` and
-`hold_stop_price`.
+TRXUSDT, so other symbols may have generationless lots. When a material symbol
+has positive open quantity with a null `generation_id`, a `CLOSED` generation,
+or a `generation_id` that is not on that symbol's `position_generations` rows,
+`/position_modes` keeps the phase mode and appends ` · unassigned qty` (for
+example `HOLD · unassigned qty`). That qualifier does not assign a mode to the
+unassigned quantity. Take-profit, stop-loss, and trailing percent are bot
+environment settings. They are not in healthcheck details or generation rows,
+so the symbol reply shows `N/A`. The only per-position stop fields the reply
+can show are `peak_price_since_hold` and `hold_stop_price`.
+
+`/position_mode` reports `Quantity comparison` as `MATCH` when open-lot
+quantity equals portfolio quantity, `MISMATCH` with the open-lot minus
+portfolio delta when they differ, and `UNKNOWN` when portfolio quantity is
+missing. It also reports closed-generation open quantity and missing-generation
+open quantity separately. `MATCH` does not mean every open lot belongs to an
+active generation, and it does not prove accounting integrity or the Binance
+balance. The reads stay separate and are not a reconciliation.
 
 `/position_modes` does not drop material symbols to fit one Telegram message.
 `diagnostic_response` may return a list of HTML strings. The webhook sends that
-list in order. Each chunk is at most 4096 characters, split on line boundaries,
-and each chunk keeps its own tags balanced. If a chunk send fails, the failure
-is logged and later chunks are not sent. There is no automatic retry. Existing
-commands still return one string, or a `{text, photo}` object for
-`/portfolio_status`.
+list in order. Every chunk is at most 4096 characters. Lines that are longer
+than that are split outside HTML tags and entities, and an open `<b>` or
+`<code>` is closed at the end of the chunk and reopened on the next one. If a
+chunk send fails, the failure is logged and later chunks are not sent. There
+is no automatic retry. Existing commands still return one string, or a
+`{text, photo}` object for `/portfolio_status`.
 
 Messages use Telegram HTML parse mode, escape dynamic values before rendering,
 and should stay compact enough for mobile review. `/help` should act as a compact
