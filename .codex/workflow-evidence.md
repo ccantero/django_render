@@ -1,3 +1,23 @@
+# Workflow evidence — Telegram portfolio command runtime verification (2026-10-29)
+
+task_mode: DOCUMENTATION
+phases_completed: planner, implementer, tester, documentator
+impact: docs_only
+tests_executed: /tmp/venv/bin/pytest -q returned 461 passed, 3 skipped, 44 subtests passed. No new behavior test was created. bash .codex/hooks/docs-sync.sh staged passed with 0 warnings. bash .codex/hooks/pre-commit.sh passed with 0 warnings.
+pending_issues: https://github.com/ccantero/django_render/issues/12 stays open for unavailable equity 7d, equity 30d, and 24h equity drivers. Render command/boot readiness, including collectstatic, and production DB grants remain NEEDS_RUNTIME_VERIFICATION.
+tests_created: no new behavior test was created because this task only records an owner-reported documentation fact
+failing_test_proof: application behavior did not change, so no failing behavior test was added; the existing suite passed after the documentation edit
+docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
+docs_updated: PLAN.md 1.1.23 to 1.1.24, docs/PROJECT_STATE.md 1.1.41 to 1.1.42, docs/CHANGELOG.md 1.1.54 to 1.1.55. README.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/DATA_CONTRACT.md, and docs/KPI_REGISTRY.md were reviewed and left unchanged.
+changelog: updated
+schema_der: not_applicable: no schema or DER change
+data_contract_sync: not_applicable: docs/DATA_CONTRACT.md was reviewed and not changed
+logging_observability: no runtime logging, healthcheck payload, or operator command output changed
+kpi_registry_reviewed: yes
+kpi_registry_updated: not-needed
+kpi_registry_sync_checked: not-available
+kpi_registry_notes: reviewed, no update needed; no metric formula, source, status, or operator output changed
+
 # Workflow evidence — Position generation schema verification (2026-10-27)
 
 task_mode: STANDARD

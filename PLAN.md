@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.23
+doc_version: 1.1.24
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-27
+last_verified_at: 2026-10-29
 source_repo: django_render
 ---
 
@@ -35,13 +35,19 @@ reconciliation decisions, Binance calls, or changes to the shared contract.
 
 #### P0 — Restore and verify broken operator surfaces
 
-`/portfolio_status` and `/last_operations` are implemented Django Telegram
-diagnostics, not missing features. Their dispatch, bounded/read-only query
-paths, formatting, and focused tests exist in this repository. Production
-behavior is `NEEDS_RUNTIME_VERIFICATION`; this roadmap item is deployment and
-runtime verification, regression triage, and bounded-query monitoring only.
-Do not re-plan either command as implementation work without repository
-evidence of a missing path.
+`RUNTIME_VERIFIED` on 2026-10-29 in production. Owner Kurisufuano reported
+that `/portfolio_status` and `/last_operations` both responded with data at
+2026-10-29 15:36 ART (UTC-3). This record is that owner-reported observation.
+`/portfolio_status` showed equity 306.66 USDT and a 24h change of +0.36 USDT
+/ +0.12%. `/last_operations` listed the last 10 SELL operations. Equity 7d,
+equity 30d, and 24h equity drivers came back as `unavailable`. Those fields
+remain tracked in
+https://github.com/ccantero/django_render/issues/12.
+
+The commands are implemented Django Telegram diagnostics. Their dispatch,
+bounded/read-only query paths, formatting, and focused tests exist in this
+repository. Do not re-plan either command as implementation work without
+repository evidence of a missing path.
 
 #### P1 — Position Status / Sell Explainability
 
@@ -100,10 +106,16 @@ completed fixes.
 - `PARTIALLY_IMPLEMENTED`: Position Status / Sell Explainability; current
   Exit Status and `/why_not_sell` are useful inputs but not a complete
   freshness/provenance read model.
-- `NEEDS_RUNTIME_VERIFICATION`: deployed `/portfolio_status`, deployed
-  `/last_operations`, Render command/boot readiness (including a Build Command
-  that runs `collectstatic` before the untracked `staticfiles/` output is
-  deployed), and production DB grants.
+- `NEEDS_RUNTIME_VERIFICATION`: Render command/boot readiness (including a
+  Build Command that runs `collectstatic` before the untracked `staticfiles/`
+  output is deployed), and production DB grants.
+- `RUNTIME_VERIFIED`: deployed `/portfolio_status` and deployed
+  `/last_operations`, owner-reported by Kurisufuano in production on
+  2026-10-29 at 15:36 ART (UTC-3). Both commands responded with data.
+  `/portfolio_status` showed equity 306.66 USDT and 24h +0.36 USDT / +0.12%.
+  `/last_operations` listed the last 10 SELL operations. Equity 7d, equity
+  30d, and 24h equity drivers were `unavailable` and remain tracked in
+  https://github.com/ccantero/django_render/issues/12.
 - `BOT_CONTRACT_DEPENDENCY`: authoritative evidence timestamps, price
   provenance, complete per-position lifecycle status, stable BUY decision
   surfaces, trapped-capital/holding-efficiency inputs, and future Daily

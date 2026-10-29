@@ -1,13 +1,40 @@
 ---
 doc_id: changelog
-doc_version: 1.1.54
+doc_version: 1.1.55
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-27
+last_verified_at: 2026-10-29
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-29 - Record production verification of portfolio commands
+
+Type: docs
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- PLAN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Recorded owner-reported production verification of Telegram `/portfolio_status` and `/last_operations`.
+- Owner: Kurisufuano. Environment: production. Time: 2026-10-29 15:36 ART (UTC-3).
+- Both commands responded with data. `/portfolio_status` showed equity 306.66 USDT and a 24h change of +0.36 USDT / +0.12%. `/last_operations` listed the last 10 SELL operations.
+- Equity 7d, equity 30d, and 24h equity drivers returned `unavailable`. Those fields remain tracked in https://github.com/ccantero/django_render/issues/12.
+- PLAN.md marks that P0 item `RUNTIME_VERIFIED`. Render command/boot readiness, including `collectstatic`, stays `NEEDS_RUNTIME_VERIFICATION`.
+
+Operator impact:
+- The P0 roadmap item for these two commands is runtime verified from the owner's production observation.
+- Command behavior is unchanged. Unavailable 7d, 30d, and 24h equity-driver fields stay tracked by issue #12.
+
+Validation:
+- Documentation-only change. No application behavior changed, and no new behavior test was created.
+- `/tmp/venv/bin/pytest -q`: 461 passed, 3 skipped, 44 subtests passed.
+- `bash .codex/hooks/docs-sync.sh staged`: passed with 0 warnings.
+- `bash .codex/hooks/pre-commit.sh`: passed with 0 warnings.
 
 ## 2026-10-27 - Verify position generation schema
 

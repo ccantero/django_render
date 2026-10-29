@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.41
+doc_version: 1.1.42
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-27
+last_verified_at: 2026-10-29
 source_repo: django_render
 ---
 
@@ -63,8 +63,14 @@ dependency; Django must not reproduce SellService logic.
 
 `/portfolio_status` and `/last_operations` are implemented in this repository:
 they have command registration, handlers/formatters, bounded read paths, and
-focused tests. The repository cannot establish deployed production behavior,
-so both remain runtime-verification items rather than missing-feature items.
+focused tests. Owner Kurisufuano reported production runtime verification on
+2026-10-29 at 15:36 ART (UTC-3). Both commands responded with data.
+`/portfolio_status` showed equity 306.66 USDT and a 24h change of +0.36 USDT
+/ +0.12%. `/last_operations` listed the last 10 SELL operations. Equity 7d,
+equity 30d, and 24h equity drivers returned `unavailable`. Those unavailable
+fields remain tracked in
+https://github.com/ccantero/django_render/issues/12. This is an owner-reported
+observation. Command behavior stays as already implemented.
 
 The public Calculadora UVA and exchange-rate pages expose a PWA scoped to
 `/currencyconverter/`; the authenticated dashboard remains a regular route
@@ -261,7 +267,10 @@ Implemented capabilities:
 - `/portfolio_status` currently renders `24h equity drivers` as `unavailable`
   because no verified symbol-level attribution source is wired in the Django
   snapshot read path. The former current unrealized contributor block is
-  labeled `Current unrealized contributors`.
+  labeled `Current unrealized contributors`. The 2026-10-29 production check
+  also returned equity 7d, equity 30d, and 24h equity drivers as
+  `unavailable`; those fields remain tracked in
+  https://github.com/ccantero/django_render/issues/12.
 - Snapshot history uses `portfolio_equity_usdt` as the only historical equity
   source; missing, invalid, non-positive, `portfolio_sync_from_api`, or
   `open_value_usdt`-only snapshots degrade honestly instead of inventing
