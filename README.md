@@ -1,6 +1,6 @@
 ---
 doc_id: readme
-doc_version: 1.1.40
+doc_version: 1.1.41
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-30
@@ -476,6 +476,8 @@ without the required CSS, JavaScript, and admin static assets.
 Render command/boot readiness (including `collectstatic`) is
 `RUNTIME_VERIFIED` from the owner-provided evidence recorded in
 [PROJECT_STATE.md](docs/PROJECT_STATE.md#render-commandboot-readiness).
+The recorded deploy evidence is for `b61f9fc`; it does not assert that the
+current PR head has been deployed.
 The Build Command is managed outside Git; confirm it before changing static
 asset handling. Version and timestamp behavior is described below.
 

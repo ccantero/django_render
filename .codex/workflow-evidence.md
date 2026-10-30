@@ -1,3 +1,29 @@
+# Workflow evidence — Render readiness revalidation on current PR head (2026-10-30)
+
+task_mode: DOCUMENTATION
+impact: docs_only
+planner: problem: requested base 395953a advanced to 9aff094, which already implements the requested readiness/command changes; scope: preserve existing docs and verbatim owner evidence, clarify deployment provenance, and add exactly one documentation-only commit to the existing branch; components: README, PLAN, PROJECT_STATE, CHANGELOG, workflow evidence; contract impact: none; logging/observability impact: none; versioning: increment touched doc_version patches, keep last_verified_at 2026-10-30, update changelog, leave VERSION unchanged; schema/DER impact: none; strategy: verify command/evidence text, timestamp code, diff, both staged hooks, full pytest; steps: inspect, clarify docs, validate, review docs, commit and publish with expected-head check; risks: confusing the b61f9fc deployment with the current PR head or successful boot with DB least privilege
+implementation: documentation only; application behavior did not change and no new behavior test was created; preserved 9aff094 and all owner-provided evidence; no changes to tests, application code, configuration, VERSION, contracts, schema, hooks, or protected workflow infrastructure
+checkout_provenance: cloned existing branch cursor/verify-telegram-runtime-8955 at 9aff094e5a073d24893e38d67f60150694adb0f6; its parent is requested base 395953af934ef327fb5e9a5c4216f540ab681a51
+verification_source: owner-provided evidence already reproduced verbatim in PLAN.md, docs/PROJECT_STATE.md, and docs/CHANGELOG.md; no production request performed
+pending_issues: production DB grants remain NEEDS_RUNTIME_VERIFICATION including binancebot#10; boot RSS unverified; unavailable equity fields tracked by django_render#12; adding stamp_build remains pending owner decision
+tests_created: no new behavior test because application behavior did not change
+failing_test_proof: application behavior did not change; no failing behavior test was created
+phases_completed: planner, implementer, tester, documentator
+tests_executed: DJANGO_SKIP_ENV_FILE=1 /tmp/django-docs-venv/bin/pytest -q: 461 passed, 3 PostgreSQL-only skipped, 207 warnings, 44 subtests passed in 43.64s; 206 warnings report the absent generated staticfiles directory in this fresh checkout and one is the existing DRF UnorderedObjectListWarning; exact owner evidence/commands, stamp_build note, status separation, architecture/design alignment, and version-header assertions passed; git diff --check passed
+governance_validation: bash .codex/hooks/docs-sync.sh staged passed with 0 warnings; bash .codex/hooks/pre-commit.sh passed with 0 warnings
+docs_reviewed: README.md, PLAN.md, docs/PROJECT_STATE.md, docs/ARCHITECTURE.md, docs/DATA_CONTRACT.md, docs/DESIGN.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
+docs_updated: README.md 1.1.40 to 1.1.41; PLAN.md 1.1.25 to 1.1.26; docs/PROJECT_STATE.md 1.1.43 to 1.1.44; docs/CHANGELOG.md 1.1.56 to 1.1.57; last_verified_at remains 2026-10-30; ARCHITECTURE.md already has exact production commands, DESIGN.md has no Build Command; DATA_CONTRACT.md and KPI_REGISTRY.md reviewed, no update needed; workflow evidence prepends this task and preserves history
+changelog: updated
+schema_der: not_applicable: no schema or DER change
+data_contract_sync: not_applicable: no shared contract change
+logging_observability: reviewed, unchanged; no runtime logging, diagnostics, or operator output changes
+kpi_registry_reviewed: yes
+kpi_registry_updated: not-needed
+kpi_registry_sync_checked: not-available
+protected_infrastructure: no changes to AGENTS.md or .codex/hooks, .codex/lib, .codex/templates
+production_actions: none; no production request, runtime configuration change, merge, or deploy
+
 # Workflow evidence — Render command/boot readiness (2026-10-30)
 
 task_mode: DOCUMENTATION

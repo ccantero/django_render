@@ -1,6 +1,6 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.25
+doc_version: 1.1.26
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-30
@@ -138,6 +138,7 @@ completed fixes.
 - Log del deploy del commit b61f9fc (27/10/2026 20:06 UTC = 17:06 ART): "171 static files copied to '/opt/render/project/src/staticfiles', 159 post-processed.", "No migrations to apply", "Build successful", gunicorn arrancó, "Your service is live", el primer GET / devolvió 200.
 - 30/10/2026 01:36 ART: HEAD https://www.cantero-solutions.com.ar/static/admin/css/base.css devolvió HTTP/2 200, text/css.
 
+The deploy evidence is scoped to `b61f9fc`; the PR head is not claimed as deployed.
 Boot/static delivery evidence does not verify production DB grants or boot RSS.
 See [Render command/boot readiness](docs/PROJECT_STATE.md#render-commandboot-readiness).
 

@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.56
+doc_version: 1.1.57
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-30
@@ -8,6 +8,31 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-30 - Revalidate Render readiness documentation on the current PR head
+
+Type: docs
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+- .codex/workflow-evidence.md
+
+Summary:
+- The branch already contained the Render readiness update in `9aff094`, after the requested base `395953a`. Preserved that update and the verbatim owner-provided evidence below.
+- Clarified that deploy evidence refers to `b61f9fc`; it does not assert deployment of the current PR head. Render command/boot readiness, including `collectstatic`, remains `RUNTIME_VERIFIED`.
+- Rechecked the exact production Build and Start Commands and the pending-owner-decision note for `stamp_build`. README timestamp behavior matches `django_render/version.py`.
+
+Operator impact:
+- Production DB grants remain `NEEDS_RUNTIME_VERIFICATION`; boot RSS and issue #12 remain pending as before.
+- No application behavior, runtime configuration, contract, logging, KPI, schema, merge, or deploy change. ARCHITECTURE.md already matches the production commands; DESIGN.md has no Build Command to align.
+
+Validation:
+- Fresh staged hooks and full `pytest -q` results are recorded in the newest `.codex/workflow-evidence.md` entry.
+- No new behavior test was created because application behavior did not change.
 
 ## 2026-10-30 - Verify Render command/boot readiness and correct production commands
 

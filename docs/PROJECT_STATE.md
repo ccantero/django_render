@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.43
+doc_version: 1.1.44
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-30
@@ -364,6 +364,10 @@ owner-provided production evidence, reproduced verbatim:
   - Start Command: gunicorn django_render.wsgi
 - Log del deploy del commit b61f9fc (27/10/2026 20:06 UTC = 17:06 ART): "171 static files copied to '/opt/render/project/src/staticfiles', 159 post-processed.", "No migrations to apply", "Build successful", gunicorn arrancó, "Your service is live", el primer GET / devolvió 200.
 - 30/10/2026 01:36 ART: HEAD https://www.cantero-solutions.com.ar/static/admin/css/base.css devolvió HTTP/2 200, text/css.
+
+The deployment observation is for `b61f9fc`, not a deployment claim for the
+current PR head. Revalidation on 2026-10-30 preserves the owner-provided
+evidence above without issuing another production request.
 
 Production DB grants remain `NEEDS_RUNTIME_VERIFICATION`, including the
 position-generation table/column grants tracked above. Successful migration,
