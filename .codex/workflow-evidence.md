@@ -1,3 +1,29 @@
+# Workflow evidence — Render command/boot readiness (2026-10-30)
+
+task_mode: DOCUMENTATION
+phases_completed: planner, implementer, tester, documentator
+impact: docs_only
+planner: reconcile documentation with owner-provided production commands, deploy log, and static HEAD evidence; scope limited to README, PLAN, PROJECT_STATE, ARCHITECTURE, CHANGELOG, and workflow evidence; no application, tests, runtime configuration, VERSION, contracts, logging, KPI, schema, DER, merge, or deploy change; bump doc_version patch and last_verified_at to 2026-10-30; validate exact evidence, command, links, headers, staged hooks, and full pytest; risk is confusing boot/static evidence with DB grants or Procfile flags with actual Render settings
+implementation: documentation only; application behavior did not change and no new behavior test was created; removed proposed stamp_build command in favor of the owner's pending-decision note; inspected django_render/version.py, VERSION, Procfile, and test settings before describing behavior
+verification_source: owner-provided production evidence reproduced verbatim in PLAN.md, docs/PROJECT_STATE.md, and docs/CHANGELOG.md; no new production request was performed
+checkout_provenance: local base b61f9fc5a468ee7433985edd9601bedd36248426; Git fetch failed because the configured proxy was unreachable; GitHub integration confirmed PR #13 head 395953af934ef327fb5e9a5c4216f540ab681a51 and its four documentation-only changed files, fetched at that exact SHA; reconstructed head tree dec66c60545fbcd89cd9fa5ad185d1ba3ec1b34a; validation uses that code plus the documentation edits; publication uses the exact remote head as the sole parent
+tests_executed: .venv/bin/python -m pytest -q: 461 passed, 3 PostgreSQL-only skipped, 1 existing DRF UnorderedObjectListWarning, 44 subtests passed (39.27s); DJANGO_SKIP_ENV_FILE=1 .venv/bin/pytest -q also returned 461 passed, 3 skipped, 1 existing DRF warning, 44 subtests passed (39.43s); git diff --check passed; bash .codex/hooks/docs-sync.sh staged passed with 0 warnings; initial pre-commit found the new not_applicable failing_test_proof incompatible with historical behavior evidence in this cumulative file; the field now explicitly states no behavior change without that prefix, retaining all history; final bash .codex/hooks/docs-sync.sh staged and bash .codex/hooks/pre-commit.sh both passed with 0 warnings
+pending_issues: production DB grants remain NEEDS_RUNTIME_VERIFICATION, including ccantero/binancebot#10; boot RSS remains unverified; unavailable equity fields remain tracked by ccantero/django_render#12; adding stamp_build to production Build Command remains the owner's decision
+tests_created: no new behavior test was created because this is documentation only
+failing_test_proof: application behavior did not change; no failing behavior test was created
+docs_reviewed: README.md, PLAN.md, docs/PROJECT_STATE.md, docs/ARCHITECTURE.md, docs/DATA_CONTRACT.md, docs/DESIGN.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
+docs_updated: README.md 1.1.39 to 1.1.40; PLAN.md 1.1.24 to 1.1.25; docs/PROJECT_STATE.md 1.1.42 to 1.1.43; docs/ARCHITECTURE.md 1.1.24 to 1.1.25; docs/CHANGELOG.md 1.1.55 to 1.1.56; all last_verified_at 2026-10-30; .codex/workflow-evidence.md updated; DESIGN.md has no Build Command and needs no update; DATA_CONTRACT.md and KPI_REGISTRY.md reviewed, no update needed
+changelog: updated
+schema_der: not_applicable: no schema or DER change
+data_contract_sync: not_applicable: reviewed, no shared contract change
+logging_observability: reviewed, no runtime logging, healthcheck payload, or operator output change
+kpi_registry_reviewed: yes
+kpi_registry_updated: not-needed
+kpi_registry_sync_checked: not-available
+kpi_registry_notes: reviewed, no update needed; no metric formula, source, status, or output changed
+protected_infrastructure: no changes to AGENTS.md or .codex/hooks, .codex/lib, .codex/templates
+production_actions: none; no merge, deploy, or runtime configuration change
+
 # Workflow evidence — Telegram portfolio command runtime verification (2026-10-29)
 
 task_mode: DOCUMENTATION

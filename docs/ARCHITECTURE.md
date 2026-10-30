@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.24
+doc_version: 1.1.25
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-27
+last_verified_at: 2026-10-30
 source_repo: django_render
 ---
 
@@ -291,6 +291,19 @@ Django admin assets are collected from `django.contrib.admin`. They are not
 vendored in `static/admin`. Render serves the collected tree only after the
 service Build Command runs `collectstatic`. That command is configured in the
 Render dashboard; this repository has no `render.yaml` and no build script.
+The owner confirmed the production configuration on 2026-10-30:
+
+```text
+Build Command: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations
+Start Command: gunicorn django_render.wsgi
+```
+
+`python manage.py stamp_build` no corre hoy en producción; agregarlo al Build Command está pendiente de decisión del owner.
+
+Render command/boot readiness (including `collectstatic`) is `RUNTIME_VERIFIED`
+from the owner-provided deploy log and static HEAD response recorded in
+[PROJECT_STATE.md](PROJECT_STATE.md#render-commandboot-readiness). The tracked
+`Procfile` flags are separate from this confirmed Render Start Command.
 
 ---
 

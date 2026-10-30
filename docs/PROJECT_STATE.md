@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.42
+doc_version: 1.1.43
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-29
+last_verified_at: 2026-10-30
 source_repo: django_render
 ---
 
@@ -188,12 +188,11 @@ Implemented capabilities:
 - `/portfolio_status` limits snapshot materialization to the configured
   `PORTFOLIO_STATUS_MAX_SNAPSHOTS` cap (512 by default); chart-render failure
   remains text-only fallback behavior.
-- Production guidance is captured in the tracked `Procfile` as one Gunicorn
-  worker with two threads and a 30-second timeout for the 512 MB Render
-  service. The `Procfile` is the start command only. Collected static output
-  is not tracked; production depends on the Render Build Command running
-  `python manage.py collectstatic --noinput`. Actual Render command, boot RSS,
-  and webhook readiness still need deployment verification.
+- Render command/boot readiness (incluido collectstatic) is `RUNTIME_VERIFIED`.
+  The owner-confirmed Start Command is `gunicorn django_render.wsgi`; the
+  tracked `Procfile` separately specifies worker/thread/timeout/logging flags.
+  See the production evidence below. Boot RSS remains unverified; production
+  DB grants remain `NEEDS_RUNTIME_VERIFICATION`.
 - Telegram diagnostics include a compact command guide and format skipped/rejected
   SELL diagnostics with status, interpretation, suggested action, and raw event details for mobile review.
 - Telegram `/health` includes Disk Usage from latest
@@ -354,6 +353,23 @@ Detected infrastructure and tooling:
   admin assets come from the installed package at collect time.
 
 ---
+
+## Render command/boot readiness
+
+Status: `RUNTIME_VERIFIED` (incluido collectstatic), recorded 2026-10-30 from
+owner-provided production evidence, reproduced verbatim:
+
+- Configuración real de Render, compartida por el owner el 30/10/2026:
+  - Build Command: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations
+  - Start Command: gunicorn django_render.wsgi
+- Log del deploy del commit b61f9fc (27/10/2026 20:06 UTC = 17:06 ART): "171 static files copied to '/opt/render/project/src/staticfiles', 159 post-processed.", "No migrations to apply", "Build successful", gunicorn arrancó, "Your service is live", el primer GET / devolvió 200.
+- 30/10/2026 01:36 ART: HEAD https://www.cantero-solutions.com.ar/static/admin/css/base.css devolvió HTTP/2 200, text/css.
+
+Production DB grants remain `NEEDS_RUNTIME_VERIFICATION`, including the
+position-generation table/column grants tracked above. Successful migration,
+boot, and static delivery do not establish least privilege. Boot RSS is not
+verified by this evidence. No deploy or production change was performed for
+this documentation update.
 
 ## Important Current Boundary
 

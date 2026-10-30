@@ -1,13 +1,47 @@
 ---
 doc_id: changelog
-doc_version: 1.1.55
+doc_version: 1.1.56
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-29
+last_verified_at: 2026-10-30
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-30 - Verify Render command/boot readiness and correct production commands
+
+Type: docs
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/CHANGELOG.md
+- .codex/workflow-evidence.md
+
+Summary:
+- Render command/boot readiness (incluido collectstatic): `NEEDS_RUNTIME_VERIFICATION` → `RUNTIME_VERIFIED` based on owner-provided production evidence, reproduced verbatim:
+
+- Configuración real de Render, compartida por el owner el 30/10/2026:
+  - Build Command: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations
+  - Start Command: gunicorn django_render.wsgi
+- Log del deploy del commit b61f9fc (27/10/2026 20:06 UTC = 17:06 ART): "171 static files copied to '/opt/render/project/src/staticfiles', 159 post-processed.", "No migrations to apply", "Build successful", gunicorn arrancó, "Your service is live", el primer GET / devolvió 200.
+- 30/10/2026 01:36 ART: HEAD https://www.cantero-solutions.com.ar/static/admin/css/base.css devolvió HTTP/2 200, text/css.
+
+Operator impact:
+- README and architecture now reflect the exact production Build and Start Commands.
+- `python manage.py stamp_build` no corre hoy en producción; agregarlo al Build Command está pendiente de decisión del owner.
+- Version/timestamp behavior was checked against `django_render/version.py`; no claim is made about a production `DEPLOYED_AT` value or stamp file.
+- Production DB grants remain `NEEDS_RUNTIME_VERIFICATION`. Boot RSS is still unverified. Issue #12 remains open for unavailable equity fields.
+- This record supersedes the Render pending status in the historical 2026-10-29 entry below.
+
+Validation:
+- Documentation only; application behavior did not change and no new behavior test was created.
+- Hook and pytest results are recorded in `.codex/workflow-evidence.md` for this task.
+- No code, runtime configuration, merge, or deploy changes.
 
 ## 2026-10-29 - Record production verification of portfolio commands
 

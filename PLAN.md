@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.24
+doc_version: 1.1.25
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-29
+last_verified_at: 2026-10-30
 source_repo: django_render
 ---
 
@@ -106,9 +106,9 @@ completed fixes.
 - `PARTIALLY_IMPLEMENTED`: Position Status / Sell Explainability; current
   Exit Status and `/why_not_sell` are useful inputs but not a complete
   freshness/provenance read model.
-- `NEEDS_RUNTIME_VERIFICATION`: Render command/boot readiness (including a
-  Build Command that runs `collectstatic` before the untracked `staticfiles/`
-  output is deployed), and production DB grants.
+- `NEEDS_RUNTIME_VERIFICATION`: production DB grants.
+- `RUNTIME_VERIFIED`: Render command/boot readiness (incluido collectstatic),
+  from owner-provided production evidence recorded on 2026-10-30 below.
 - `RUNTIME_VERIFIED`: deployed `/portfolio_status` and deployed
   `/last_operations`, owner-reported by Kurisufuano in production on
   2026-10-29 at 15:36 ART (UTC-3). Both commands responded with data.
@@ -129,6 +129,17 @@ completed fixes.
 - `STALE`: historical implementation wording that leaves completed dashboard
   features in an active roadmap bucket; preserve such facts only in
   Completed Work or changelog history.
+
+#### Render command/boot readiness — production evidence
+
+- Configuración real de Render, compartida por el owner el 30/10/2026:
+  - Build Command: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations
+  - Start Command: gunicorn django_render.wsgi
+- Log del deploy del commit b61f9fc (27/10/2026 20:06 UTC = 17:06 ART): "171 static files copied to '/opt/render/project/src/staticfiles', 159 post-processed.", "No migrations to apply", "Build successful", gunicorn arrancó, "Your service is live", el primer GET / devolvió 200.
+- 30/10/2026 01:36 ART: HEAD https://www.cantero-solutions.com.ar/static/admin/css/base.css devolvió HTTP/2 200, text/css.
+
+Boot/static delivery evidence does not verify production DB grants or boot RSS.
+See [Render command/boot readiness](docs/PROJECT_STATE.md#render-commandboot-readiness).
 
 Forgotten but retained work includes DB grant/least-privilege verification,
 dashboard performance and bounded-query monitoring, Telegram command health,

@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.39
+doc_version: 1.1.40
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-27
+last_verified_at: 2026-10-30
 source_repo: django_render
 ---
 
@@ -450,24 +450,34 @@ and no hashed manifest. Django 5.2 reads that backend from
 `STORAGES["staticfiles"]`.
 
 The Render web service currently uses the following **Build Command**, configured
-in the Render dashboard (not in this repository):
+in the Render dashboard (owner confirmation on 2026-10-30):
 
 ```bash
 pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations
 ```
 
-`Procfile` defines only the web start command; there is no `render.yaml`.
+The production **Start Command** confirmed by the owner is:
+
+```bash
+gunicorn django_render.wsgi
+```
+
+The tracked `Procfile` separately specifies one worker, two threads, a
+30-second timeout, and stdout/stderr logging. Those flags are not part of the
+owner-confirmed Render Start Command. There is no `render.yaml`.
 The build installs dependencies, applies Django migrations, generates static
 assets, and displays migration status. Keep `collectstatic` in the Build Command:
 production WhiteNoise serves the generated `staticfiles/` directory, which is
 intentionally not committed to Git. Removing that step would leave production
 without the required CSS, JavaScript, and admin static assets.
 
-The Build Command is managed outside Git, so verify it remains configured in
-Render before deploying changes to static asset handling. An exact build time
-in the version footer is optional. To record one, append `&& python manage.py stamp_build`
-to that command. Without it, the footer still shows the commit and leaves the
-time unknown. See "Deployed application version" below.
+`python manage.py stamp_build` no corre hoy en producción; agregarlo al Build Command está pendiente de decisión del owner.
+
+Render command/boot readiness (including `collectstatic`) is
+`RUNTIME_VERIFIED` from the owner-provided evidence recorded in
+[PROJECT_STATE.md](docs/PROJECT_STATE.md#render-commandboot-readiness).
+The Build Command is managed outside Git; confirm it before changing static
+asset handling. Version and timestamp behavior is described below.
 
 Required environment variables:
 
@@ -684,20 +694,12 @@ A clock time is shown only when a controlled step recorded a UTC instant:
 1. `DEPLOYED_AT`, if it is valid ISO-8601. This overrides the build stamp. A value left unchanged in the dashboard does not move on later deploys, so prefer the build stamp unless you need an override.
 2. Otherwise `build_info.json`, written by `python manage.py stamp_build`. The file stores `{"deployed_at":"<UTC>"}` and is gitignored.
 
-To record the build time on Render, change the Build Command from:
+`python manage.py stamp_build` no corre hoy en producción; agregarlo al Build Command está pendiente de decisión del owner.
 
-```bash
-pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations
-```
-
-to:
-
-```bash
-pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations && python manage.py stamp_build
-```
-
-That change is optional. A restart does not re-run the build, so an existing
-stamp stays the same until the next build. With no `DEPLOYED_AT` and no stamp
+According to `django_render/version.py`, the version and short commit remain
+visible without `stamp_build`. A valid `DEPLOYED_AT` still takes precedence;
+otherwise the code reads an existing `build_info.json`. A restart does not
+write a stamp. With no valid `DEPLOYED_AT` and no valid stamp
 file, the time is `unknown` and `/version/` returns `deployed_at: null` with
 `timestamp_source: "unknown"`. Shown times use `America/Buenos_Aires` and an
 `ART` label. `timestamp_source` is `explicit` or `build_stamp` when a time is
@@ -718,8 +720,7 @@ curl https://<your-render-host>/version/
 
 `/health/` is unchanged. The version payload does not include service IDs,
 branches, hostnames, or secrets. No Render dashboard change is required for
-the commit label. Add the `stamp_build` step above only if you want the exact
-build time.
+the commit label. Adding `stamp_build` remains an owner decision.
 
 Bump `VERSION` in the same PR that changes deployed behavior after `1.0.0`:
 
