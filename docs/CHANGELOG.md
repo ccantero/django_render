@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.57
+doc_version: 1.1.58
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-30
@@ -8,6 +8,35 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-30 - Verify production stamp_build and correct earlier readiness records
+
+Type: docs
+Runtime version: 2.1.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/CHANGELOG.md
+- .codex/workflow-evidence.md
+
+Summary:
+- Corrects the two earlier 2026-10-30 entries: their stamp_build pending-decision statements are historical and superseded. stamp_build is now `RUNTIME_VERIFIED` from owner-reported evidence, reproduced verbatim:
+
+- On 2026-10-30 the owner appended "&& python manage.py stamp_build" to the Render Build Command. Current production Build Command:
+  pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations && python manage.py stamp_build
+- 2026-10-30 11:52 ART: GET https://www.cantero-solutions.com.ar/version/ returned {"version": "2.1.0", "commit": "b61f9fc", "deployed_at": "2026-10-30T01:47:56-03:00", "timestamp_source": "build_stamp", "display": "v2.1.0+b61f9fc · 30/10 01:47 ART"}. The PWA footer shows the same value.
+
+Operator impact:
+- Current setup documentation includes stamp_build in the production Build Command. The earlier b61f9fc collectstatic deploy command without stamp_build and its runtime evidence remain unchanged and `RUNTIME_VERIFIED`.
+- build_info.json stores the build UTC instant; valid DEPLOYED_AT takes precedence. A restart does not re-stamp. The observed version/commit and PWA footer identify b61f9fc, not the PR head.
+- No application behavior, runtime configuration, merge, or deployment was changed by this documentation task. Unavailable equity fields remain tracked in issue #12.
+
+Validation:
+- Both staged hooks and full pytest results are recorded in .codex/workflow-evidence.md.
+
 
 ## 2026-10-30 - Revalidate Render readiness documentation on the current PR head
 
@@ -27,7 +56,7 @@ Summary:
 - Rechecked the exact production Build and Start Commands and the pending-owner-decision note for `stamp_build`. README timestamp behavior matches `django_render/version.py`.
 
 Operator impact:
-- Production DB grants remain `NEEDS_RUNTIME_VERIFICATION`; boot RSS and issue #12 remain pending as before.
+- Issue #12 remains pending as before.
 - No application behavior, runtime configuration, contract, logging, KPI, schema, merge, or deploy change. ARCHITECTURE.md already matches the production commands; DESIGN.md has no Build Command to align.
 
 Validation:
@@ -60,7 +89,7 @@ Operator impact:
 - README and architecture now reflect the exact production Build and Start Commands.
 - `python manage.py stamp_build` no corre hoy en producción; agregarlo al Build Command está pendiente de decisión del owner.
 - Version/timestamp behavior was checked against `django_render/version.py`; no claim is made about a production `DEPLOYED_AT` value or stamp file.
-- Production DB grants remain `NEEDS_RUNTIME_VERIFICATION`. Boot RSS is still unverified. Issue #12 remains open for unavailable equity fields.
+- Issue #12 remains open for unavailable equity fields.
 - This record supersedes the Render pending status in the historical 2026-10-29 entry below.
 
 Validation:

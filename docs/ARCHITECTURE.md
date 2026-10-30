@@ -1,6 +1,6 @@
 ---
 doc_id: architecture
-doc_version: 1.1.25
+doc_version: 1.1.26
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-30
@@ -294,16 +294,22 @@ Render dashboard; this repository has no `render.yaml` and no build script.
 The owner confirmed the production configuration on 2026-10-30:
 
 ```text
-Build Command: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations
+Build Command: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations && python manage.py stamp_build
 Start Command: gunicorn django_render.wsgi
 ```
 
-`python manage.py stamp_build` no corre hoy en producción; agregarlo al Build Command está pendiente de decisión del owner.
+`stamp_build` is `RUNTIME_VERIFIED`; see the owner-reported evidence below.
 
 Render command/boot readiness (including `collectstatic`) is `RUNTIME_VERIFIED`
 from the owner-provided deploy log and static HEAD response recorded in
-[PROJECT_STATE.md](PROJECT_STATE.md#render-commandboot-readiness). The tracked
-`Procfile` flags are separate from this confirmed Render Start Command.
+[PROJECT_STATE.md](PROJECT_STATE.md#render-commandboot-readiness).
+
+### stamp_build — RUNTIME_VERIFIED
+
+- On 2026-10-30 the owner appended "&& python manage.py stamp_build" to the Render Build Command. Current production Build Command:
+  pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations && python manage.py stamp_build
+- 2026-10-30 11:52 ART: GET https://www.cantero-solutions.com.ar/version/ returned {"version": "2.1.0", "commit": "b61f9fc", "deployed_at": "2026-10-30T01:47:56-03:00", "timestamp_source": "build_stamp", "display": "v2.1.0+b61f9fc · 30/10 01:47 ART"}. The PWA footer shows the same value.
+
 
 ---
 

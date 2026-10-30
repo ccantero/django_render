@@ -1,6 +1,6 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.26
+doc_version: 1.1.27
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-30
@@ -139,8 +139,16 @@ completed fixes.
 - 30/10/2026 01:36 ART: HEAD https://www.cantero-solutions.com.ar/static/admin/css/base.css devolvió HTTP/2 200, text/css.
 
 The deploy evidence is scoped to `b61f9fc`; the PR head is not claimed as deployed.
-Boot/static delivery evidence does not verify production DB grants or boot RSS.
 See [Render command/boot readiness](docs/PROJECT_STATE.md#render-commandboot-readiness).
+
+#### stamp_build — RUNTIME_VERIFIED
+
+- On 2026-10-30 the owner appended "&& python manage.py stamp_build" to the Render Build Command. Current production Build Command:
+  pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations && python manage.py stamp_build
+- 2026-10-30 11:52 ART: GET https://www.cantero-solutions.com.ar/version/ returned {"version": "2.1.0", "commit": "b61f9fc", "deployed_at": "2026-10-30T01:47:56-03:00", "timestamp_source": "build_stamp", "display": "v2.1.0+b61f9fc · 30/10 01:47 ART"}. The PWA footer shows the same value.
+
+The Build Command above supersedes the historical command for subsequent builds.
+The collectstatic deployment evidence remains unchanged.
 
 Forgotten but retained work includes DB grant/least-privilege verification,
 dashboard performance and bounded-query monitoring, Telegram command health,

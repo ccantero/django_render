@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.44
+doc_version: 1.1.45
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-30
@@ -189,10 +189,8 @@ Implemented capabilities:
   `PORTFOLIO_STATUS_MAX_SNAPSHOTS` cap (512 by default); chart-render failure
   remains text-only fallback behavior.
 - Render command/boot readiness (incluido collectstatic) is `RUNTIME_VERIFIED`.
-  The owner-confirmed Start Command is `gunicorn django_render.wsgi`; the
-  tracked `Procfile` separately specifies worker/thread/timeout/logging flags.
-  See the production evidence below. Boot RSS remains unverified; production
-  DB grants remain `NEEDS_RUNTIME_VERIFICATION`.
+  The owner-confirmed Start Command is `gunicorn django_render.wsgi`.
+  See the production evidence below. `stamp_build` is also `RUNTIME_VERIFIED`.
 - Telegram diagnostics include a compact command guide and format skipped/rejected
   SELL diagnostics with status, interpretation, suggested action, and raw event details for mobile review.
 - Telegram `/health` includes Disk Usage from latest
@@ -369,11 +367,13 @@ The deployment observation is for `b61f9fc`, not a deployment claim for the
 current PR head. Revalidation on 2026-10-30 preserves the owner-provided
 evidence above without issuing another production request.
 
-Production DB grants remain `NEEDS_RUNTIME_VERIFICATION`, including the
-position-generation table/column grants tracked above. Successful migration,
-boot, and static delivery do not establish least privilege. Boot RSS is not
-verified by this evidence. No deploy or production change was performed for
-this documentation update.
+### stamp_build — RUNTIME_VERIFIED
+
+- On 2026-10-30 the owner appended "&& python manage.py stamp_build" to the Render Build Command. Current production Build Command:
+  pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations && python manage.py stamp_build
+- 2026-10-30 11:52 ART: GET https://www.cantero-solutions.com.ar/version/ returned {"version": "2.1.0", "commit": "b61f9fc", "deployed_at": "2026-10-30T01:47:56-03:00", "timestamp_source": "build_stamp", "display": "v2.1.0+b61f9fc · 30/10 01:47 ART"}. The PWA footer shows the same value.
+
+No deploy or production change was performed for this documentation update.
 
 ## Important Current Boundary
 

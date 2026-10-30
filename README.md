@@ -1,6 +1,6 @@
 ---
 doc_id: readme
-doc_version: 1.1.41
+doc_version: 1.1.42
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-10-30
@@ -453,7 +453,7 @@ The Render web service currently uses the following **Build Command**, configure
 in the Render dashboard (owner confirmation on 2026-10-30):
 
 ```bash
-pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations
+pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations && python manage.py stamp_build
 ```
 
 The production **Start Command** confirmed by the owner is:
@@ -462,16 +462,14 @@ The production **Start Command** confirmed by the owner is:
 gunicorn django_render.wsgi
 ```
 
-The tracked `Procfile` separately specifies one worker, two threads, a
-30-second timeout, and stdout/stderr logging. Those flags are not part of the
-owner-confirmed Render Start Command. There is no `render.yaml`.
+There is no `render.yaml`.
 The build installs dependencies, applies Django migrations, generates static
 assets, and displays migration status. Keep `collectstatic` in the Build Command:
 production WhiteNoise serves the generated `staticfiles/` directory, which is
 intentionally not committed to Git. Removing that step would leave production
 without the required CSS, JavaScript, and admin static assets.
 
-`python manage.py stamp_build` no corre hoy en producción; agregarlo al Build Command está pendiente de decisión del owner.
+`stamp_build` is `RUNTIME_VERIFIED`; see the owner-reported evidence below.
 
 Render command/boot readiness (including `collectstatic`) is
 `RUNTIME_VERIFIED` from the owner-provided evidence recorded in
@@ -480,6 +478,13 @@ The recorded deploy evidence is for `b61f9fc`; it does not assert that the
 current PR head has been deployed.
 The Build Command is managed outside Git; confirm it before changing static
 asset handling. Version and timestamp behavior is described below.
+
+
+### stamp_build — RUNTIME_VERIFIED
+
+- On 2026-10-30 the owner appended "&& python manage.py stamp_build" to the Render Build Command. Current production Build Command:
+  pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations && python manage.py stamp_build
+- 2026-10-30 11:52 ART: GET https://www.cantero-solutions.com.ar/version/ returned {"version": "2.1.0", "commit": "b61f9fc", "deployed_at": "2026-10-30T01:47:56-03:00", "timestamp_source": "build_stamp", "display": "v2.1.0+b61f9fc · 30/10 01:47 ART"}. The PWA footer shows the same value.
 
 Required environment variables:
 
@@ -696,7 +701,8 @@ A clock time is shown only when a controlled step recorded a UTC instant:
 1. `DEPLOYED_AT`, if it is valid ISO-8601. This overrides the build stamp. A value left unchanged in the dashboard does not move on later deploys, so prefer the build stamp unless you need an override.
 2. Otherwise `build_info.json`, written by `python manage.py stamp_build`. The file stores `{"deployed_at":"<UTC>"}` and is gitignored.
 
-`python manage.py stamp_build` no corre hoy en producción; agregarlo al Build Command está pendiente de decisión del owner.
+The production Build Command now runs `python manage.py stamp_build` after
+`showmigrations`; it writes `build_info.json` with the build UTC instant.
 
 According to `django_render/version.py`, the version and short commit remain
 visible without `stamp_build`. A valid `DEPLOYED_AT` still takes precedence;
@@ -722,7 +728,7 @@ curl https://<your-render-host>/version/
 
 `/health/` is unchanged. The version payload does not include service IDs,
 branches, hostnames, or secrets. No Render dashboard change is required for
-the commit label. Adding `stamp_build` remains an owner decision.
+the commit label. The configured build step records the build timestamp.
 
 Bump `VERSION` in the same PR that changes deployed behavior after `1.0.0`:
 
