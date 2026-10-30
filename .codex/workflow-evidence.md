@@ -1,3 +1,109 @@
+---
+doc_id: workflow-evidence
+doc_version: 1.0.0
+schema_version: unknown
+runtime_min_version: unknown
+last_verified_at: 2026-10-30
+source_repo: django_render
+---
+
+# Workflow evidence — Production stamp_build verification (2026-10-30)
+
+task_mode: DOCUMENTATION
+phases_completed: planner, implementer, tester, documentator
+impact: docs_only
+planner: problem: owner configured stamp_build and verified version/PWA output; scope: six documentation files only, preserve collectstatic and Telegram evidence and existing main requirements, remove out-of-scope additions from 9aff094/e327264; components: README, ARCHITECTURE, PLAN, PROJECT_STATE, CHANGELOG, workflow evidence; no code, tests, runtime configuration, VERSION, contract, logging, KPI, schema or DER impact; versioning: patch core doc_version and last_verified_at 2026-10-30, introduce previously absent evidence version header at 1.0.0, append corrective changelog entry; test strategy: verbatim evidence, historical evidence preservation, main comparison, diff checks, staged hooks, full pytest; steps: inspect docs and version code, update, validate, review, create one commit on existing branch; risk: treating historical build command as current or changing unrelated requirements
+implementation: documentation only; application behavior did not change and no new behavior test was created; current command includes stamp_build, historical collectstatic evidence unchanged, historical pending stamp statements superseded by new changelog entry; no application or protected workflow edits
+verification_source: owner-reported 2026-10-30 11:52 ART GET /version/ and matching PWA footer, recorded verbatim in all five core docs; no production request performed
+checkout_provenance: e32726444d037b8b4e2d8c850e0378d918bcdef5 on cursor/verify-telegram-runtime-8955
+pending_issues: unavailable equity fields remain tracked in django_render#12
+tests_executed: DJANGO_SKIP_ENV_FILE=1 /tmp/django-docs-venv/bin/pytest -q: 461 passed, 3 PostgreSQL-only skipped, 207 warnings, 44 subtests passed in 41.40s; 206 warnings are absent generated staticfiles directory and one is existing DRF unordered pagination warning; verbatim new evidence and unchanged historical collectstatic evidence assertions passed; current pending-decision note absence verified; git diff --check passed
+governance_validation: bash .codex/hooks/docs-sync.sh staged passed with 0 warnings; bash .codex/hooks/pre-commit.sh passed with 0 warnings
+tests_created: no new behavior test because application behavior did not change
+failing_test_proof: application behavior did not change; no failing behavior test was created
+docs_reviewed: README.md, PLAN.md, docs/PROJECT_STATE.md, docs/ARCHITECTURE.md, docs/DATA_CONTRACT.md, docs/DESIGN.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
+docs_updated: README.md 1.1.42, PLAN.md 1.1.27, docs/PROJECT_STATE.md 1.1.45, docs/ARCHITECTURE.md 1.1.26, docs/CHANGELOG.md 1.1.58; workflow evidence initial header 1.0.0; last_verified_at 2026-10-30; DESIGN, DATA_CONTRACT and KPI registry reviewed, no update needed
+changelog: updated
+schema_der: not_applicable: no schema or DER change
+data_contract_sync: not_applicable: no contract change
+logging_observability: reviewed, unchanged
+kpi_registry_reviewed: yes
+kpi_registry_updated: not-needed
+kpi_registry_sync_checked: not-available
+production_actions: none; no merge, deploy or production modification
+
+# Workflow evidence — Render readiness revalidation on current PR head (2026-10-30)
+
+task_mode: DOCUMENTATION
+impact: docs_only
+planner: problem: requested base 395953a advanced to 9aff094, which already implements the requested readiness/command changes; scope: preserve existing docs and verbatim owner evidence, clarify deployment provenance, and add exactly one documentation-only commit to the existing branch; components: README, PLAN, PROJECT_STATE, CHANGELOG, workflow evidence; contract impact: none; logging/observability impact: none; versioning: increment touched doc_version patches, keep last_verified_at 2026-10-30, update changelog, leave VERSION unchanged; schema/DER impact: none; strategy: verify command/evidence text, timestamp code, diff, both staged hooks, full pytest; steps: inspect, clarify docs, validate, review docs, commit and publish with expected-head check; risks: confusing the b61f9fc deployment with the current PR head or successful boot with DB least privilege
+implementation: documentation only; application behavior did not change and no new behavior test was created; preserved 9aff094 and all owner-provided evidence; no changes to tests, application code, configuration, VERSION, contracts, schema, hooks, or protected workflow infrastructure
+checkout_provenance: cloned existing branch cursor/verify-telegram-runtime-8955 at 9aff094e5a073d24893e38d67f60150694adb0f6; its parent is requested base 395953af934ef327fb5e9a5c4216f540ab681a51
+verification_source: owner-provided evidence already reproduced verbatim in PLAN.md, docs/PROJECT_STATE.md, and docs/CHANGELOG.md; no production request performed
+pending_issues: unavailable equity fields tracked by django_render#12; stamp_build pending-decision wording below is historical and superseded by the latest entry
+tests_created: no new behavior test because application behavior did not change
+failing_test_proof: application behavior did not change; no failing behavior test was created
+phases_completed: planner, implementer, tester, documentator
+tests_executed: DJANGO_SKIP_ENV_FILE=1 /tmp/django-docs-venv/bin/pytest -q: 461 passed, 3 PostgreSQL-only skipped, 207 warnings, 44 subtests passed in 43.64s; 206 warnings report the absent generated staticfiles directory in this fresh checkout and one is the existing DRF UnorderedObjectListWarning; exact owner evidence/commands, stamp_build note, status separation, architecture/design alignment, and version-header assertions passed; git diff --check passed
+governance_validation: bash .codex/hooks/docs-sync.sh staged passed with 0 warnings; bash .codex/hooks/pre-commit.sh passed with 0 warnings
+docs_reviewed: README.md, PLAN.md, docs/PROJECT_STATE.md, docs/ARCHITECTURE.md, docs/DATA_CONTRACT.md, docs/DESIGN.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
+docs_updated: README.md 1.1.40 to 1.1.41; PLAN.md 1.1.25 to 1.1.26; docs/PROJECT_STATE.md 1.1.43 to 1.1.44; docs/CHANGELOG.md 1.1.56 to 1.1.57; last_verified_at remains 2026-10-30; ARCHITECTURE.md already has exact production commands, DESIGN.md has no Build Command; DATA_CONTRACT.md and KPI_REGISTRY.md reviewed, no update needed; workflow evidence prepends this task and preserves history
+changelog: updated
+schema_der: not_applicable: no schema or DER change
+data_contract_sync: not_applicable: no shared contract change
+logging_observability: reviewed, unchanged; no runtime logging, diagnostics, or operator output changes
+kpi_registry_reviewed: yes
+kpi_registry_updated: not-needed
+kpi_registry_sync_checked: not-available
+protected_infrastructure: no changes to AGENTS.md or .codex/hooks, .codex/lib, .codex/templates
+production_actions: none; no production request, runtime configuration change, merge, or deploy
+
+# Workflow evidence — Render command/boot readiness (2026-10-30)
+
+task_mode: DOCUMENTATION
+phases_completed: planner, implementer, tester, documentator
+impact: docs_only
+planner: reconcile documentation with owner-provided production commands, deploy log, and static HEAD evidence; scope limited to README, PLAN, PROJECT_STATE, ARCHITECTURE, CHANGELOG, and workflow evidence; no application, tests, runtime configuration, VERSION, contracts, logging, KPI, schema, DER, merge, or deploy change; bump doc_version patch and last_verified_at to 2026-10-30; validate exact evidence, command, links, headers, staged hooks, and full pytest; risk is confusing historical deployment evidence with current Render settings
+implementation: documentation only; application behavior did not change and no new behavior test was created; removed proposed stamp_build command in favor of the owner's pending-decision note; inspected django_render/version.py, VERSION, and test settings before describing behavior
+verification_source: owner-provided production evidence reproduced verbatim in PLAN.md, docs/PROJECT_STATE.md, and docs/CHANGELOG.md; no new production request was performed
+checkout_provenance: local base b61f9fc5a468ee7433985edd9601bedd36248426; Git fetch failed because the configured proxy was unreachable; GitHub integration confirmed PR #13 head 395953af934ef327fb5e9a5c4216f540ab681a51 and its four documentation-only changed files, fetched at that exact SHA; reconstructed head tree dec66c60545fbcd89cd9fa5ad185d1ba3ec1b34a; validation uses that code plus the documentation edits; publication uses the exact remote head as the sole parent
+tests_executed: .venv/bin/python -m pytest -q: 461 passed, 3 PostgreSQL-only skipped, 1 existing DRF UnorderedObjectListWarning, 44 subtests passed (39.27s); DJANGO_SKIP_ENV_FILE=1 .venv/bin/pytest -q also returned 461 passed, 3 skipped, 1 existing DRF warning, 44 subtests passed (39.43s); git diff --check passed; bash .codex/hooks/docs-sync.sh staged passed with 0 warnings; initial pre-commit found the new not_applicable failing_test_proof incompatible with historical behavior evidence in this cumulative file; the field now explicitly states no behavior change without that prefix, retaining all history; final bash .codex/hooks/docs-sync.sh staged and bash .codex/hooks/pre-commit.sh both passed with 0 warnings
+pending_issues: unavailable equity fields remain tracked by ccantero/django_render#12; stamp_build pending-decision wording is historical and superseded by the latest entry
+tests_created: no new behavior test was created because this is documentation only
+failing_test_proof: application behavior did not change; no failing behavior test was created
+docs_reviewed: README.md, PLAN.md, docs/PROJECT_STATE.md, docs/ARCHITECTURE.md, docs/DATA_CONTRACT.md, docs/DESIGN.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
+docs_updated: README.md 1.1.39 to 1.1.40; PLAN.md 1.1.24 to 1.1.25; docs/PROJECT_STATE.md 1.1.42 to 1.1.43; docs/ARCHITECTURE.md 1.1.24 to 1.1.25; docs/CHANGELOG.md 1.1.55 to 1.1.56; all last_verified_at 2026-10-30; .codex/workflow-evidence.md updated; DESIGN.md has no Build Command and needs no update; DATA_CONTRACT.md and KPI_REGISTRY.md reviewed, no update needed
+changelog: updated
+schema_der: not_applicable: no schema or DER change
+data_contract_sync: not_applicable: reviewed, no shared contract change
+logging_observability: reviewed, no runtime logging, healthcheck payload, or operator output change
+kpi_registry_reviewed: yes
+kpi_registry_updated: not-needed
+kpi_registry_sync_checked: not-available
+kpi_registry_notes: reviewed, no update needed; no metric formula, source, status, or output changed
+protected_infrastructure: no changes to AGENTS.md or .codex/hooks, .codex/lib, .codex/templates
+production_actions: none; no merge, deploy, or runtime configuration change
+
+# Workflow evidence — Telegram portfolio command runtime verification (2026-10-29)
+
+task_mode: DOCUMENTATION
+phases_completed: planner, implementer, tester, documentator
+impact: docs_only
+tests_executed: /tmp/venv/bin/pytest -q returned 461 passed, 3 skipped, 44 subtests passed. No new behavior test was created. bash .codex/hooks/docs-sync.sh staged passed with 0 warnings. bash .codex/hooks/pre-commit.sh passed with 0 warnings.
+pending_issues: https://github.com/ccantero/django_render/issues/12 stays open for unavailable equity 7d, equity 30d, and 24h equity drivers. Render command/boot readiness, including collectstatic, remained NEEDS_RUNTIME_VERIFICATION at that time.
+tests_created: no new behavior test was created because this task only records an owner-reported documentation fact
+failing_test_proof: application behavior did not change, so no failing behavior test was added; the existing suite passed after the documentation edit
+docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
+docs_updated: PLAN.md 1.1.23 to 1.1.24, docs/PROJECT_STATE.md 1.1.41 to 1.1.42, docs/CHANGELOG.md 1.1.54 to 1.1.55. README.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/DATA_CONTRACT.md, and docs/KPI_REGISTRY.md were reviewed and left unchanged.
+changelog: updated
+schema_der: not_applicable: no schema or DER change
+data_contract_sync: not_applicable: docs/DATA_CONTRACT.md was reviewed and not changed
+logging_observability: no runtime logging, healthcheck payload, or operator command output changed
+kpi_registry_reviewed: yes
+kpi_registry_updated: not-needed
+kpi_registry_sync_checked: not-available
+kpi_registry_notes: reviewed, no update needed; no metric formula, source, status, or operator output changed
+
 # Workflow evidence — Position generation schema verification (2026-10-27)
 
 task_mode: STANDARD

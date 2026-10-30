@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.41
+doc_version: 1.1.45
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-27
+last_verified_at: 2026-10-30
 source_repo: django_render
 ---
 
@@ -63,8 +63,14 @@ dependency; Django must not reproduce SellService logic.
 
 `/portfolio_status` and `/last_operations` are implemented in this repository:
 they have command registration, handlers/formatters, bounded read paths, and
-focused tests. The repository cannot establish deployed production behavior,
-so both remain runtime-verification items rather than missing-feature items.
+focused tests. Owner Kurisufuano reported production runtime verification on
+2026-10-29 at 15:36 ART (UTC-3). Both commands responded with data.
+`/portfolio_status` showed equity 306.66 USDT and a 24h change of +0.36 USDT
+/ +0.12%. `/last_operations` listed the last 10 SELL operations. Equity 7d,
+equity 30d, and 24h equity drivers returned `unavailable`. Those unavailable
+fields remain tracked in
+https://github.com/ccantero/django_render/issues/12. This is an owner-reported
+observation. Command behavior stays as already implemented.
 
 The public Calculadora UVA and exchange-rate pages expose a PWA scoped to
 `/currencyconverter/`; the authenticated dashboard remains a regular route
@@ -182,12 +188,9 @@ Implemented capabilities:
 - `/portfolio_status` limits snapshot materialization to the configured
   `PORTFOLIO_STATUS_MAX_SNAPSHOTS` cap (512 by default); chart-render failure
   remains text-only fallback behavior.
-- Production guidance is captured in the tracked `Procfile` as one Gunicorn
-  worker with two threads and a 30-second timeout for the 512 MB Render
-  service. The `Procfile` is the start command only. Collected static output
-  is not tracked; production depends on the Render Build Command running
-  `python manage.py collectstatic --noinput`. Actual Render command, boot RSS,
-  and webhook readiness still need deployment verification.
+- Render command/boot readiness (incluido collectstatic) is `RUNTIME_VERIFIED`.
+  The owner-confirmed Start Command is `gunicorn django_render.wsgi`.
+  See the production evidence below. `stamp_build` is also `RUNTIME_VERIFIED`.
 - Telegram diagnostics include a compact command guide and format skipped/rejected
   SELL diagnostics with status, interpretation, suggested action, and raw event details for mobile review.
 - Telegram `/health` includes Disk Usage from latest
@@ -261,7 +264,10 @@ Implemented capabilities:
 - `/portfolio_status` currently renders `24h equity drivers` as `unavailable`
   because no verified symbol-level attribution source is wired in the Django
   snapshot read path. The former current unrealized contributor block is
-  labeled `Current unrealized contributors`.
+  labeled `Current unrealized contributors`. The 2026-10-29 production check
+  also returned equity 7d, equity 30d, and 24h equity drivers as
+  `unavailable`; those fields remain tracked in
+  https://github.com/ccantero/django_render/issues/12.
 - Snapshot history uses `portfolio_equity_usdt` as the only historical equity
   source; missing, invalid, non-positive, `portfolio_sync_from_api`, or
   `open_value_usdt`-only snapshots degrade honestly instead of inventing
@@ -345,6 +351,29 @@ Detected infrastructure and tooling:
   admin assets come from the installed package at collect time.
 
 ---
+
+## Render command/boot readiness
+
+Status: `RUNTIME_VERIFIED` (incluido collectstatic), recorded 2026-10-30 from
+owner-provided production evidence, reproduced verbatim:
+
+- Configuración real de Render, compartida por el owner el 30/10/2026:
+  - Build Command: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations
+  - Start Command: gunicorn django_render.wsgi
+- Log del deploy del commit b61f9fc (27/10/2026 20:06 UTC = 17:06 ART): "171 static files copied to '/opt/render/project/src/staticfiles', 159 post-processed.", "No migrations to apply", "Build successful", gunicorn arrancó, "Your service is live", el primer GET / devolvió 200.
+- 30/10/2026 01:36 ART: HEAD https://www.cantero-solutions.com.ar/static/admin/css/base.css devolvió HTTP/2 200, text/css.
+
+The deployment observation is for `b61f9fc`, not a deployment claim for the
+current PR head. Revalidation on 2026-10-30 preserves the owner-provided
+evidence above without issuing another production request.
+
+### stamp_build — RUNTIME_VERIFIED
+
+- On 2026-10-30 the owner appended "&& python manage.py stamp_build" to the Render Build Command. Current production Build Command:
+  pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations && python manage.py stamp_build
+- 2026-10-30 11:52 ART: GET https://www.cantero-solutions.com.ar/version/ returned {"version": "2.1.0", "commit": "b61f9fc", "deployed_at": "2026-10-30T01:47:56-03:00", "timestamp_source": "build_stamp", "display": "v2.1.0+b61f9fc · 30/10 01:47 ART"}. The PWA footer shows the same value.
+
+No deploy or production change was performed for this documentation update.
 
 ## Important Current Boundary
 

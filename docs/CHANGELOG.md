@@ -1,13 +1,128 @@
 ---
 doc_id: changelog
-doc_version: 1.1.54
+doc_version: 1.1.58
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-27
+last_verified_at: 2026-10-30
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-30 - Verify production stamp_build and correct earlier readiness records
+
+Type: docs
+Runtime version: 2.1.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/CHANGELOG.md
+- .codex/workflow-evidence.md
+
+Summary:
+- Corrects the two earlier 2026-10-30 entries: their stamp_build pending-decision statements are historical and superseded. stamp_build is now `RUNTIME_VERIFIED` from owner-reported evidence, reproduced verbatim:
+
+- On 2026-10-30 the owner appended "&& python manage.py stamp_build" to the Render Build Command. Current production Build Command:
+  pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations && python manage.py stamp_build
+- 2026-10-30 11:52 ART: GET https://www.cantero-solutions.com.ar/version/ returned {"version": "2.1.0", "commit": "b61f9fc", "deployed_at": "2026-10-30T01:47:56-03:00", "timestamp_source": "build_stamp", "display": "v2.1.0+b61f9fc · 30/10 01:47 ART"}. The PWA footer shows the same value.
+
+Operator impact:
+- Current setup documentation includes stamp_build in the production Build Command. The earlier b61f9fc collectstatic deploy command without stamp_build and its runtime evidence remain unchanged and `RUNTIME_VERIFIED`.
+- build_info.json stores the build UTC instant; valid DEPLOYED_AT takes precedence. A restart does not re-stamp. The observed version/commit and PWA footer identify b61f9fc, not the PR head.
+- No application behavior, runtime configuration, merge, or deployment was changed by this documentation task. Unavailable equity fields remain tracked in issue #12.
+
+Validation:
+- Both staged hooks and full pytest results are recorded in .codex/workflow-evidence.md.
+
+
+## 2026-10-30 - Revalidate Render readiness documentation on the current PR head
+
+Type: docs
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+- .codex/workflow-evidence.md
+
+Summary:
+- The branch already contained the Render readiness update in `9aff094`, after the requested base `395953a`. Preserved that update and the verbatim owner-provided evidence below.
+- Clarified that deploy evidence refers to `b61f9fc`; it does not assert deployment of the current PR head. Render command/boot readiness, including `collectstatic`, remains `RUNTIME_VERIFIED`.
+- Rechecked the exact production Build and Start Commands and the pending-owner-decision note for `stamp_build`. README timestamp behavior matches `django_render/version.py`.
+
+Operator impact:
+- Issue #12 remains pending as before.
+- No application behavior, runtime configuration, contract, logging, KPI, schema, merge, or deploy change. ARCHITECTURE.md already matches the production commands; DESIGN.md has no Build Command to align.
+
+Validation:
+- Fresh staged hooks and full `pytest -q` results are recorded in the newest `.codex/workflow-evidence.md` entry.
+- No new behavior test was created because application behavior did not change.
+
+## 2026-10-30 - Verify Render command/boot readiness and correct production commands
+
+Type: docs
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/CHANGELOG.md
+- .codex/workflow-evidence.md
+
+Summary:
+- Render command/boot readiness (incluido collectstatic): `NEEDS_RUNTIME_VERIFICATION` → `RUNTIME_VERIFIED` based on owner-provided production evidence, reproduced verbatim:
+
+- Configuración real de Render, compartida por el owner el 30/10/2026:
+  - Build Command: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations
+  - Start Command: gunicorn django_render.wsgi
+- Log del deploy del commit b61f9fc (27/10/2026 20:06 UTC = 17:06 ART): "171 static files copied to '/opt/render/project/src/staticfiles', 159 post-processed.", "No migrations to apply", "Build successful", gunicorn arrancó, "Your service is live", el primer GET / devolvió 200.
+- 30/10/2026 01:36 ART: HEAD https://www.cantero-solutions.com.ar/static/admin/css/base.css devolvió HTTP/2 200, text/css.
+
+Operator impact:
+- README and architecture now reflect the exact production Build and Start Commands.
+- `python manage.py stamp_build` no corre hoy en producción; agregarlo al Build Command está pendiente de decisión del owner.
+- Version/timestamp behavior was checked against `django_render/version.py`; no claim is made about a production `DEPLOYED_AT` value or stamp file.
+- Issue #12 remains open for unavailable equity fields.
+- This record supersedes the Render pending status in the historical 2026-10-29 entry below.
+
+Validation:
+- Documentation only; application behavior did not change and no new behavior test was created.
+- Hook and pytest results are recorded in `.codex/workflow-evidence.md` for this task.
+- No code, runtime configuration, merge, or deploy changes.
+
+## 2026-10-29 - Record production verification of portfolio commands
+
+Type: docs
+Runtime version: unknown
+Schema version: unknown
+Docs affected:
+- PLAN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+
+Summary:
+- Recorded owner-reported production verification of Telegram `/portfolio_status` and `/last_operations`.
+- Owner: Kurisufuano. Environment: production. Time: 2026-10-29 15:36 ART (UTC-3).
+- Both commands responded with data. `/portfolio_status` showed equity 306.66 USDT and a 24h change of +0.36 USDT / +0.12%. `/last_operations` listed the last 10 SELL operations.
+- Equity 7d, equity 30d, and 24h equity drivers returned `unavailable`. Those fields remain tracked in https://github.com/ccantero/django_render/issues/12.
+- PLAN.md marks that P0 item `RUNTIME_VERIFIED`. Render command/boot readiness, including `collectstatic`, stays `NEEDS_RUNTIME_VERIFICATION`.
+
+Operator impact:
+- The P0 roadmap item for these two commands is runtime verified from the owner's production observation.
+- Command behavior is unchanged. Unavailable 7d, 30d, and 24h equity-driver fields stay tracked by issue #12.
+
+Validation:
+- Documentation-only change. No application behavior changed, and no new behavior test was created.
+- `/tmp/venv/bin/pytest -q`: 461 passed, 3 skipped, 44 subtests passed.
+- `bash .codex/hooks/docs-sync.sh staged`: passed with 0 warnings.
+- `bash .codex/hooks/pre-commit.sh`: passed with 0 warnings.
 
 ## 2026-10-27 - Verify position generation schema
 

@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.23
+doc_version: 1.1.27
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-27
+last_verified_at: 2026-10-30
 source_repo: django_render
 ---
 
@@ -35,13 +35,19 @@ reconciliation decisions, Binance calls, or changes to the shared contract.
 
 #### P0 — Restore and verify broken operator surfaces
 
-`/portfolio_status` and `/last_operations` are implemented Django Telegram
-diagnostics, not missing features. Their dispatch, bounded/read-only query
-paths, formatting, and focused tests exist in this repository. Production
-behavior is `NEEDS_RUNTIME_VERIFICATION`; this roadmap item is deployment and
-runtime verification, regression triage, and bounded-query monitoring only.
-Do not re-plan either command as implementation work without repository
-evidence of a missing path.
+`RUNTIME_VERIFIED` on 2026-10-29 in production. Owner Kurisufuano reported
+that `/portfolio_status` and `/last_operations` both responded with data at
+2026-10-29 15:36 ART (UTC-3). This record is that owner-reported observation.
+`/portfolio_status` showed equity 306.66 USDT and a 24h change of +0.36 USDT
+/ +0.12%. `/last_operations` listed the last 10 SELL operations. Equity 7d,
+equity 30d, and 24h equity drivers came back as `unavailable`. Those fields
+remain tracked in
+https://github.com/ccantero/django_render/issues/12.
+
+The commands are implemented Django Telegram diagnostics. Their dispatch,
+bounded/read-only query paths, formatting, and focused tests exist in this
+repository. Do not re-plan either command as implementation work without
+repository evidence of a missing path.
 
 #### P1 — Position Status / Sell Explainability
 
@@ -100,10 +106,16 @@ completed fixes.
 - `PARTIALLY_IMPLEMENTED`: Position Status / Sell Explainability; current
   Exit Status and `/why_not_sell` are useful inputs but not a complete
   freshness/provenance read model.
-- `NEEDS_RUNTIME_VERIFICATION`: deployed `/portfolio_status`, deployed
-  `/last_operations`, Render command/boot readiness (including a Build Command
-  that runs `collectstatic` before the untracked `staticfiles/` output is
-  deployed), and production DB grants.
+- `NEEDS_RUNTIME_VERIFICATION`: production DB grants.
+- `RUNTIME_VERIFIED`: Render command/boot readiness (incluido collectstatic),
+  from owner-provided production evidence recorded on 2026-10-30 below.
+- `RUNTIME_VERIFIED`: deployed `/portfolio_status` and deployed
+  `/last_operations`, owner-reported by Kurisufuano in production on
+  2026-10-29 at 15:36 ART (UTC-3). Both commands responded with data.
+  `/portfolio_status` showed equity 306.66 USDT and 24h +0.36 USDT / +0.12%.
+  `/last_operations` listed the last 10 SELL operations. Equity 7d, equity
+  30d, and 24h equity drivers were `unavailable` and remain tracked in
+  https://github.com/ccantero/django_render/issues/12.
 - `BOT_CONTRACT_DEPENDENCY`: authoritative evidence timestamps, price
   provenance, complete per-position lifecycle status, stable BUY decision
   surfaces, trapped-capital/holding-efficiency inputs, and future Daily
@@ -117,6 +129,26 @@ completed fixes.
 - `STALE`: historical implementation wording that leaves completed dashboard
   features in an active roadmap bucket; preserve such facts only in
   Completed Work or changelog history.
+
+#### Render command/boot readiness — production evidence
+
+- Configuración real de Render, compartida por el owner el 30/10/2026:
+  - Build Command: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations
+  - Start Command: gunicorn django_render.wsgi
+- Log del deploy del commit b61f9fc (27/10/2026 20:06 UTC = 17:06 ART): "171 static files copied to '/opt/render/project/src/staticfiles', 159 post-processed.", "No migrations to apply", "Build successful", gunicorn arrancó, "Your service is live", el primer GET / devolvió 200.
+- 30/10/2026 01:36 ART: HEAD https://www.cantero-solutions.com.ar/static/admin/css/base.css devolvió HTTP/2 200, text/css.
+
+The deploy evidence is scoped to `b61f9fc`; the PR head is not claimed as deployed.
+See [Render command/boot readiness](docs/PROJECT_STATE.md#render-commandboot-readiness).
+
+#### stamp_build — RUNTIME_VERIFIED
+
+- On 2026-10-30 the owner appended "&& python manage.py stamp_build" to the Render Build Command. Current production Build Command:
+  pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --no-input && python manage.py showmigrations && python manage.py stamp_build
+- 2026-10-30 11:52 ART: GET https://www.cantero-solutions.com.ar/version/ returned {"version": "2.1.0", "commit": "b61f9fc", "deployed_at": "2026-10-30T01:47:56-03:00", "timestamp_source": "build_stamp", "display": "v2.1.0+b61f9fc · 30/10 01:47 ART"}. The PWA footer shows the same value.
+
+The Build Command above supersedes the historical command for subsequent builds.
+The collectstatic deployment evidence remains unchanged.
 
 Forgotten but retained work includes DB grant/least-privilege verification,
 dashboard performance and bounded-query monitoring, Telegram command health,
