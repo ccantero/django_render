@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.27
+doc_version: 1.1.28
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-30
+last_verified_at: 2026-10-31
 source_repo: django_render
 ---
 
@@ -107,6 +107,7 @@ completed fixes.
   Exit Status and `/why_not_sell` are useful inputs but not a complete
   freshness/provenance read model.
 - `NEEDS_RUNTIME_VERIFICATION`: production DB grants.
+- `RECORDED`: Render/Django read-only security audit measured on 2026-10-31 and written to [`docs/security/AUDIT_2026-11.md`](docs/security/AUDIT_2026-11.md). Fixes, rotation, and the VPS section are follow-up work. Production DB grants stay a separate item.
 - `RUNTIME_VERIFIED`: Render command/boot readiness (incluido collectstatic),
   from owner-provided production evidence recorded on 2026-10-30 below.
 - `RUNTIME_VERIFIED`: deployed `/portfolio_status` and deployed

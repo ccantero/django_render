@@ -1,13 +1,36 @@
 ---
 doc_id: changelog
-doc_version: 1.1.58
+doc_version: 1.1.59
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-30
+last_verified_at: 2026-10-31
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-10-31 - Record the Render/Django security audit
+
+Type: docs
+Runtime version: 2.1.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/PROJECT_STATE.md
+- docs/CHANGELOG.md
+- docs/security/AUDIT_2026-11.md
+
+Summary:
+- Records a read-only security audit of this Django/Render application. No application behavior, credential, grant, or deploy change.
+- Adds `scripts/security/check_exposure.py`, which prints status code and response size only, and mocked tests that do not contact production.
+
+Operator impact:
+- Findings and unverified items are in `docs/security/AUDIT_2026-11.md`. High findings are the public profile list and a historical database URL still present in git history. No critical finding was proven.
+- The VPS section is a placeholder for a separate planner. Production DB grants remain a separate review.
+
+Validation:
+- Mocked exposure-probe tests and the full pytest suite. Commands and sanitized results are in the audit report and `.codex/workflow-evidence.md`.
 
 ## 2026-10-30 - Verify production stamp_build and correct earlier readiness records
 

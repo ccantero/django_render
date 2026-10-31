@@ -1,11 +1,35 @@
 ---
 doc_id: workflow-evidence
-doc_version: 1.0.0
+doc_version: 1.0.1
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-30
+last_verified_at: 2026-10-31
 source_repo: django_render
 ---
+
+# Workflow evidence — Render/Django security audit (2026-10-31)
+
+task_mode: STANDARD
+phases_completed: planner, implementer, tester, documentator
+impact: docs_only
+planner: problem: record a sanitized read-only security audit of the Render/Django app and a status-and-size probe, with no fixes; scope: public-host GET/HEAD, full-history secret scanners, production-like check --deploy on local SQLite, pip-audit, audit report, read-only script and mocked tests; out of scope: fixes, rotation, binancebot, VPS content, DB grants document, GitHub issues, merge, deploy; components: docs/security/AUDIT_2026-11.md, scripts/security/check_exposure.py, tests/test_check_exposure.py, README, PLAN, PROJECT_STATE, CHANGELOG; contract impact: none; logging impact: no runtime log change, probe prints status and size only; versioning: patch touched core doc_version and last_verified_at 2026-10-31, audit doc 1.0.0, evidence 1.0.1, VERSION unchanged; schema/DER: none; test strategy: failing import test, then probe tests, then full pytest; risks: copying secrets into the report, guessing the platform hostname, loading a production database URL
+implementation: application behavior did not change; added the read-only probe after tests failed on the missing file; no runtime dependency and no settings, view, model, or URL edit
+tests_created: tests/test_check_exposure.py covers HTTP 200 as EXPOSURE, HTTP 404 as PASS, timeout and connection error as UNVERIFIED, HTTP 5xx as UNVERIFIED without a second attempt, response bodies never printed, and the redirect handler returning no follow-up request
+failing_test_proof: DJANGO_SKIP_ENV_FILE=1 pytest tests/test_check_exposure.py before the script existed failed 6 tests with FileNotFoundError for scripts/security/check_exposure.py; after implementation the file passed
+tests_executed: DJANGO_SKIP_ENV_FILE=1 /tmp/django-audit-venv/bin/pytest tests/test_check_exposure.py -q passed 6 before the redirect test was added and the full file is included in the suite; DJANGO_SKIP_ENV_FILE=1 /tmp/django-audit-venv/bin/pytest -q: 468 passed, 3 skipped, 207 warnings, 44 subtests passed in 55.53s; 206 warnings are the absent generated staticfiles directory and 1 is the existing DRF UnorderedObjectListWarning; 0 failed
+pending_issues: no critical finding proven; high findings remain unfixed (public profile list, historical database URL); platform hostname, 2022 credential validity, production allowlist values, production diagnostics token configuration, production logs, and unauthenticated profile writes are NEEDS_RUNTIME_VERIFICATION; VPS section is empty; DB grants remain a separate review; unavailable equity fields remain in django_render issue 12
+docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md, docs/security/AUDIT_2026-11.md
+docs_updated: README.md 1.1.43, PLAN.md 1.1.28, docs/PROJECT_STATE.md 1.1.46, docs/CHANGELOG.md 1.1.59, docs/security/AUDIT_2026-11.md 1.0.0, .codex/workflow-evidence.md 1.0.1; last_verified_at 2026-10-31; ARCHITECTURE, DESIGN, DATA_CONTRACT, and KPI_REGISTRY reviewed, no update needed
+changelog: updated
+schema_der: not_applicable: no schema or DER change
+data_contract_sync: not_applicable: docs/DATA_CONTRACT.md reviewed, no semantic change
+logging_observability: reviewed, no runtime logging change; the exposure script prints status and size only and does not print bodies or token values; production logs were not available
+kpi_registry_reviewed: yes
+kpi_registry_updated: not-needed
+kpi_registry_sync_checked: not-available
+governance_validation: bash .codex/hooks/docs-sync.sh staged passed with 0 warnings; bash .codex/hooks/pre-commit.sh passed with 0 warnings
+protected_infrastructure: no changes to AGENTS.md or .codex/hooks, .codex/lib, .codex/templates
+production_actions: unauthenticated GET and HEAD only against the public hostname; no authenticated requests, no production database connection from Django, no rotation, no merge, no deploy
 
 # Workflow evidence — Production stamp_build verification (2026-10-30)
 

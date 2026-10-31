@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.42
+doc_version: 1.1.43
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-30
+last_verified_at: 2026-10-31
 source_repo: django_render
 ---
 
@@ -803,6 +803,7 @@ state and markdown contracts.
 - Pause and resume stay login-only, POST-only, and CSRF-protected. Staff is not required. Every pause POST requires confirmation: HTML sends `confirm=yes`, and JSON sends that field or `{"confirm":"yes"}` / `{"confirm":true}`. An unconfirmed HTML pause redirects back with an error and does not write. An unconfirmed JSON pause returns HTTP 400 `{"error":"confirmation_required","detail":"..."}` and does not write. Resume does not require confirmation. An HTML post (`Accept` includes `text/html` ahead of `application/json`) redirects to a safe same-origin `next` or `Referer`, or `/dashboard/#control-seguro`, and shows "Pausa solicitada" or "Reanudación solicitada". `Accept: application/json`, `*/*`, or a missing Accept still returns the same JSON object (`is_paused`, `status`, `updated_at`, `updated_by`, `reason`) after a confirmed pause or any resume. No Telegram handler, script, or other module in this repository called `/bot/stop/`, `/bot/resume/`, or `/bot/status/`, so there is no compatibility exception. The row is the desired state only. With JavaScript, a failed or aborted response is not submitted again: the card shows "Resultado incierto", re-reads `GET /bot/status/`, and posts again only if the operator uses "Reintentar el pedido". Without JavaScript, the form posts once and the browser follows the redirect.
 - Public/demo views must never expose sensitive data.
 - Database grants should be reviewed so public roles cannot mutate bot-owned accounting tables.
+- The 2026-10-31 Render/Django security audit is recorded in [`docs/security/AUDIT_2026-11.md`](docs/security/AUDIT_2026-11.md). It does not change application behavior. [`scripts/security/check_exposure.py`](scripts/security/check_exposure.py) is a read-only status-and-size probe.
 
 ### Optional Passkeys
 
