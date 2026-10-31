@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.45
+doc_version: 1.1.46
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-30
+last_verified_at: 2026-10-31
 source_repo: django_render
 ---
 
@@ -49,6 +49,17 @@ would need an OpenAPI schema, Bearer API-key configuration, reachable Render
 HTTPS domain, a dedicated secret supplied through Action configuration, and
 workspace permission for that domain. No cloud request, Action, or production
 secret delivery was tested. Production deployment remains outstanding.
+
+## Render security audit (2026-10-31)
+
+A read-only audit of this Django/Render application is recorded in
+[`docs/security/AUDIT_2026-11.md`](security/AUDIT_2026-11.md). The audit did
+not change application behavior, rotate credentials, or query production data.
+The public-site exposure re-check matched the 2026-10-31 planner baseline for
+the sensitive paths and security headers. Findings and items still marked
+`NEEDS_RUNTIME_VERIFICATION` are in that report.
+`scripts/security/check_exposure.py` prints status and size only and is covered
+by mocked tests. The report's VPS section is intentionally empty.
 
 ## Current State
 
