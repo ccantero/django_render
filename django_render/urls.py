@@ -22,6 +22,7 @@ urlpatterns = [
     path('', include('dashboard.urls')),
     path('', include('core.urls')),
     path("currencyconverter/", include("currencyconverter.urls", namespace="currencyconverter")),
+    path("terapias-ambulatorias/", include("prescriptions.urls")),
     path("api/", include("profile.urls", namespace="profile")),
     path('api/schema', SpectacularAPIView.as_view(), name='api-schema'),
     path('api/docs', 

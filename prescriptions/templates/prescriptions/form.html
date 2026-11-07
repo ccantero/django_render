@@ -1,0 +1,94 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prescripción médica – Terapias ambulatorias</title>
+  <link rel="stylesheet" href="{% static 'prescriptions/form.css' %}">
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <p class="eyebrow">Galeno · Rehabilitación</p>
+      <h1>Terapias ambulatorias</h1>
+      <p class="lede">Completá los datos y descargá la prescripción médica en PDF lista para firmar.</p>
+    </header>
+
+    <form method="post" class="form" novalidate>
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="errors" role="alert">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="grid">
+        <label class="field field--date">
+          <span>{{ form.fecha.label }}</span>
+          {{ form.fecha }}
+          {{ form.fecha.errors }}
+        </label>
+
+        <label class="field field--wide">
+          <span>{{ form.nombre_apellido.label }}</span>
+          {{ form.nombre_apellido }}
+          {{ form.nombre_apellido.errors }}
+        </label>
+
+        <label class="field">
+          <span>{{ form.dni.label }}</span>
+          {{ form.dni }}
+          {{ form.dni.errors }}
+        </label>
+
+        <label class="field field--narrow">
+          <span>{{ form.edad.label }}</span>
+          {{ form.edad }}
+          {{ form.edad.errors }}
+        </label>
+
+        <label class="field field--wide">
+          <span>{{ form.diagnostico.label }}</span>
+          {{ form.diagnostico }}
+          {{ form.diagnostico.errors }}
+        </label>
+
+        <label class="field field--wide">
+          <span>{{ form.prestacion.label }}</span>
+          {{ form.prestacion }}
+          {{ form.prestacion.errors }}
+        </label>
+
+        <label class="field field--wide">
+          <span>{{ form.frecuencia_semanal.label }}</span>
+          {{ form.frecuencia_semanal }}
+          {% if form.frecuencia_semanal.help_text %}
+            <small>{{ form.frecuencia_semanal.help_text }}</small>
+          {% endif %}
+          {{ form.frecuencia_semanal.errors }}
+        </label>
+
+        <label class="field field--date">
+          <span>{{ form.periodo_desde.label }}</span>
+          {{ form.periodo_desde }}
+          {% if form.periodo_desde.help_text %}<small>{{ form.periodo_desde.help_text }}</small>{% endif %}
+          {{ form.periodo_desde.errors }}
+        </label>
+
+        <label class="field field--date">
+          <span>{{ form.periodo_hasta.label }}</span>
+          {{ form.periodo_hasta }}
+          {% if form.periodo_hasta.help_text %}<small>{{ form.periodo_hasta.help_text }}</small>{% endif %}
+          {{ form.periodo_hasta.errors }}
+        </label>
+      </div>
+
+      <p class="note">La firma y sello del médico se dejan en blanco para completar en papel.</p>
+
+      <div class="actions">
+        <button type="submit">Descargar PDF</button>
+      </div>
+    </form>
+  </main>
+</body>
+</html>
