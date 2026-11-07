@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.43
+doc_version: 1.1.44
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-31
+last_verified_at: 2026-11-06
 source_repo: django_render
 ---
 
@@ -51,6 +51,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Public app liveness endpoint at `/health/` for Render keepalive/cron pings
 - Dashboard Disk Usage visibility from latest bot healthcheck VPS disk data
 - Experimental authenticated, read-only bot diagnostics API for health and persisted ETHUSDT inventory evidence
+- Public Galeno Terapias Ambulatorias prescription form at `/terapias-ambulatorias/` that fills the bundled PDF and downloads it (no bot DB use)
 
 ---
 

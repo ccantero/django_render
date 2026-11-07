@@ -1,13 +1,39 @@
 ---
 doc_id: changelog
-doc_version: 1.1.59
+doc_version: 1.1.60
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-31
+last_verified_at: 2026-11-06
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-11-06 - Integrate Galeno Terapias Ambulatorias prescriptions
+
+Type: behavior
+Runtime version: 2.2.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/CHANGELOG.md
+
+Summary:
+- Copied the portable `prescriptions` app from `galeno-cud-generator` into this project (form, PDF overlay, bundled blank PDF and Carlito font).
+- Registered `prescriptions.apps.PrescriptionsConfig`, mounted `/terapias-ambulatorias/`, and added `pypdf`, `reportlab`, and `pillow` to `requirements.txt`.
+- Bumped app `VERSION` to `2.2.0`. No models, migrations, or bot data-contract changes.
+
+Operator impact:
+- Operators can open `/terapias-ambulatorias/`, fill the Galeno Terapias Ambulatorias form, and download a filled PDF.
+- The form is currently public (same pattern as the currency-converter surface); it does not use bot-owned tables.
+
+Validation:
+- Failing host integration tests first, then `pytest tests/test_prescriptions_integration.py prescriptions/tests.py` and the broader suite excluding disposable PostgreSQL concurrency (`474 passed`).
+- KPI registry reviewed; no update needed.
 
 ## 2026-10-31 - Record the Render/Django security audit
 
