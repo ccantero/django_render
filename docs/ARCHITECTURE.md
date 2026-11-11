@@ -1,6 +1,6 @@
 ---
 doc_id: architecture
-doc_version: 1.1.28
+doc_version: 1.1.29
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-11-11
@@ -77,7 +77,9 @@ profile/
 prescriptions/
   public Terapias Ambulatorias form, measured PDF overlay (`pypdf` +
   `reportlab` field boxes with capacity validation), bundled blank PDF and
-  Carlito font under `assets/`, mounted at `/terapias-ambulatorias/`; no models
+  Carlito font under `assets/`, mounted at `/terapias-ambulatorias/`; no models.
+  Linked from the shared `core/templates/base.html` navbar as
+  Prescripciones médicas via `{% url 'prescriptions:terapias_ambulatorias' %}`.
 
 investments/
   Invest model exists, but the app is not currently installed

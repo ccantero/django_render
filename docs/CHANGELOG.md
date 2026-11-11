@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.62
+doc_version: 1.1.63
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-11-11
@@ -8,6 +8,30 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-11-11 - Link Prescripciones médicas in main navigation
+
+Type: behavior
+Runtime version: 2.2.3
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/CHANGELOG.md
+
+Summary:
+- Added a public shared-navbar entry **Prescripciones médicas** in `core/templates/base.html` that resolves `{% url 'prescriptions:terapias_ambulatorias' %}` to `/terapias-ambulatorias/`.
+- No PDF, form, auth, or database changes. Site has no active-menu highlighting; none was added.
+- Bumped app `VERSION` to `2.2.3`.
+
+Operator impact:
+- The Galeno prescription generator is reachable from the same main menu as Cotizaciones and Calculadora UVA on pages that use the shared base template.
+
+Validation:
+- `pytest tests/test_prescriptions_integration.py prescriptions/tests.py` including the new navbar link assertion.
+- KPI registry reviewed; no update needed.
 
 ## 2026-11-11 - Populate Galeno periodo day slots from month boundaries
 
