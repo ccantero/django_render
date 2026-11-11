@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.61
+doc_version: 1.1.62
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-11-11
@@ -8,6 +8,30 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-11-11 - Populate Galeno periodo day slots from month boundaries
+
+Type: behavior
+Runtime version: 2.2.2
+Schema version: unknown
+Docs affected:
+- docs/PROJECT_STATE.md
+- docs/DESIGN.md
+- docs/CHANGELOG.md
+
+Summary:
+- PDF overlay now fills periodo day blanks: day 01 for `periodo_desde` and the calendar last day of the month for `periodo_hasta` (`calendar.monthrange`, including February leap years).
+- Day, month, and year periodo values are centered in their measured blanks via ReportLab `stringWidth`.
+- Form month/year inputs and `/terapias-ambulatorias/` URL are unchanged.
+- Bumped app `VERSION` to `2.2.2`.
+
+Operator impact:
+- Generated prescriptions show complete desde/hasta dates such as `01 / Enero / 2027` and `31 / Diciembre / 2027`.
+
+Validation:
+- `pytest prescriptions/tests.py tests/test_prescriptions_integration.py` including month-boundary and centering regression tests.
+- Visual PNG check of the periodo line at 180 DPI against the blank template.
+- KPI registry reviewed; no update needed.
 
 ## 2026-11-11 - Fix Galeno prescription PDF alignment and capacity validation
 

@@ -5,12 +5,14 @@ label text). Values are fitted with ReportLab ``stringWidth`` measurements.
 
 Period handling: the Django form collects month/year only (``<input type="month">``).
 The template has day/month/year blanks for ``desde`` and ``hasta``. This module
-writes the Spanish month name into the month blank and the year into the year
-blank, and leaves the day blanks empty so no day-of-month is invented.
+writes day 01 for ``periodo_desde``, the calendar last day of the month for
+``periodo_hasta`` (via ``calendar.monthrange``), the Spanish month name, and
+the year — each centered in its measured blank.
 """
 
 from __future__ import annotations
 
+import calendar
 from dataclasses import dataclass
 from datetime import date
 from io import BytesIO
@@ -91,14 +93,20 @@ X_FREQ = 188.74 + X_PAD
 W_FREQ = RIGHT - X_FREQ
 
 # Periodo: desde:______/_____________/________hasta:____/______________/_________.
+# Day and year use the full measured blanks so centering matches the underline.
+# Month names keep a small inset so long names stay clear of the printed '/'.
+X_DESDE_DAY = 155.23
+W_DESDE_DAY = 32.87
 X_DESDE_MONTH = 192.35 + PERIOD_INSET
 W_DESDE_MONTH = 71.22 - (2 * PERIOD_INSET)
-X_DESDE_YEAR = 267.82 + PERIOD_INSET
-W_DESDE_YEAR = 43.83 - (2 * PERIOD_INSET)
+X_DESDE_YEAR = 267.82
+W_DESDE_YEAR = 43.83
+X_HASTA_DAY = 338.89
+W_HASTA_DAY = 21.91
 X_HASTA_MONTH = 365.05 + PERIOD_INSET
 W_HASTA_MONTH = 76.7 - (2 * PERIOD_INSET)
-X_HASTA_YEAR = 446.0 + PERIOD_INSET
-W_HASTA_YEAR = 49.31 - (2 * PERIOD_INSET)
+X_HASTA_YEAR = 446.0
+W_HASTA_YEAR = 49.31
 
 _MONTH_NAMES = (
     "Enero",
@@ -173,11 +181,17 @@ FIELD_BOXES: dict[str, FieldBox] = {
         continuation_width=W_PREST_CONT,
     ),
     "frecuencia_semanal": FieldBox("frecuencia_semanal", X_FREQ, Y_FREQ, W_FREQ),
+    "periodo_desde_day": FieldBox(
+        "periodo_desde_day", X_DESDE_DAY, Y_PERIODO, W_DESDE_DAY
+    ),
     "periodo_desde_month": FieldBox(
         "periodo_desde_month", X_DESDE_MONTH, Y_PERIODO, W_DESDE_MONTH
     ),
     "periodo_desde_year": FieldBox(
         "periodo_desde_year", X_DESDE_YEAR, Y_PERIODO, W_DESDE_YEAR
+    ),
+    "periodo_hasta_day": FieldBox(
+        "periodo_hasta_day", X_HASTA_DAY, Y_PERIODO, W_HASTA_DAY
     ),
     "periodo_hasta_month": FieldBox(
         "periodo_hasta_month", X_HASTA_MONTH, Y_PERIODO, W_HASTA_MONTH
@@ -216,6 +230,14 @@ class PrescriptionLayoutError(ValueError):
 def get_pdf_template_path() -> Path:
     override = getattr(settings, "TERAPIAS_AMBULATORIAS_PDF", None)
     return Path(override) if override else DEFAULT_PDF_TEMPLATE
+
+
+def period_range_days(month_value: date) -> tuple[date, date]:
+    """Return first and last calendar days for a form month/year value."""
+    first = date(month_value.year, month_value.month, 1)
+    last_day = calendar.monthrange(month_value.year, month_value.month)[1]
+    last = date(month_value.year, month_value.month, last_day)
+    return first, last
 
 
 def _normalize_text(text: str) -> str:
@@ -387,6 +409,15 @@ def plan_overlay(data: dict) -> OverlayPlan:
 
     desde = data["periodo_desde"]
     hasta = data["periodo_hasta"]
+    desde_first, _ = period_range_days(desde)
+    _, hasta_last = period_range_days(hasta)
+
+    desde_day, size = fit_single_line(
+        f"{desde_first.day:02d}", W_DESDE_DAY, field="periodo_desde"
+    )
+    segments.append(
+        _segment_for_box("periodo_desde_day", desde_day, font_size=size, center=True)
+    )
     desde_month, size = fit_single_line(
         _MONTH_NAMES[desde.month - 1], W_DESDE_MONTH, field="periodo_desde"
     )
@@ -400,6 +431,13 @@ def plan_overlay(data: dict) -> OverlayPlan:
     )
     segments.append(
         _segment_for_box("periodo_desde_year", desde_year, font_size=size, center=True)
+    )
+
+    hasta_day, size = fit_single_line(
+        f"{hasta_last.day:02d}", W_HASTA_DAY, field="periodo_hasta"
+    )
+    segments.append(
+        _segment_for_box("periodo_hasta_day", hasta_day, font_size=size, center=True)
     )
     hasta_month, size = fit_single_line(
         _MONTH_NAMES[hasta.month - 1], W_HASTA_MONTH, field="periodo_hasta"

@@ -72,6 +72,8 @@ class PdfGenerationTests(SimpleTestCase):
         self.assertIn("06", text)
         self.assertIn("11", text)
         self.assertIn("2026", text)
+        self.assertIn("01", text)
+        self.assertIn("31", text)
         self.assertIn("Enero", text)
         self.assertIn("Diciembre", text)
         self.assertIn("2027", text)
@@ -179,19 +181,74 @@ class PdfGenerationTests(SimpleTestCase):
         self.assertEqual(ctx.exception.field, "nombre_apellido")
         self.assertIn("legible", ctx.exception.message.lower())
 
-    def test_period_uses_separate_desde_hasta_month_year_slots(self):
+    def test_period_uses_separate_desde_hasta_day_month_year_slots(self):
         plan = plan_overlay(VISUAL_SAMPLE)
         fields = {s.field for s in plan.segments}
-        self.assertIn("periodo_desde_month", fields)
-        self.assertIn("periodo_desde_year", fields)
-        self.assertIn("periodo_hasta_month", fields)
-        self.assertIn("periodo_hasta_year", fields)
+        for name in (
+            "periodo_desde_day",
+            "periodo_desde_month",
+            "periodo_desde_year",
+            "periodo_hasta_day",
+            "periodo_hasta_month",
+            "periodo_hasta_year",
+        ):
+            self.assertIn(name, fields)
         self.assertNotIn("periodo", fields)
+        desde_day = next(s for s in plan.segments if s.field == "periodo_desde_day")
+        hasta_day = next(s for s in plan.segments if s.field == "periodo_hasta_day")
         desde_month = next(s for s in plan.segments if s.field == "periodo_desde_month")
         hasta_month = next(s for s in plan.segments if s.field == "periodo_hasta_month")
+        self.assertEqual(desde_day.text, "01")
+        self.assertEqual(hasta_day.text, "31")
         self.assertEqual(desde_month.text, "Enero")
         self.assertEqual(hasta_month.text, "Diciembre")
         self.assertLess(desde_month.x, hasta_month.x)
+
+    def test_period_month_boundaries_use_calendar_last_day(self):
+        cases = (
+            (date(2027, 1, 15), "31", "Enero"),
+            (date(2027, 12, 1), "31", "Diciembre"),
+            (date(2027, 2, 1), "28", "Febrero"),
+            (date(2028, 2, 1), "29", "Febrero"),
+            (date(2027, 4, 1), "30", "Abril"),
+        )
+        for month_value, expected_last_day, expected_month in cases:
+            with self.subTest(month=month_value):
+                plan = plan_overlay(
+                    {
+                        **SAMPLE,
+                        "periodo_desde": month_value,
+                        "periodo_hasta": month_value,
+                    }
+                )
+                by_field = {s.field: s for s in plan.segments}
+                self.assertEqual(by_field["periodo_desde_day"].text, "01")
+                self.assertEqual(by_field["periodo_hasta_day"].text, expected_last_day)
+                self.assertEqual(by_field["periodo_desde_month"].text, expected_month)
+                self.assertEqual(by_field["periodo_hasta_month"].text, expected_month)
+                self.assertEqual(
+                    by_field["periodo_desde_year"].text, f"{month_value.year:04d}"
+                )
+                self.assertEqual(
+                    by_field["periodo_hasta_year"].text, f"{month_value.year:04d}"
+                )
+
+    def test_period_components_are_centered_in_their_slots(self):
+        plan = plan_overlay(VISUAL_SAMPLE)
+        for field in (
+            "periodo_desde_day",
+            "periodo_desde_month",
+            "periodo_desde_year",
+            "periodo_hasta_day",
+            "periodo_hasta_month",
+            "periodo_hasta_year",
+        ):
+            with self.subTest(field=field):
+                segment = next(s for s in plan.segments if s.field == field)
+                box = FIELD_BOXES[field]
+                segment_center = segment.x + (segment.width / 2.0)
+                box_center = box.x + (box.width / 2.0)
+                self.assertAlmostEqual(segment_center, box_center, delta=0.75)
 
     def test_fecha_parts_do_not_span_date_separators(self):
         from .pdf import FONT_SIZE
