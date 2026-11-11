@@ -1,6 +1,6 @@
 ---
 doc_id: architecture
-doc_version: 1.1.29
+doc_version: 1.1.30
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-11-11
@@ -80,6 +80,8 @@ prescriptions/
   Carlito font under `assets/`, mounted at `/terapias-ambulatorias/`; no models.
   Linked from the shared `core/templates/base.html` navbar as
   Prescripciones médicas via `{% url 'prescriptions:terapias_ambulatorias' %}`.
+  The form template extends `base.html` (`body_class` `prescriptions-page`)
+  and scopes its CSS under that class to avoid Bootstrap layout conflicts.
 
 investments/
   Invest model exists, but the app is not currently installed

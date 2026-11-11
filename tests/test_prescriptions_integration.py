@@ -37,3 +37,23 @@ class PrescriptionsIntegrationTests(SimpleTestCase):
             self.assertContains(page, reverse("currencyconverter:calculadora"))
             self.assertContains(page, reverse("aboutMe"))
             self.assertContains(page, reverse("dashboard_demo"))
+
+    def test_prescription_form_includes_shared_navigation(self):
+        client = Client()
+        prescriptions_url = reverse("prescriptions:terapias_ambulatorias")
+        response = client.get(prescriptions_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "id='navbar'")
+        self.assertContains(response, "Prescripciones médicas")
+        self.assertContains(response, f'href="{prescriptions_url}"')
+        self.assertContains(response, reverse("home"))
+        self.assertContains(response, reverse("currencyconverter:cotizaciones"))
+        self.assertContains(response, reverse("currencyconverter:calculadora"))
+        self.assertContains(response, reverse("aboutMe"))
+        self.assertContains(response, reverse("dashboard_demo"))
+        self.assertContains(response, "Descargar PDF")
+        self.assertContains(response, "csrfmiddlewaretoken")
+        self.assertContains(response, "prescriptions-page")
+        # Standalone document shell must not be duplicated under the shared layout.
+        self.assertEqual(response.content.decode().lower().count("<!doctype html>"), 1)

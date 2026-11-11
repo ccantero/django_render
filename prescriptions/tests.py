@@ -329,6 +329,40 @@ class FormViewTests(SimpleTestCase):
         response = client.get(reverse("prescriptions:terapias_ambulatorias"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Descargar PDF")
+        self.assertContains(response, "id='navbar'")
+        self.assertContains(response, "Prescripciones médicas")
+        self.assertContains(response, reverse("home"))
+
+    def test_form_is_publicly_accessible_without_login(self):
+        client = Client()
+        response = client.get(reverse("prescriptions:terapias_ambulatorias"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "csrfmiddlewaretoken")
+        self.assertContains(response, "id='navbar'")
+        self.assertNotContains(response, "Salir")
+
+    def test_invalid_post_keeps_shared_navigation(self):
+        client = Client()
+        wide_name = "W" * 55
+        response = client.post(
+            reverse("prescriptions:terapias_ambulatorias"),
+            {
+                "fecha": "2026-11-06",
+                "nombre_apellido": wide_name,
+                "dni": "30123456",
+                "edad": "42",
+                "diagnostico": "Diagnóstico de prueba",
+                "prestacion": "Kinesiología",
+                "frecuencia_semanal": "2 veces por semana",
+                "periodo_desde": "2027-01",
+                "periodo_hasta": "2027-12",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "id='navbar'", status_code=400)
+        self.assertContains(response, reverse("home"), status_code=400)
+        self.assertContains(response, wide_name[:40], status_code=400)
+        self.assertContains(response, "legible", status_code=400)
 
     def test_post_downloads_pdf(self):
         client = Client()
@@ -354,3 +388,4 @@ class FormViewTests(SimpleTestCase):
         self.assertIn("Juan Pérez", text)
         self.assertIn("Enero", text)
         self.assertIn("Diciembre", text)
+

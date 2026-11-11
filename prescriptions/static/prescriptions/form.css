@@ -1,4 +1,4 @@
-:root {
+.prescriptions-page {
   --ink: #1a2a4a;
   --muted: #5a6a86;
   --line: #c5d0e4;
@@ -11,11 +11,7 @@
   --font: "Source Sans 3", "Segoe UI", "Helvetica Neue", sans-serif;
 }
 
-* {
-  box-sizing: border-box;
-}
-
-body {
+.prescriptions-page {
   margin: 0;
   min-height: 100vh;
   font-family: var(--font);
@@ -25,17 +21,23 @@ body {
     linear-gradient(160deg, #e8eef8 0%, var(--paper) 45%, #dde6f4 100%);
 }
 
-.page {
+.prescriptions-page *,
+.prescriptions-page *::before,
+.prescriptions-page *::after {
+  box-sizing: border-box;
+}
+
+.prescriptions-page .page {
   width: min(720px, calc(100% - 2rem));
   margin: 0 auto;
   padding: 3rem 0 4rem;
 }
 
-.hero {
+.prescriptions-page .hero {
   margin-bottom: 1.75rem;
 }
 
-.eyebrow {
+.prescriptions-page .eyebrow {
   margin: 0 0 0.4rem;
   font-size: 0.8rem;
   letter-spacing: 0.08em;
@@ -44,59 +46,59 @@ body {
   font-weight: 700;
 }
 
-h1 {
+.prescriptions-page .page h1 {
   margin: 0 0 0.5rem;
   font-size: clamp(1.8rem, 4vw, 2.4rem);
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
-.lede {
+.prescriptions-page .lede {
   margin: 0;
   max-width: 36rem;
   color: var(--muted);
   line-height: 1.45;
 }
 
-.form {
+.prescriptions-page .form {
   background: var(--panel);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
   padding: 1.5rem;
 }
 
-.grid {
+.prescriptions-page .grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem 1.1rem;
 }
 
-.field {
+.prescriptions-page .field {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
 }
 
-.field--wide {
+.prescriptions-page .field--wide {
   grid-column: 1 / -1;
 }
 
-.field--narrow {
+.prescriptions-page .field--narrow {
   max-width: 8rem;
 }
 
-.field span {
+.prescriptions-page .field span {
   font-size: 0.92rem;
   font-weight: 600;
 }
 
-.field small {
+.prescriptions-page .field small {
   color: var(--muted);
   font-size: 0.8rem;
 }
 
-.field input,
-.field textarea {
+.prescriptions-page .field input,
+.prescriptions-page .field textarea {
   width: 100%;
   border: 1px solid var(--line);
   background: #fbfcff;
@@ -106,19 +108,19 @@ h1 {
   border-radius: 0;
 }
 
-.field input:focus,
-.field textarea:focus {
+.prescriptions-page .field input:focus,
+.prescriptions-page .field textarea:focus {
   outline: 2px solid rgba(42, 79, 143, 0.35);
   outline-offset: 1px;
   border-color: var(--accent);
 }
 
-.field textarea {
+.prescriptions-page .field textarea {
   min-height: 5.5rem;
   resize: vertical;
 }
 
-.errorlist {
+.prescriptions-page .errorlist {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -126,22 +128,22 @@ h1 {
   font-size: 0.85rem;
 }
 
-.errors {
+.prescriptions-page .errors {
   margin-bottom: 1rem;
   color: var(--danger);
 }
 
-.note {
+.prescriptions-page .note {
   margin: 1.25rem 0 0;
   color: var(--muted);
   font-size: 0.9rem;
 }
 
-.actions {
+.prescriptions-page .actions {
   margin-top: 1.25rem;
 }
 
-button {
+.prescriptions-page .actions button {
   appearance: none;
   border: 0;
   background: var(--accent);
@@ -152,16 +154,16 @@ button {
   cursor: pointer;
 }
 
-button:hover {
+.prescriptions-page .actions button:hover {
   background: var(--accent-hover);
 }
 
 @media (max-width: 640px) {
-  .grid {
+  .prescriptions-page .grid {
     grid-template-columns: 1fr;
   }
 
-  .field--narrow {
+  .prescriptions-page .field--narrow {
     max-width: none;
   }
 }

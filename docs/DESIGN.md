@@ -1,6 +1,6 @@
 ---
 doc_id: design
-doc_version: 1.1.40
+doc_version: 1.1.41
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-11-11
@@ -23,7 +23,7 @@ version, documentation freshness, contract freshness, and projection freshness
 without manually inspecting repository history.
 
 The deployed app version is the root `VERSION` SemVer. `1.0.0` is the initial
-baseline. The current file is `2.2.3`. `doc_version` in these files is not that version. The shared footer
+baseline. The current file is `2.2.4`. `doc_version` in these files is not that version. The shared footer
 and `GET /version/` show the app version and the short commit. The Buenos
 Aires time is the explicit `DEPLOYED_AT` or `stamp_build` instant, or
 `unknown` when neither was recorded. Schema version, strategy version, and

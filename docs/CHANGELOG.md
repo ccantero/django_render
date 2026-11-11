@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.63
+doc_version: 1.1.64
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-11-11
@@ -8,6 +8,30 @@ source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-11-11 - Keep shared navigation on Galeno prescription form
+
+Type: behavior
+Runtime version: 2.2.4
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/CHANGELOG.md
+
+Summary:
+- Converted `prescriptions/templates/prescriptions/form.html` from a standalone HTML document to `{% extends "base.html" %}` so the shared navbar remains available on `/terapias-ambulatorias/`.
+- Scoped form CSS under `body.prescriptions-page` to avoid Bootstrap conflicts; PDF generation, form fields, CSRF, public access, and validation are unchanged.
+- Bumped app `VERSION` to `2.2.4`.
+
+Operator impact:
+- Users can open Prescripciones médicas from the main menu and navigate back to other public pages without losing the shared navigation.
+
+Validation:
+- `pytest tests/test_prescriptions_integration.py prescriptions/tests.py` including shared-nav GET/POST regressions.
+- KPI registry reviewed; no update needed.
 
 ## 2026-11-11 - Link Prescripciones médicas in main navigation
 
