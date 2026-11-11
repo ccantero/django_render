@@ -1,0 +1,169 @@
+.prescriptions-page {
+  --ink: #1a2a4a;
+  --muted: #5a6a86;
+  --line: #c5d0e4;
+  --paper: #f3f6fb;
+  --panel: #ffffff;
+  --accent: #2a4f8f;
+  --accent-hover: #1e3b6e;
+  --danger: #9b2c2c;
+  --shadow: 0 18px 40px rgba(26, 42, 74, 0.08);
+  --font: "Source Sans 3", "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+.prescriptions-page {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font);
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(42, 79, 143, 0.12), transparent 40%),
+    linear-gradient(160deg, #e8eef8 0%, var(--paper) 45%, #dde6f4 100%);
+}
+
+.prescriptions-page *,
+.prescriptions-page *::before,
+.prescriptions-page *::after {
+  box-sizing: border-box;
+}
+
+.prescriptions-page .page {
+  width: min(720px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 3rem 0 4rem;
+}
+
+.prescriptions-page .hero {
+  margin-bottom: 1.75rem;
+}
+
+.prescriptions-page .eyebrow {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.prescriptions-page .page h1 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(1.8rem, 4vw, 2.4rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.prescriptions-page .lede {
+  margin: 0;
+  max-width: 36rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.prescriptions-page .form {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  padding: 1.5rem;
+}
+
+.prescriptions-page .grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem 1.1rem;
+}
+
+.prescriptions-page .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.prescriptions-page .field--wide {
+  grid-column: 1 / -1;
+}
+
+.prescriptions-page .field--narrow {
+  max-width: 8rem;
+}
+
+.prescriptions-page .field span {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.prescriptions-page .field small {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.prescriptions-page .field input,
+.prescriptions-page .field textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #fbfcff;
+  color: var(--ink);
+  padding: 0.65rem 0.75rem;
+  font: inherit;
+  border-radius: 0;
+}
+
+.prescriptions-page .field input:focus,
+.prescriptions-page .field textarea:focus {
+  outline: 2px solid rgba(42, 79, 143, 0.35);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.prescriptions-page .field textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.prescriptions-page .errorlist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+.prescriptions-page .errors {
+  margin-bottom: 1rem;
+  color: var(--danger);
+}
+
+.prescriptions-page .note {
+  margin: 1.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.prescriptions-page .actions {
+  margin-top: 1.25rem;
+}
+
+.prescriptions-page .actions button {
+  appearance: none;
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.85rem 1.35rem;
+  cursor: pointer;
+}
+
+.prescriptions-page .actions button:hover {
+  background: var(--accent-hover);
+}
+
+@media (max-width: 640px) {
+  .prescriptions-page .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .prescriptions-page .field--narrow {
+    max-width: none;
+  }
+}

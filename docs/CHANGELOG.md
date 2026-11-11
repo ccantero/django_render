@@ -1,13 +1,139 @@
 ---
 doc_id: changelog
-doc_version: 1.1.59
+doc_version: 1.1.64
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-31
+last_verified_at: 2026-11-11
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-11-11 - Keep shared navigation on Galeno prescription form
+
+Type: behavior
+Runtime version: 2.2.4
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/CHANGELOG.md
+
+Summary:
+- Converted `prescriptions/templates/prescriptions/form.html` from a standalone HTML document to `{% extends "base.html" %}` so the shared navbar remains available on `/terapias-ambulatorias/`.
+- Scoped form CSS under `body.prescriptions-page` to avoid Bootstrap conflicts; PDF generation, form fields, CSRF, public access, and validation are unchanged.
+- Bumped app `VERSION` to `2.2.4`.
+
+Operator impact:
+- Users can open Prescripciones médicas from the main menu and navigate back to other public pages without losing the shared navigation.
+
+Validation:
+- `pytest tests/test_prescriptions_integration.py prescriptions/tests.py` including shared-nav GET/POST regressions.
+- KPI registry reviewed; no update needed.
+
+## 2026-11-11 - Link Prescripciones médicas in main navigation
+
+Type: behavior
+Runtime version: 2.2.3
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/CHANGELOG.md
+
+Summary:
+- Added a public shared-navbar entry **Prescripciones médicas** in `core/templates/base.html` that resolves `{% url 'prescriptions:terapias_ambulatorias' %}` to `/terapias-ambulatorias/`.
+- No PDF, form, auth, or database changes. Site has no active-menu highlighting; none was added.
+- Bumped app `VERSION` to `2.2.3`.
+
+Operator impact:
+- The Galeno prescription generator is reachable from the same main menu as Cotizaciones and Calculadora UVA on pages that use the shared base template.
+
+Validation:
+- `pytest tests/test_prescriptions_integration.py prescriptions/tests.py` including the new navbar link assertion.
+- KPI registry reviewed; no update needed.
+
+## 2026-11-11 - Populate Galeno periodo day slots from month boundaries
+
+Type: behavior
+Runtime version: 2.2.2
+Schema version: unknown
+Docs affected:
+- docs/PROJECT_STATE.md
+- docs/DESIGN.md
+- docs/CHANGELOG.md
+
+Summary:
+- PDF overlay now fills periodo day blanks: day 01 for `periodo_desde` and the calendar last day of the month for `periodo_hasta` (`calendar.monthrange`, including February leap years).
+- Day, month, and year periodo values are centered in their measured blanks via ReportLab `stringWidth`.
+- Form month/year inputs and `/terapias-ambulatorias/` URL are unchanged.
+- Bumped app `VERSION` to `2.2.2`.
+
+Operator impact:
+- Generated prescriptions show complete desde/hasta dates such as `01 / Enero / 2027` and `31 / Diciembre / 2027`.
+
+Validation:
+- `pytest prescriptions/tests.py tests/test_prescriptions_integration.py` including month-boundary and centering regression tests.
+- Visual PNG check of the periodo line at 180 DPI against the blank template.
+- KPI registry reviewed; no update needed.
+
+## 2026-11-11 - Fix Galeno prescription PDF alignment and capacity validation
+
+Type: behavior
+Runtime version: 2.2.1
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/CHANGELOG.md
+
+Summary:
+- Replaced character/line slicing in the Terapias Ambulatorias PDF overlay with measured ReportLab field fitting and explicit printable bounding boxes.
+- Fecha is drawn as separate day/month/year parts inside the template blanks; periodo month/year values fill the month and year blanks and leave day blanks empty (form month precision).
+- Removed the white rectangle that covered the periodo structure.
+- Malformed month input and text that cannot fit legibly become Django form validation errors (HTTP 400), not silent truncation or HTTP 500.
+- Bumped app `VERSION` to `2.2.1`.
+
+Operator impact:
+- `/terapias-ambulatorias/` still uses the same fields and URL; overlong clinical text now shows a field error instead of a clipped PDF.
+- Periodo on the PDF shows Spanish month names and years in the original desde/hasta slots.
+
+Validation:
+- `pytest prescriptions/tests.py tests/test_prescriptions_integration.py` (20 passed) plus broader suite excluding disposable PostgreSQL concurrency.
+- Visual PNG comparison of blank template vs filled representative and boundary PDFs at 180 DPI.
+- KPI registry reviewed; no update needed.
+
+## 2026-11-06 - Integrate Galeno Terapias Ambulatorias prescriptions
+
+Type: behavior
+Runtime version: 2.2.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/CHANGELOG.md
+
+Summary:
+- Copied the portable `prescriptions` app from `galeno-cud-generator` into this project (form, PDF overlay, bundled blank PDF and Carlito font).
+- Registered `prescriptions.apps.PrescriptionsConfig`, mounted `/terapias-ambulatorias/`, and added `pypdf`, `reportlab`, and `pillow` to `requirements.txt`.
+- Bumped app `VERSION` to `2.2.0`. No models, migrations, or bot data-contract changes.
+
+Operator impact:
+- Operators can open `/terapias-ambulatorias/`, fill the Galeno Terapias Ambulatorias form, and download a filled PDF.
+- The form is currently public (same pattern as the currency-converter surface); it does not use bot-owned tables.
+
+Validation:
+- Failing host integration tests first, then `pytest tests/test_prescriptions_integration.py prescriptions/tests.py` and the broader suite excluding disposable PostgreSQL concurrency (`474 passed`).
+- KPI registry reviewed; no update needed.
 
 ## 2026-10-31 - Record the Render/Django security audit
 

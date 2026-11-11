@@ -35,6 +35,9 @@ staticfiles/
 static/admin/
 static/staticfiles.json
 
+# Local visual verification artifacts for PDF alignment work
+tmp_visual/
+
 # Local environment files
 .env
 .env.*

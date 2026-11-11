@@ -140,6 +140,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'currencyconverter',
     'profile',
+    'prescriptions.apps.PrescriptionsConfig',
 ]
 
 MIDDLEWARE = [

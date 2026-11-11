@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.46
+doc_version: 1.1.51
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-31
+last_verified_at: 2026-11-11
 source_repo: django_render
 ---
 
@@ -97,7 +97,7 @@ The results panel also shows the current official USD and UVA values used by
 the calculator.
 
 The deployed app version is SemVer in the root `VERSION` file. `1.0.0` is the
-initial baseline and `2.1.0` is the current release. `1.1.0` added the pause/resume request flow; `2.0.0` requires confirmation on every pause POST. `2.1.0` adds read-only Telegram position generation modes. Those release
+initial baseline and `2.2.4` is the current release. `1.1.0` added the pause/resume request flow; `2.0.0` requires confirmation on every pause POST. `2.1.0` adds read-only Telegram position generation modes. `2.2.0` adds the public Galeno Terapias Ambulatorias prescription PDF form. `2.2.1` corrects Galeno PDF field alignment, measured text fitting, periodo slot rendering, and form validation for month/capacity errors. `2.2.2` fills periodo day blanks from month boundaries (first/last calendar day) with centered day/month/year slots. `2.2.3` adds a shared navbar link **Prescripciones médicas** to `/terapias-ambulatorias/`. `2.2.4` makes the prescription form extend the shared `base.html` layout so that navigation remains on the form page. Those release
 numbers are not the per-document `doc_version`. The shared base footer and `GET /version/` show that version
 and a 7-character `RENDER_GIT_COMMIT` build suffix or `dev`. A Buenos Aires
 clock time is included only when `DEPLOYED_AT` or `python manage.py stamp_build`
@@ -124,6 +124,7 @@ Detected Django apps:
 - `dashboard`: dashboard pages, dashboard URLs, read models, forms, and dashboard templates.
 - `currencyconverter`: UVA calculator, currency/exchange-rate models, DRF viewsets, HTML exchange-rate view, and staff-only rate update endpoint.
 - `profile`: custom email-based user model, token login, profile API, admin integration, and profile permissions.
+- `prescriptions`: public Galeno Terapias Ambulatorias form and measured PDF overlay at `/terapias-ambulatorias/` (capacity-checked field boxes; no models or migrations). Reachable from the shared `base.html` navbar as **Prescripciones médicas**; the form template extends that same base so navigation is present on the page.
 - `investments`: contains an `Invest` model, but it is not currently listed in `INSTALLED_APPS`.
 
 Implemented capabilities:
