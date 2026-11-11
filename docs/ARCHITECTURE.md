@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.27
+doc_version: 1.1.28
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-11-06
+last_verified_at: 2026-11-11
 source_repo: django_render
 ---
 
@@ -75,9 +75,9 @@ profile/
   token login, admin, and permissions
 
 prescriptions/
-  public Terapias Ambulatorias form, PDF overlay (`pypdf` + `reportlab`),
-  bundled blank PDF and Carlito font under `assets/`, mounted at
-  `/terapias-ambulatorias/`; no models
+  public Terapias Ambulatorias form, measured PDF overlay (`pypdf` +
+  `reportlab` field boxes with capacity validation), bundled blank PDF and
+  Carlito font under `assets/`, mounted at `/terapias-ambulatorias/`; no models
 
 investments/
   Invest model exists, but the app is not currently installed

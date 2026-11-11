@@ -1,6 +1,11 @@
 from datetime import date
+import re
 
 from django import forms
+
+from .pdf import PrescriptionLayoutError, plan_overlay
+
+_MONTH_RE = re.compile(r"^(\d{4})-(\d{2})$")
 
 
 class TerapiasAmbulatoriasForm(forms.Form):
@@ -51,8 +56,19 @@ class TerapiasAmbulatoriasForm(forms.Form):
 
     @staticmethod
     def _parse_month(value: str) -> date:
-        year_s, month_s = value.split("-", 1)
-        return date(int(year_s), int(month_s), 1)
+        if not isinstance(value, str):
+            raise forms.ValidationError("Ingresá un mes válido (AAAA-MM).")
+        match = _MONTH_RE.fullmatch(value.strip())
+        if not match:
+            raise forms.ValidationError("Ingresá un mes válido (AAAA-MM).")
+        year = int(match.group(1))
+        month = int(match.group(2))
+        if month < 1 or month > 12:
+            raise forms.ValidationError("El mes debe estar entre 01 y 12.")
+        try:
+            return date(year, month, 1)
+        except ValueError as exc:
+            raise forms.ValidationError("Ingresá un mes válido (AAAA-MM).") from exc
 
     def clean_periodo_desde(self):
         return self._parse_month(self.cleaned_data["periodo_desde"])
@@ -69,4 +85,37 @@ class TerapiasAmbulatoriasForm(forms.Form):
                 "periodo_hasta",
                 "El mes hasta debe ser posterior o igual a desde.",
             )
+
+        required = (
+            "fecha",
+            "nombre_apellido",
+            "dni",
+            "edad",
+            "diagnostico",
+            "prestacion",
+            "frecuencia_semanal",
+            "periodo_desde",
+            "periodo_hasta",
+        )
+        if any(field not in cleaned or cleaned.get(field) in (None, "") for field in required):
+            return cleaned
+        if self.errors:
+            return cleaned
+
+        try:
+            plan_overlay(cleaned)
+        except PrescriptionLayoutError as exc:
+            field = exc.field if exc.field in self.fields else None
+            # fecha_day/month/year map back to fecha; periodo_*_month/year already
+            # use periodo_desde / periodo_hasta in fit_single_line field names.
+            if field is None and exc.field.startswith("fecha"):
+                field = "fecha"
+            if field is None and exc.field.startswith("periodo_desde"):
+                field = "periodo_desde"
+            if field is None and exc.field.startswith("periodo_hasta"):
+                field = "periodo_hasta"
+            if field and field in self.fields:
+                self.add_error(field, exc.message)
+            else:
+                self.add_error(None, exc.message)
         return cleaned

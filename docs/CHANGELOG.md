@@ -1,13 +1,41 @@
 ---
 doc_id: changelog
-doc_version: 1.1.60
+doc_version: 1.1.61
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-11-06
+last_verified_at: 2026-11-11
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-11-11 - Fix Galeno prescription PDF alignment and capacity validation
+
+Type: behavior
+Runtime version: 2.2.1
+Schema version: unknown
+Docs affected:
+- README.md
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/CHANGELOG.md
+
+Summary:
+- Replaced character/line slicing in the Terapias Ambulatorias PDF overlay with measured ReportLab field fitting and explicit printable bounding boxes.
+- Fecha is drawn as separate day/month/year parts inside the template blanks; periodo month/year values fill the month and year blanks and leave day blanks empty (form month precision).
+- Removed the white rectangle that covered the periodo structure.
+- Malformed month input and text that cannot fit legibly become Django form validation errors (HTTP 400), not silent truncation or HTTP 500.
+- Bumped app `VERSION` to `2.2.1`.
+
+Operator impact:
+- `/terapias-ambulatorias/` still uses the same fields and URL; overlong clinical text now shows a field error instead of a clipped PDF.
+- Periodo on the PDF shows Spanish month names and years in the original desde/hasta slots.
+
+Validation:
+- `pytest prescriptions/tests.py tests/test_prescriptions_integration.py` (20 passed) plus broader suite excluding disposable PostgreSQL concurrency.
+- Visual PNG comparison of blank template vs filled representative and boundary PDFs at 180 DPI.
+- KPI registry reviewed; no update needed.
 
 ## 2026-11-06 - Integrate Galeno Terapias Ambulatorias prescriptions
 
