@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.30
+doc_version: 1.1.32
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-11-11
+last_verified_at: 2026-11-13
 source_repo: django_render
 ---
 
@@ -198,7 +198,7 @@ Additional pending visibility work:
 ## Completed Work
 
 - Django project configured with `core`, `dashboard`, `currencyconverter`, `profile`, and `prescriptions` apps.
-- Public Galeno Terapias Ambulatorias prescription PDF form at `/terapias-ambulatorias/` (copied from `galeno-cud-generator`; measured field overlay and capacity validation; no bot DB use).
+- Public Galeno prescriptions hub at `/prescripciones-galeno/` with Terapias and Escolaridad Especial forms (ported with `galeno-cud-generator`; measured field overlay and capacity validation; no bot DB use).
 - Authenticated dashboard, dust/residual review, and manual correction request pages exist in `dashboard`.
 - Home/auth-adjacent pages, Telegram webhook listener, bot-control endpoints, and bot-owned table mappings remain in `core`.
 - Dashboard pause/resume keeps the operator in the HTML UI. The request records desired `core_botcontrol` state only, requires confirmation on every pause POST (HTML and JSON), and does not claim the bot has applied it. A failed browser response is not replayed.

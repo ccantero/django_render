@@ -1,13 +1,39 @@
 ---
 doc_id: changelog
-doc_version: 1.1.64
+doc_version: 1.1.66
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-11-11
+last_verified_at: 2026-11-13
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-11-13 - Add Galeno Escolaridad Especial under a shared hub
+
+Type: behavior
+Runtime version: 2.3.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/CHANGELOG.md
+
+Summary:
+- Added public `/escolaridad-especial/` form that fills the bundled Escolaridad Especial PDF (jornada instead of frecuencia; prestación one line; shifted periodo baseline).
+- Kept `/terapias-ambulatorias/` behavior and geometry unchanged; shared overlay engine now selects a layout profile.
+- Added shared hub `/prescripciones-galeno/` (Terapias · Escolaridad especial). Navbar exposes a single **Prescripciones Galeno** entry; forms link back to the hub.
+- Bumped app `VERSION` to `2.3.0`.
+
+Operator impact:
+- Operators open Prescripciones Galeno once, then choose Terapias or Escolaridad especial to download the matching PDF.
+
+Validation:
+- `pytest prescriptions/tests.py tests/test_prescriptions_integration.py`
+- KPI registry reviewed; no update needed.
 
 ## 2026-11-11 - Keep shared navigation on Galeno prescription form
 

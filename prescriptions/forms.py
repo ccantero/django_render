@@ -3,12 +3,21 @@ import re
 
 from django import forms
 
-from .pdf import PrescriptionLayoutError, plan_overlay
+from .pdf import (
+    LAYOUT_ESCOLARIDAD,
+    LAYOUT_TERAPIAS,
+    PrescriptionLayoutError,
+    plan_overlay,
+)
 
 _MONTH_RE = re.compile(r"^(\d{4})-(\d{2})$")
 
 
-class TerapiasAmbulatoriasForm(forms.Form):
+class _PrescriptionFormBase(forms.Form):
+    """Shared Galeno prescription fields and capacity validation."""
+
+    layout = LAYOUT_TERAPIAS
+
     fecha = forms.DateField(
         label="Fecha",
         widget=forms.DateInput(attrs={"type": "date", "required": True}),
@@ -36,12 +45,6 @@ class TerapiasAmbulatoriasForm(forms.Form):
     prestacion = forms.CharField(
         label="Prestación",
         widget=forms.Textarea(attrs={"rows": 2, "required": True}),
-    )
-    frecuencia_semanal = forms.CharField(
-        label="Frecuencia semanal",
-        max_length=120,
-        help_text="Ej.: 2 veces por semana",
-        widget=forms.TextInput(attrs={"required": True}),
     )
     periodo_desde = forms.CharField(
         label="Periodo desde",
@@ -76,6 +79,9 @@ class TerapiasAmbulatoriasForm(forms.Form):
     def clean_periodo_hasta(self):
         return self._parse_month(self.cleaned_data["periodo_hasta"])
 
+    def _capacity_required_fields(self) -> tuple[str, ...]:
+        raise NotImplementedError
+
     def clean(self):
         cleaned = super().clean()
         desde = cleaned.get("periodo_desde")
@@ -86,28 +92,19 @@ class TerapiasAmbulatoriasForm(forms.Form):
                 "El mes hasta debe ser posterior o igual a desde.",
             )
 
-        required = (
-            "fecha",
-            "nombre_apellido",
-            "dni",
-            "edad",
-            "diagnostico",
-            "prestacion",
-            "frecuencia_semanal",
-            "periodo_desde",
-            "periodo_hasta",
-        )
-        if any(field not in cleaned or cleaned.get(field) in (None, "") for field in required):
+        required = self._capacity_required_fields()
+        if any(
+            field not in cleaned or cleaned.get(field) in (None, "")
+            for field in required
+        ):
             return cleaned
         if self.errors:
             return cleaned
 
         try:
-            plan_overlay(cleaned)
+            plan_overlay(cleaned, layout=self.layout)
         except PrescriptionLayoutError as exc:
             field = exc.field if exc.field in self.fields else None
-            # fecha_day/month/year map back to fecha; periodo_*_month/year already
-            # use periodo_desde / periodo_hasta in fit_single_line field names.
             if field is None and exc.field.startswith("fecha"):
                 field = "fecha"
             if field is None and exc.field.startswith("periodo_desde"):
@@ -119,3 +116,55 @@ class TerapiasAmbulatoriasForm(forms.Form):
             else:
                 self.add_error(None, exc.message)
         return cleaned
+
+
+class TerapiasAmbulatoriasForm(_PrescriptionFormBase):
+    layout = LAYOUT_TERAPIAS
+
+    frecuencia_semanal = forms.CharField(
+        label="Frecuencia semanal",
+        max_length=120,
+        help_text="Ej.: 2 veces por semana",
+        widget=forms.TextInput(attrs={"required": True}),
+    )
+
+    def _capacity_required_fields(self) -> tuple[str, ...]:
+        return (
+            "fecha",
+            "nombre_apellido",
+            "dni",
+            "edad",
+            "diagnostico",
+            "prestacion",
+            "frecuencia_semanal",
+            "periodo_desde",
+            "periodo_hasta",
+        )
+
+
+class EscolaridadEspecialForm(_PrescriptionFormBase):
+    layout = LAYOUT_ESCOLARIDAD
+
+    prestacion = forms.CharField(
+        label="Prestación",
+        widget=forms.Textarea(attrs={"rows": 1, "required": True}),
+    )
+    jornada = forms.CharField(
+        label="Jornada",
+        max_length=80,
+        help_text="Ej.: Simple, Doble, Completa",
+        widget=forms.TextInput(attrs={"required": True}),
+    )
+
+    def _capacity_required_fields(self) -> tuple[str, ...]:
+        return (
+            "fecha",
+            "nombre_apellido",
+            "dni",
+            "edad",
+            "diagnostico",
+            "prestacion",
+            "jornada",
+            "periodo_desde",
+            "periodo_hasta",
+        )

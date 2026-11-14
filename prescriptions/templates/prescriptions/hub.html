@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="{% static 'prescriptions/form.css' %}">
+{% endblock %}
+
+{% block body_class %}prescriptions-page{% endblock %}
+
+{% block content %}
+  <main class="page">
+    <header class="hero">
+      <p class="eyebrow">Galeno</p>
+      <h1>Prescripciones Galeno</h1>
+      <p class="lede">Elegí el tipo de prescripción médica para completar y descargar el PDF.</p>
+    </header>
+
+    <ul class="choice-list">
+      <li>
+        <a class="choice" href="{% url 'prescriptions:terapias_ambulatorias' %}">
+          <span class="choice__title">Terapias ambulatorias</span>
+          <span class="choice__meta">Rehabilitación · frecuencia semanal</span>
+        </a>
+      </li>
+      <li>
+        <a class="choice" href="{% url 'prescriptions:escolaridad_especial' %}">
+          <span class="choice__title">Escolaridad especial</span>
+          <span class="choice__meta">Educativas · jornada</span>
+        </a>
+      </li>
+    </ul>
+  </main>
+{% endblock %}
