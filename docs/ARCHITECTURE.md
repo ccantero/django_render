@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.30
+doc_version: 1.1.32
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-11-11
+last_verified_at: 2026-11-13
 source_repo: django_render
 ---
 
@@ -75,13 +75,15 @@ profile/
   token login, admin, and permissions
 
 prescriptions/
-  public Terapias Ambulatorias form, measured PDF overlay (`pypdf` +
-  `reportlab` field boxes with capacity validation), bundled blank PDF and
-  Carlito font under `assets/`, mounted at `/terapias-ambulatorias/`; no models.
-  Linked from the shared `core/templates/base.html` navbar as
-  Prescripciones médicas via `{% url 'prescriptions:terapias_ambulatorias' %}`.
-  The form template extends `base.html` (`body_class` `prescriptions-page`)
-  and scopes its CSS under that class to avoid Bootstrap layout conflicts.
+  public Prescripciones Galeno hub plus Terapias Ambulatorias and Escolaridad
+  Especial forms, measured PDF overlay (`pypdf` + `reportlab` layout profiles
+  with capacity validation), bundled blank PDFs and Carlito font under
+  `assets/`, mounted at `/prescripciones-galeno/`, `/terapias-ambulatorias/`,
+  and `/escolaridad-especial/`; no models.
+  Linked from the shared `core/templates/base.html` navbar as a single
+  Prescripciones Galeno entry; form pages link back to the hub.
+  Templates extend `base.html` (`body_class` `prescriptions-page`) and scope
+  CSS under that class to avoid Bootstrap layout conflicts.
 
 investments/
   Invest model exists, but the app is not currently installed
@@ -154,7 +156,7 @@ Browser dashboard pages -> django_render.urls -> dashboard.urls -> dashboard.vie
 Browser bot-control form -> POST /bot/stop/ or /bot/resume/ -> core.views -> core_botcontrol desired state -> same-origin redirect and flash message
 JSON bot-control client -> same URLs with Accept: application/json, or without a text/html Accept -> existing JSON payload after a confirmed pause or any resume; an unconfirmed pause returns HTTP 400
 Browser core pages -> django_render.urls -> core.urls -> core.views
-Browser prescriptions form -> /terapias-ambulatorias/ -> prescriptions.views -> PDF download
+Browser -> /prescripciones-galeno/ hub -> /terapias-ambulatorias/ or /escolaridad-especial/ -> prescriptions.views -> PDF download
 External keepalive cron -> /health/ -> core.views.health -> JSON liveness response
 Public deploy check -> /version/ -> core.views.version -> version, short commit, explicit deployed_at or null, timestamp_source, display
 Telegram webhook -> /telegramapi/listener/ -> secret validation -> safe update parsing -> best-effort audit persistence/deduplication -> static `/help` or lazy diagnostic dispatch -> bounded outbound Telegram API call -> HTTP acknowledgement

@@ -60,6 +60,54 @@
   line-height: 1.45;
 }
 
+.prescriptions-page .lede + .lede {
+  margin-top: 0.75rem;
+}
+
+.prescriptions-page .lede a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.prescriptions-page .lede a:hover {
+  text-decoration: underline;
+}
+
+.prescriptions-page .choice-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.prescriptions-page .choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1.1rem 1.25rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  color: inherit;
+  text-decoration: none;
+}
+
+.prescriptions-page .choice:hover {
+  border-color: var(--accent);
+}
+
+.prescriptions-page .choice__title {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.prescriptions-page .choice__meta {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 .prescriptions-page .form {
   background: var(--panel);
   border: 1px solid var(--line);

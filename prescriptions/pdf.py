@@ -1,7 +1,13 @@
-"""Overlay filled values onto the Terapias Ambulatorias blank PDF template.
+"""Overlay filled values onto Galeno prescription blank PDF templates.
 
-Field geometry was measured from the bundled Galeno blank PDF (A4, Carlito 11pt
-label text). Values are fitted with ReportLab ``stringWidth`` measurements.
+Supported layouts:
+
+- ``terapias`` — Terapias Ambulatorias (prestación 2 lines + frecuencia)
+- ``escolaridad`` — Escolaridad Especial (prestación 1 line + jornada;
+  periodo baseline shifted one line up)
+
+Field geometry was measured from the bundled Galeno blank PDFs (A4, Carlito
+11pt label text). Values are fitted with ReportLab ``stringWidth`` measurements.
 
 Period handling: the Django form collects month/year only (``<input type="month">``).
 The template has day/month/year blanks for ``desde`` and ``hasta``. This module
@@ -28,6 +34,10 @@ from reportlab.pdfgen import canvas
 
 APP_DIR = Path(__file__).resolve().parent
 DEFAULT_PDF_TEMPLATE = APP_DIR / "assets" / "terapias_ambulatorias.pdf"
+DEFAULT_ESCOLARIDAD_PDF_TEMPLATE = APP_DIR / "assets" / "escolaridad_especial.pdf"
+
+LAYOUT_TERAPIAS = "terapias"
+LAYOUT_ESCOLARIDAD = "escolaridad"
 
 PAGE_WIDTH = 595.30396
 PAGE_HEIGHT = 841.88977
@@ -92,9 +102,17 @@ W_PREST_CONT = RIGHT - LEFT
 X_FREQ = 188.74 + X_PAD
 W_FREQ = RIGHT - X_FREQ
 
+# Escolaridad: "Jornada: ________________________" (short blank, one line).
+# Prestación has no continuation underscore; periodo sits one LINE_GAP higher.
+X_JORNADA = 125.82 + X_PAD
+W_JORNADA = 131.48
+Y_JORNADA = 554.34 + Y_LIFT
+Y_PERIODO_ESCOLARIDAD = 539.84 + Y_LIFT
+
 # Periodo: desde:______/_____________/________hasta:____/______________/_________.
 # Day and year use the full measured blanks so centering matches the underline.
 # Month names keep a small inset so long names stay clear of the printed '/'.
+# X slots are identical on both templates; only the baseline Y differs.
 X_DESDE_DAY = 155.23
 W_DESDE_DAY = 32.87
 X_DESDE_MONTH = 192.35 + PERIOD_INSET
@@ -201,6 +219,50 @@ FIELD_BOXES: dict[str, FieldBox] = {
     ),
 }
 
+ESCOLARIDAD_FIELD_BOXES: dict[str, FieldBox] = {
+    "fecha_day": FIELD_BOXES["fecha_day"],
+    "fecha_month": FIELD_BOXES["fecha_month"],
+    "fecha_year": FIELD_BOXES["fecha_year"],
+    "nombre_apellido": FIELD_BOXES["nombre_apellido"],
+    "dni": FIELD_BOXES["dni"],
+    "edad": FIELD_BOXES["edad"],
+    "diagnostico": FIELD_BOXES["diagnostico"],
+    "prestacion": FieldBox(
+        "prestacion",
+        X_PREST,
+        Y_PREST[0],
+        W_PREST_FIRST,
+        max_lines=1,
+    ),
+    "jornada": FieldBox("jornada", X_JORNADA, Y_JORNADA, W_JORNADA),
+    "periodo_desde_day": FieldBox(
+        "periodo_desde_day", X_DESDE_DAY, Y_PERIODO_ESCOLARIDAD, W_DESDE_DAY
+    ),
+    "periodo_desde_month": FieldBox(
+        "periodo_desde_month", X_DESDE_MONTH, Y_PERIODO_ESCOLARIDAD, W_DESDE_MONTH
+    ),
+    "periodo_desde_year": FieldBox(
+        "periodo_desde_year", X_DESDE_YEAR, Y_PERIODO_ESCOLARIDAD, W_DESDE_YEAR
+    ),
+    "periodo_hasta_day": FieldBox(
+        "periodo_hasta_day", X_HASTA_DAY, Y_PERIODO_ESCOLARIDAD, W_HASTA_DAY
+    ),
+    "periodo_hasta_month": FieldBox(
+        "periodo_hasta_month", X_HASTA_MONTH, Y_PERIODO_ESCOLARIDAD, W_HASTA_MONTH
+    ),
+    "periodo_hasta_year": FieldBox(
+        "periodo_hasta_year", X_HASTA_YEAR, Y_PERIODO_ESCOLARIDAD, W_HASTA_YEAR
+    ),
+}
+
+
+def field_boxes_for(layout: str = LAYOUT_TERAPIAS) -> dict[str, FieldBox]:
+    if layout == LAYOUT_ESCOLARIDAD:
+        return ESCOLARIDAD_FIELD_BOXES
+    if layout == LAYOUT_TERAPIAS:
+        return FIELD_BOXES
+    raise ValueError(f"Unknown prescription layout: {layout}")
+
 
 @dataclass(frozen=True)
 class OverlaySegment:
@@ -227,9 +289,14 @@ class PrescriptionLayoutError(ValueError):
         super().__init__(message)
 
 
-def get_pdf_template_path() -> Path:
-    override = getattr(settings, "TERAPIAS_AMBULATORIAS_PDF", None)
-    return Path(override) if override else DEFAULT_PDF_TEMPLATE
+def get_pdf_template_path(layout: str = LAYOUT_TERAPIAS) -> Path:
+    if layout == LAYOUT_ESCOLARIDAD:
+        override = getattr(settings, "ESCOLARIDAD_ESPECIAL_PDF", None)
+        return Path(override) if override else DEFAULT_ESCOLARIDAD_PDF_TEMPLATE
+    if layout == LAYOUT_TERAPIAS:
+        override = getattr(settings, "TERAPIAS_AMBULATORIAS_PDF", None)
+        return Path(override) if override else DEFAULT_PDF_TEMPLATE
+    raise ValueError(f"Unknown prescription layout: {layout}")
 
 
 def period_range_days(month_value: date) -> tuple[date, date]:
@@ -342,8 +409,9 @@ def _segment_for_box(
     font_size: float,
     line_index: int = 0,
     center: bool = False,
+    boxes: dict[str, FieldBox] | None = None,
 ) -> OverlaySegment:
-    box = FIELD_BOXES[field]
+    box = (boxes or FIELD_BOXES)[field]
     x = box.x_for_line(line_index)
     max_width = box.width_for_line(line_index)
     width = _text_width(text, font_size)
@@ -360,105 +428,182 @@ def _segment_for_box(
     )
 
 
-def _multiline_segments(field: str, text: str) -> list[OverlaySegment]:
-    box = FIELD_BOXES[field]
+def _multiline_segments(
+    field: str,
+    text: str,
+    *,
+    boxes: dict[str, FieldBox] | None = None,
+) -> list[OverlaySegment]:
+    field_boxes = boxes or FIELD_BOXES
+    box = field_boxes[field]
     widths = [box.width_for_line(i) for i in range(box.max_lines)]
     lines, size = wrap_text_to_widths(text, widths, field=field)
     return [
-        _segment_for_box(field, line, font_size=size, line_index=i)
+        _segment_for_box(
+            field, line, font_size=size, line_index=i, boxes=field_boxes
+        )
         for i, line in enumerate(lines)
     ]
 
 
-def plan_overlay(data: dict) -> OverlayPlan:
-    """Validate capacity and return drawable overlay segments."""
+def _period_segments(
+    data: dict,
+    *,
+    boxes: dict[str, FieldBox],
+) -> list[OverlaySegment]:
     segments: list[OverlaySegment] = []
-
-    fecha = data["fecha"]
-    day, size = fit_single_line(f"{fecha.day:02d}", W_FECHA_DAY, field="fecha")
-    segments.append(
-        _segment_for_box("fecha_day", day, font_size=size, center=True)
-    )
-    month, size = fit_single_line(f"{fecha.month:02d}", W_FECHA_MONTH, field="fecha")
-    segments.append(
-        _segment_for_box("fecha_month", month, font_size=size, center=True)
-    )
-    year, size = fit_single_line(f"{fecha.year:04d}", W_FECHA_YEAR, field="fecha")
-    segments.append(
-        _segment_for_box("fecha_year", year, font_size=size, center=True)
-    )
-
-    name, size = fit_single_line(
-        data["nombre_apellido"], W_NOMBRE, field="nombre_apellido"
-    )
-    segments.append(_segment_for_box("nombre_apellido", name, font_size=size))
-
-    dni, size = fit_single_line(str(data["dni"]), W_DNI, field="dni")
-    segments.append(_segment_for_box("dni", dni, font_size=size))
-
-    edad, size = fit_single_line(str(data["edad"]), W_EDAD, field="edad")
-    segments.append(_segment_for_box("edad", edad, font_size=size))
-
-    segments.extend(_multiline_segments("diagnostico", data["diagnostico"]))
-    segments.extend(_multiline_segments("prestacion", data["prestacion"]))
-
-    freq, size = fit_single_line(
-        data["frecuencia_semanal"], W_FREQ, field="frecuencia_semanal"
-    )
-    segments.append(_segment_for_box("frecuencia_semanal", freq, font_size=size))
-
     desde = data["periodo_desde"]
     hasta = data["periodo_hasta"]
     desde_first, _ = period_range_days(desde)
     _, hasta_last = period_range_days(hasta)
 
     desde_day, size = fit_single_line(
-        f"{desde_first.day:02d}", W_DESDE_DAY, field="periodo_desde"
-    )
-    segments.append(
-        _segment_for_box("periodo_desde_day", desde_day, font_size=size, center=True)
-    )
-    desde_month, size = fit_single_line(
-        _MONTH_NAMES[desde.month - 1], W_DESDE_MONTH, field="periodo_desde"
+        f"{desde_first.day:02d}", boxes["periodo_desde_day"].width, field="periodo_desde"
     )
     segments.append(
         _segment_for_box(
-            "periodo_desde_month", desde_month, font_size=size, center=True
+            "periodo_desde_day",
+            desde_day,
+            font_size=size,
+            center=True,
+            boxes=boxes,
+        )
+    )
+    desde_month, size = fit_single_line(
+        _MONTH_NAMES[desde.month - 1],
+        boxes["periodo_desde_month"].width,
+        field="periodo_desde",
+    )
+    segments.append(
+        _segment_for_box(
+            "periodo_desde_month",
+            desde_month,
+            font_size=size,
+            center=True,
+            boxes=boxes,
         )
     )
     desde_year, size = fit_single_line(
-        f"{desde.year:04d}", W_DESDE_YEAR, field="periodo_desde"
-    )
-    segments.append(
-        _segment_for_box("periodo_desde_year", desde_year, font_size=size, center=True)
-    )
-
-    hasta_day, size = fit_single_line(
-        f"{hasta_last.day:02d}", W_HASTA_DAY, field="periodo_hasta"
-    )
-    segments.append(
-        _segment_for_box("periodo_hasta_day", hasta_day, font_size=size, center=True)
-    )
-    hasta_month, size = fit_single_line(
-        _MONTH_NAMES[hasta.month - 1], W_HASTA_MONTH, field="periodo_hasta"
+        f"{desde.year:04d}", boxes["periodo_desde_year"].width, field="periodo_desde"
     )
     segments.append(
         _segment_for_box(
-            "periodo_hasta_month", hasta_month, font_size=size, center=True
+            "periodo_desde_year",
+            desde_year,
+            font_size=size,
+            center=True,
+            boxes=boxes,
+        )
+    )
+
+    hasta_day, size = fit_single_line(
+        f"{hasta_last.day:02d}", boxes["periodo_hasta_day"].width, field="periodo_hasta"
+    )
+    segments.append(
+        _segment_for_box(
+            "periodo_hasta_day",
+            hasta_day,
+            font_size=size,
+            center=True,
+            boxes=boxes,
+        )
+    )
+    hasta_month, size = fit_single_line(
+        _MONTH_NAMES[hasta.month - 1],
+        boxes["periodo_hasta_month"].width,
+        field="periodo_hasta",
+    )
+    segments.append(
+        _segment_for_box(
+            "periodo_hasta_month",
+            hasta_month,
+            font_size=size,
+            center=True,
+            boxes=boxes,
         )
     )
     hasta_year, size = fit_single_line(
-        f"{hasta.year:04d}", W_HASTA_YEAR, field="periodo_hasta"
+        f"{hasta.year:04d}", boxes["periodo_hasta_year"].width, field="periodo_hasta"
     )
     segments.append(
-        _segment_for_box("periodo_hasta_year", hasta_year, font_size=size, center=True)
+        _segment_for_box(
+            "periodo_hasta_year",
+            hasta_year,
+            font_size=size,
+            center=True,
+            boxes=boxes,
+        )
+    )
+    return segments
+
+
+def plan_overlay(data: dict, layout: str = LAYOUT_TERAPIAS) -> OverlayPlan:
+    """Validate capacity and return drawable overlay segments."""
+    boxes = field_boxes_for(layout)
+    segments: list[OverlaySegment] = []
+
+    fecha = data["fecha"]
+    day, size = fit_single_line(f"{fecha.day:02d}", W_FECHA_DAY, field="fecha")
+    segments.append(
+        _segment_for_box("fecha_day", day, font_size=size, center=True, boxes=boxes)
+    )
+    month, size = fit_single_line(f"{fecha.month:02d}", W_FECHA_MONTH, field="fecha")
+    segments.append(
+        _segment_for_box(
+            "fecha_month", month, font_size=size, center=True, boxes=boxes
+        )
+    )
+    year, size = fit_single_line(f"{fecha.year:04d}", W_FECHA_YEAR, field="fecha")
+    segments.append(
+        _segment_for_box("fecha_year", year, font_size=size, center=True, boxes=boxes)
     )
 
+    name, size = fit_single_line(
+        data["nombre_apellido"], W_NOMBRE, field="nombre_apellido"
+    )
+    segments.append(
+        _segment_for_box("nombre_apellido", name, font_size=size, boxes=boxes)
+    )
+
+    dni, size = fit_single_line(str(data["dni"]), W_DNI, field="dni")
+    segments.append(_segment_for_box("dni", dni, font_size=size, boxes=boxes))
+
+    edad, size = fit_single_line(str(data["edad"]), W_EDAD, field="edad")
+    segments.append(_segment_for_box("edad", edad, font_size=size, boxes=boxes))
+
+    segments.extend(
+        _multiline_segments("diagnostico", data["diagnostico"], boxes=boxes)
+    )
+    segments.extend(
+        _multiline_segments("prestacion", data["prestacion"], boxes=boxes)
+    )
+
+    if layout == LAYOUT_ESCOLARIDAD:
+        jornada, size = fit_single_line(
+            data["jornada"], boxes["jornada"].width, field="jornada"
+        )
+        segments.append(
+            _segment_for_box("jornada", jornada, font_size=size, boxes=boxes)
+        )
+    else:
+        freq, size = fit_single_line(
+            data["frecuencia_semanal"], W_FREQ, field="frecuencia_semanal"
+        )
+        segments.append(
+            _segment_for_box("frecuencia_semanal", freq, font_size=size, boxes=boxes)
+        )
+
+    segments.extend(_period_segments(data, boxes=boxes))
     return OverlayPlan(segments=tuple(segments))
 
 
-def build_overlay(data: dict, plan: OverlayPlan | None = None) -> BytesIO:
-    overlay_plan = plan or plan_overlay(data)
+def build_overlay(
+    data: dict,
+    plan: OverlayPlan | None = None,
+    *,
+    layout: str = LAYOUT_TERAPIAS,
+) -> BytesIO:
+    overlay_plan = plan or plan_overlay(data, layout=layout)
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
     c.setFillColor(VALUE_COLOR)
@@ -470,13 +615,18 @@ def build_overlay(data: dict, plan: OverlayPlan | None = None) -> BytesIO:
     return buffer
 
 
-def fill_prescription_pdf(data: dict, template_path: Path | None = None) -> bytes:
-    template = Path(template_path) if template_path else get_pdf_template_path()
+def fill_prescription_pdf(
+    data: dict,
+    template_path: Path | None = None,
+    *,
+    layout: str = LAYOUT_TERAPIAS,
+) -> bytes:
+    template = Path(template_path) if template_path else get_pdf_template_path(layout)
     if not template.is_file():
         raise FileNotFoundError(f"PDF template not found: {template}")
 
-    plan = plan_overlay(data)
-    overlay_buf = build_overlay(data, plan=plan)
+    plan = plan_overlay(data, layout=layout)
+    overlay_buf = build_overlay(data, plan=plan, layout=layout)
     writer = PdfWriter(clone_from=str(template))
     overlay_reader = PdfReader(overlay_buf)
     writer.pages[0].merge_page(overlay_reader.pages[0])

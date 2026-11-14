@@ -5,10 +5,12 @@ from django.test import SimpleTestCase, Client
 from django.urls import reverse
 from pypdf import PdfReader
 
-from .forms import TerapiasAmbulatoriasForm
+from .forms import EscolaridadEspecialForm, TerapiasAmbulatoriasForm
 from .pdf import (
+    DEFAULT_ESCOLARIDAD_PDF_TEMPLATE,
     DEFAULT_PDF_TEMPLATE,
     FIELD_BOXES,
+    LAYOUT_ESCOLARIDAD,
     PrescriptionLayoutError,
     fill_prescription_pdf,
     plan_overlay,
@@ -330,7 +332,8 @@ class FormViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Descargar PDF")
         self.assertContains(response, "id='navbar'")
-        self.assertContains(response, "Prescripciones médicas")
+        self.assertContains(response, "Prescripciones Galeno")
+        self.assertContains(response, reverse("prescriptions:galeno_hub"))
         self.assertContains(response, reverse("home"))
 
     def test_form_is_publicly_accessible_without_login(self):
@@ -340,6 +343,17 @@ class FormViewTests(SimpleTestCase):
         self.assertContains(response, "csrfmiddlewaretoken")
         self.assertContains(response, "id='navbar'")
         self.assertNotContains(response, "Salir")
+
+    def test_galeno_hub_lists_both_forms(self):
+        client = Client()
+        response = client.get(reverse("prescriptions:galeno_hub"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Prescripciones Galeno")
+        self.assertContains(response, reverse("prescriptions:terapias_ambulatorias"))
+        self.assertContains(response, reverse("prescriptions:escolaridad_especial"))
+        self.assertContains(response, "Terapias ambulatorias")
+        self.assertContains(response, "Escolaridad especial")
+        self.assertNotContains(response, "Descargar PDF")
 
     def test_invalid_post_keeps_shared_navigation(self):
         client = Client()
@@ -388,4 +402,141 @@ class FormViewTests(SimpleTestCase):
         self.assertIn("Juan Pérez", text)
         self.assertIn("Enero", text)
         self.assertIn("Diciembre", text)
+
+
+ESCOLARIDAD_SAMPLE = {
+    "fecha": date(2026, 11, 6),
+    "nombre_apellido": "Juan Pérez",
+    "dni": "30123456",
+    "edad": 42,
+    "diagnostico": "Trastorno del espectro autista. Requiere escolaridad especial.",
+    "prestacion": "Escolaridad especial en jornada simple.",
+    "jornada": "Simple",
+    "periodo_desde": date(2027, 1, 1),
+    "periodo_hasta": date(2027, 12, 1),
+}
+
+
+class EscolaridadPdfGenerationTests(SimpleTestCase):
+    def test_escolaridad_template_bundled(self):
+        self.assertTrue(DEFAULT_ESCOLARIDAD_PDF_TEMPLATE.is_file())
+
+    def test_fill_escolaridad_returns_valid_pdf_with_jornada(self):
+        pdf_bytes = fill_prescription_pdf(ESCOLARIDAD_SAMPLE, layout=LAYOUT_ESCOLARIDAD)
+        reader = PdfReader(BytesIO(pdf_bytes))
+        self.assertEqual(len(reader.pages), 1)
+        text = reader.pages[0].extract_text()
+        self.assertIn("ESCOLARIDAD ESPECIAL", text)
+        self.assertIn("Jornada:", text)
+        self.assertNotIn("Frecuencia semanales:", text)
+        self.assertIn("Juan Pérez", text)
+        self.assertIn("Simple", text)
+        self.assertIn("01", text)
+        self.assertIn("31", text)
+        self.assertIn("Enero", text)
+        self.assertIn("Diciembre", text)
+
+    def test_escolaridad_periodo_uses_shifted_baseline(self):
+        from .pdf import field_boxes_for
+
+        plan = plan_overlay(ESCOLARIDAD_SAMPLE, layout=LAYOUT_ESCOLARIDAD)
+        escolaridad_boxes = field_boxes_for(LAYOUT_ESCOLARIDAD)
+        periodo_y = escolaridad_boxes["periodo_desde_day"].y
+        self.assertAlmostEqual(periodo_y, FIELD_BOXES["periodo_desde_day"].y + 14.5, places=2)
+        desde_day = next(s for s in plan.segments if s.field == "periodo_desde_day")
+        self.assertAlmostEqual(desde_day.y, periodo_y, delta=0.6)
+        self.assertEqual(desde_day.text, "01")
+
+    def test_escolaridad_prestacion_is_single_line_only(self):
+        from .pdf import field_boxes_for
+
+        self.assertEqual(field_boxes_for(LAYOUT_ESCOLARIDAD)["prestacion"].max_lines, 1)
+        self.assertEqual(FIELD_BOXES["prestacion"].max_lines, 2)
+
+        short = {**ESCOLARIDAD_SAMPLE, "prestacion": "Escolaridad especial"}
+        plan = plan_overlay(short, layout=LAYOUT_ESCOLARIDAD)
+        prest_lines = [s for s in plan.segments if s.field == "prestacion"]
+        self.assertEqual(len(prest_lines), 1)
+
+        with self.assertRaises(PrescriptionLayoutError) as ctx:
+            plan_overlay(
+                {
+                    **ESCOLARIDAD_SAMPLE,
+                    "prestacion": " ".join(["apoyo"] * 80),
+                },
+                layout=LAYOUT_ESCOLARIDAD,
+            )
+        self.assertEqual(ctx.exception.field, "prestacion")
+
+    def test_escolaridad_rejects_overlong_jornada(self):
+        with self.assertRaises(PrescriptionLayoutError) as ctx:
+            plan_overlay(
+                {**ESCOLARIDAD_SAMPLE, "jornada": "J" * 55},
+                layout=LAYOUT_ESCOLARIDAD,
+            )
+        self.assertEqual(ctx.exception.field, "jornada")
+
+
+class EscolaridadFormTests(SimpleTestCase):
+    def _valid_post(self, **overrides):
+        payload = {
+            "fecha": "2026-11-06",
+            "nombre_apellido": "Juan Pérez",
+            "dni": "30123456",
+            "edad": "10",
+            "diagnostico": "Autismo en la niñez",
+            "prestacion": "Escolaridad especial",
+            "jornada": "Simple",
+            "periodo_desde": "2027-01",
+            "periodo_hasta": "2027-12",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_valid_form(self):
+        form = EscolaridadEspecialForm(self._valid_post())
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_capacity_overflow_on_jornada(self):
+        form = EscolaridadEspecialForm(self._valid_post(jornada="J" * 55))
+        self.assertFalse(form.is_valid())
+        self.assertIn("jornada", form.errors)
+
+
+class EscolaridadFormViewTests(SimpleTestCase):
+    def test_get_form(self):
+        client = Client()
+        response = client.get(reverse("prescriptions:escolaridad_especial"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Escolaridad especial")
+        self.assertContains(response, "Descargar PDF")
+        self.assertContains(response, "jornada")
+        self.assertNotContains(response, "frecuencia_semanal")
+
+    def test_post_downloads_pdf(self):
+        client = Client()
+        response = client.post(
+            reverse("prescriptions:escolaridad_especial"),
+            {
+                "fecha": "2026-11-06",
+                "nombre_apellido": "Juan Pérez",
+                "dni": "30123456",
+                "edad": "10",
+                "diagnostico": "Autismo en la niñez",
+                "prestacion": "Escolaridad especial",
+                "jornada": "Simple",
+                "periodo_desde": "2027-01",
+                "periodo_hasta": "2027-12",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn(
+            "prescripcion_escolaridad_30123456.pdf",
+            response["Content-Disposition"],
+        )
+        text = PdfReader(BytesIO(response.content)).pages[0].extract_text()
+        self.assertIn("ESCOLARIDAD ESPECIAL", text)
+        self.assertIn("Simple", text)
+        self.assertIn("Juan Pérez", text)
 
