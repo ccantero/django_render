@@ -22,7 +22,11 @@ class ProfileSerializer(serializers.ModelSerializer):
             return attrs
         password = attrs.get("password")
         try:
-            validate_password(password)
+            candidate = models.UserProfile(
+                email=attrs.get("email") or "",
+                name=attrs.get("name") or "",
+            )
+            validate_password(password, user=candidate)
         except DjangoValidationError as exc:
             raise serializers.ValidationError({"password": list(exc.messages)}) from exc
         except Exception as exc:

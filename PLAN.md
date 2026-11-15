@@ -1,6 +1,6 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.33
+doc_version: 1.1.34
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-11-15
@@ -203,7 +203,7 @@ Additional pending visibility work:
 - Home/auth-adjacent pages, Telegram webhook listener, bot-control endpoints, and bot-owned table mappings remain in `core`.
 - Dashboard pause/resume keeps the operator in the HTML UI. The request records desired `core_botcontrol` state only, requires confirmation on every pause POST (HTML and JSON), and does not claim the bot has applied it. A failed browser response is not replayed. Stop, resume, and status require staff or superuser.
 - Profile API creation is staff or superuser only, anonymous profile access is denied, and new passwords run the configured password validators.
-- Public Galeno PDF posts are limited to 20 per 10 minutes per `REMOTE_ADDR`, and DNI input must be 7 or 8 digits after dots are removed.
+- Public Galeno PDF posts are limited to 20 per 10 minutes per `REMOTE_ADDR`, and DNI input must be 7 or 8 ASCII digits after dots are removed. Profile creation checks password similarity against the submitted email and name.
 - DRF endpoints exist for user profiles and currency/exchange-rate resources.
 - drf-spectacular schema and Swagger views are wired at `/api/schema` and `/api/docs`.
 - Test configuration exists for Django test runner and pytest-django.

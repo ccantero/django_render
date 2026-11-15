@@ -1,6 +1,6 @@
 ---
 doc_id: project-state
-doc_version: 1.1.54
+doc_version: 1.1.55
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-11-15
@@ -124,7 +124,7 @@ Detected Django apps:
 - `dashboard`: dashboard pages, dashboard URLs, read models, forms, and dashboard templates.
 - `currencyconverter`: UVA calculator, currency/exchange-rate models, DRF viewsets, HTML exchange-rate view, and staff-only rate update endpoint.
 - `profile`: custom email-based user model, token login, profile API, admin integration, and profile permissions.
-- `prescriptions`: public Galeno hub at `/prescripciones-galeno/` plus measured PDF overlays at `/terapias-ambulatorias/` and `/escolaridad-especial/` (layout profiles; capacity-checked field boxes; no models or migrations). PDF POSTs reuse the database rate-limit table, scope `galeno_pdf`, at 20 posts per 10 minutes per `REMOTE_ADDR`. DNI must be 7 or 8 digits after dots are removed. Diagnóstico and prestación are limited to 500 characters. Reachable from the shared `base.html` navbar as a single **Prescripciones Galeno** entry; form templates extend that same base and link back to the hub.
+- `prescriptions`: public Galeno hub at `/prescripciones-galeno/` plus measured PDF overlays at `/terapias-ambulatorias/` and `/escolaridad-especial/` (layout profiles; capacity-checked field boxes; no models or migrations). PDF POSTs reuse the database rate-limit table, scope `galeno_pdf`, at 20 posts per 10 minutes per `REMOTE_ADDR`. DNI must be 7 or 8 ASCII digits after dots are removed. Diagnóstico and prestación are limited to 500 characters. Reachable from the shared `base.html` navbar as a single **Prescripciones Galeno** entry; form templates extend that same base and link back to the hub.
 - `investments`: contains an `Invest` model, but it is not currently listed in `INSTALLED_APPS`.
 
 Implemented capabilities:

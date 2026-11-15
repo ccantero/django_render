@@ -1,6 +1,6 @@
 ---
 doc_id: design
-doc_version: 1.1.44
+doc_version: 1.1.45
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-11-15
@@ -510,6 +510,6 @@ Dashboard -> review UI
 ## API / Admin Behavior
 
 - Currency and exchange-rate resources expose read access to unauthenticated users and write access to authenticated users through DRF permissions.
-- Profile API uses token authentication. Anonymous access is denied, creation is staff or superuser only, new passwords run `AUTH_PASSWORD_VALIDATORS`, and an authenticated user can change only their own profile.
+- Profile API uses token authentication. Anonymous access is denied, creation is staff or superuser only, new passwords run `AUTH_PASSWORD_VALIDATORS` against the submitted email and name, and an authenticated user can change only their own profile.
 - Django admin is enabled at `/admin/` for registered models.
 - API schema and Swagger UI are available through drf-spectacular.

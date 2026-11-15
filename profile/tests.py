@@ -226,3 +226,22 @@ class ProfileApiPermissionTests(TestCase):
             self.assertIn(stolen.status_code, (401, 403))
             self.owner.refresh_from_db()
             self.assertEqual(self.owner.name, "Owner")
+
+    def test_create_rejects_a_password_similar_to_the_submitted_email(self):
+        self.client.force_authenticate(self.staff)
+        response = self.client.post(
+            self.list_url,
+            {
+                "email": "distinctiveoperator@example.com",
+                "name": "Clinic",
+                "password": "distinctiveoperator",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("password", response.json())
+        self.assertFalse(
+            self.user_model.objects.filter(
+                email="distinctiveoperator@example.com"
+            ).exists()
+        )

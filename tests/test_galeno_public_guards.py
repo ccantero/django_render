@@ -114,6 +114,7 @@ class GalenoPublicGuardTests(TestCase):
             "30123456\r",
             "3012\r\n3456",
             "30123\"456",
+            "１２３４５６７８",
         )
         for url_name, builder in (
             (TERAPIAS_URL, _terapias),

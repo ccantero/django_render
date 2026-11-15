@@ -1,11 +1,33 @@
 ---
 doc_id: workflow-evidence
-doc_version: 1.0.2
+doc_version: 1.0.3
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-11-15
 source_repo: django_render
 ---
+
+# Workflow evidence — password similarity and ASCII DNI (2026-11-15)
+
+task_mode: STANDARD
+phases_completed: planner, implementer, tester, documentator
+impact: behavior
+planner: problem: review found password similarity was skipped and DNI accepted non-ASCII digits; scope: pass an unsaved user into validate_password and require ASCII 7-8 digits after removing dots; out of scope: other findings, migrations, dependencies; components: profile serializer and prescriptions form; contract impact: none; logging impact: none; versioning: VERSION stays 3.0.0 because this completes the unreleased release, doc_version patches bumped; schema/DER: none; test strategy: failing tests then full pytest; risks: rejecting a previously accepted full-width DNI and a password that matches the submitted email
+implementation: create validation builds an unsaved UserProfile from the submitted email and name; DNI uses an ASCII digit pattern
+tests_created: ProfileApiPermissionTests.test_create_rejects_a_password_similar_to_the_submitted_email; GalenoPublicGuardTests.test_bad_dni_values_return_400_and_no_pdf now includes full-width digits
+failing_test_proof: before the fix the similarity test returned HTTP 201 and the full-width DNI returned HTTP 200
+tests_executed: DJANGO_SKIP_ENV_FILE=1 .venv/bin/pytest -q: 530 passed, 3 skipped, 0 failed, 55 subtests passed in 66.25s
+pending_issues: effective rate-limit scope behind the proxy = NEEDS_RUNTIME_VERIFICATION
+docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
+docs_updated: README.md 1.1.51, PLAN.md 1.1.34, docs/PROJECT_STATE.md 1.1.55, docs/ARCHITECTURE.md 1.1.34, docs/DESIGN.md 1.1.45, docs/CHANGELOG.md 1.1.68; VERSION remains 3.0.0; DATA_CONTRACT and KPI_REGISTRY reviewed, no update needed
+changelog: updated
+schema_der: not_applicable: no schema or migration change
+data_contract_sync: not_applicable: docs/DATA_CONTRACT.md reviewed and bot-owned semantics were not changed
+logging_observability: reviewed, no runtime logging change
+kpi_registry_reviewed: yes
+kpi_registry_updated: not-needed
+kpi_registry_sync_checked: not-available
+protected_infrastructure: no changes to AGENTS.md or .codex/hooks, .codex/lib, .codex/templates
 
 # Workflow evidence — tighten permissions on profile API and bot control (2026-11-15)
 

@@ -1,6 +1,6 @@
 ---
 doc_id: architecture
-doc_version: 1.1.33
+doc_version: 1.1.34
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-11-15
@@ -81,7 +81,7 @@ prescriptions/
   `assets/`, mounted at `/prescripciones-galeno/`, `/terapias-ambulatorias/`,
   and `/escolaridad-especial/`; no models. PDF POSTs use the existing
   database rate-limit table with scope `galeno_pdf` (20 per 10 minutes per
-  `REMOTE_ADDR`). DNI is 7 or 8 digits after dots are removed.
+  `REMOTE_ADDR`). DNI is 7 or 8 ASCII digits after dots are removed.
   Linked from the shared `core/templates/base.html` navbar as a single
   Prescripciones Galeno entry; form pages link back to the hub.
   Templates extend `base.html` (`body_class` `prescriptions-page`) and scope

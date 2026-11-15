@@ -1,6 +1,6 @@
 ---
 doc_id: changelog
-doc_version: 1.1.67
+doc_version: 1.1.68
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-11-15
@@ -23,10 +23,10 @@ Docs affected:
 - docs/CHANGELOG.md
 
 Summary:
-- Anonymous requests to `/api/profiles/` are denied, profile creation is staff or superuser only, and new passwords run `AUTH_PASSWORD_VALIDATORS`. An authenticated user can change only their own profile.
+- Anonymous requests to `/api/profiles/` are denied, profile creation is staff or superuser only, and new passwords run `AUTH_PASSWORD_VALIDATORS` against an unsaved user built from the submitted email and name. An authenticated user can change only their own profile.
 - `/bot/stop/`, `/bot/resume/`, and `/bot/status/` require staff or superuser. Pause confirmation, POST-only changes, and CSRF stay in place. A signed-in user who is neither receives HTTP 403 and no control row is written.
 - Dust-review writes and manual-correction list/detail reads use the same staff or superuser check.
-- Public Galeno forms stay public. PDF POSTs reuse the database rate-limit table with scope `galeno_pdf` at 20 posts per 10 minutes per `REMOTE_ADDR`. The passkey limiter still uses its 15-minute window; the window is now an optional argument. A missing or empty `REMOTE_ADDR` returns HTTP 429 and no PDF. DNI must be 7 or 8 digits after dots are removed. Diagnóstico and prestación are limited to 500 characters. The download name uses Django's content-disposition helper and the normalized digits. Submitted form values are not logged.
+- Public Galeno forms stay public. PDF POSTs reuse the database rate-limit table with scope `galeno_pdf` at 20 posts per 10 minutes per `REMOTE_ADDR`. The passkey limiter still uses its 15-minute window; the window is now an optional argument. A missing or empty `REMOTE_ADDR` returns HTTP 429 and no PDF. DNI must be 7 or 8 ASCII digits after dots are removed. Diagnóstico and prestación are limited to 500 characters. The download name uses Django's content-disposition helper and the normalized digits. Submitted form values are not logged.
 - Bumped app `VERSION` to `3.0.0` because non-staff session clients can no longer pause, resume, or read bot status.
 
 Operator impact:
