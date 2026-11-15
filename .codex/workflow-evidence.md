@@ -1,11 +1,33 @@
 ---
 doc_id: workflow-evidence
-doc_version: 1.0.3
+doc_version: 1.0.4
 schema_version: unknown
 runtime_min_version: unknown
 last_verified_at: 2026-11-15
 source_repo: django_render
 ---
+
+# Workflow evidence — ASCII DNI full match (2026-11-15)
+
+task_mode: STANDARD
+phases_completed: planner, implementer, tester, documentator
+impact: behavior
+planner: problem: DNI matching must use an ASCII full match and both forms must reject full-width and Arabic-Indic digits while keeping dotted ASCII values; password similarity already passes an unsaved user; scope: prescriptions form and tests; out of scope: VERSION, migrations, other findings; components: prescriptions/forms.py clean_dni; contract impact: none; logging impact: none; versioning: VERSION stays 3.0.0, changelog doc_version 1.1.69; schema/DER: none; test strategy: form tests for both Galeno forms plus the full suite; risks: rejecting only non-ASCII digits
+implementation: clean_dni strips dots and requires re.fullmatch of ^[0-9]{7,8}$ with re.ASCII; no Unicode digit normalization
+tests_created: GalenoDniCleanTests.test_both_forms_accept_ascii_dni_and_reject_unicode_digits; Arabic-Indic digits added to GalenoPublicGuardTests.test_bad_dni_values_return_400_and_no_pdf
+failing_test_proof: the prior commit already rejected full-width digits with HTTP 200 before that fix; this commit locks the ASCII full match and adds the Arabic-Indic and both-form acceptance cases
+tests_executed: DJANGO_SKIP_ENV_FILE=1 .venv/bin/pytest -q: 531 passed, 3 skipped, 0 failed, 55 subtests passed in 69.08s
+pending_issues: effective rate-limit scope behind the proxy = NEEDS_RUNTIME_VERIFICATION; VERSION remains 3.0.0 pending the owner decision
+docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
+docs_updated: docs/CHANGELOG.md 1.1.69; README, PLAN, PROJECT_STATE, ARCHITECTURE, and DESIGN already state the ASCII DNI rule; DATA_CONTRACT and KPI_REGISTRY reviewed, no update needed
+changelog: updated
+schema_der: not_applicable: no schema or migration change
+data_contract_sync: not_applicable: docs/DATA_CONTRACT.md reviewed and bot-owned semantics were not changed
+logging_observability: reviewed, no runtime logging change
+kpi_registry_reviewed: yes
+kpi_registry_updated: not-needed
+kpi_registry_sync_checked: not-available
+protected_infrastructure: no changes to AGENTS.md or .codex/hooks, .codex/lib, .codex/templates
 
 # Workflow evidence — password similarity and ASCII DNI (2026-11-15)
 

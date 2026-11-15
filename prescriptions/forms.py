@@ -11,7 +11,6 @@ from .pdf import (
 )
 
 _MONTH_RE = re.compile(r"^(\d{4})-(\d{2})$")
-_DNI_RE = re.compile(r"[0-9]{7,8}")
 
 
 class _PrescriptionFormBase(forms.Form):
@@ -83,7 +82,7 @@ class _PrescriptionFormBase(forms.Form):
             normalized = str(raw).replace(".", "")
         except Exception as exc:
             raise forms.ValidationError("Ingresá un DNI de 7 u 8 dígitos.") from exc
-        if _DNI_RE.fullmatch(normalized) is None:
+        if re.fullmatch(r"^[0-9]{7,8}$", normalized, flags=re.ASCII) is None:
             raise forms.ValidationError("Ingresá un DNI de 7 u 8 dígitos.")
         return normalized
 

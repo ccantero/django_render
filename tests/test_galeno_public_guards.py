@@ -3,11 +3,12 @@ from io import BytesIO
 from unittest.mock import patch
 
 from django.db import DatabaseError
-from django.test import Client, RequestFactory, TestCase
+from django.test import Client, RequestFactory, SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
 from pypdf import PdfReader
 
+from prescriptions.forms import EscolaridadEspecialForm, TerapiasAmbulatoriasForm
 from prescriptions.views import EscolaridadEspecialView, TerapiasAmbulatoriasView
 
 TERAPIAS_URL = "prescriptions:terapias_ambulatorias"
@@ -50,6 +51,32 @@ def _body(response):
     if getattr(response, "streaming", False):
         return b"".join(response.streaming_content)
     return response.content
+
+
+class GalenoDniCleanTests(SimpleTestCase):
+    def test_both_forms_accept_ascii_dni_and_reject_unicode_digits(self):
+        accepted = {
+            "1234567": "1234567",
+            "12345678": "12345678",
+            "1.234.567": "1234567",
+            "12.345.678": "12345678",
+        }
+        rejected = ("１２３４５６７８", "١٢٣٤٥٦٧٨")
+        for form_class, builder in (
+            (TerapiasAmbulatoriasForm, _terapias),
+            (EscolaridadEspecialForm, _escolaridad),
+        ):
+            for raw, normalized in accepted.items():
+                form = form_class(builder(dni=raw))
+                self.assertTrue(
+                    form.is_valid(),
+                    (form_class.__name__, raw, form.errors),
+                )
+                self.assertEqual(form.cleaned_data["dni"], normalized)
+            for raw in rejected:
+                form = form_class(builder(dni=raw))
+                self.assertFalse(form.is_valid(), (form_class.__name__, raw))
+                self.assertIn("dni", form.errors)
 
 
 class GalenoPublicGuardTests(TestCase):
@@ -115,6 +142,7 @@ class GalenoPublicGuardTests(TestCase):
             "3012\r\n3456",
             "30123\"456",
             "１２３４５６７８",
+            "١٢٣٤٥٦٧٨",
         )
         for url_name, builder in (
             (TERAPIAS_URL, _terapias),
