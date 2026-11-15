@@ -1,7 +1,7 @@
 from datetime import date
 from io import BytesIO
 
-from django.test import SimpleTestCase, Client
+from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 from pypdf import PdfReader
 
@@ -273,7 +273,7 @@ class PdfGenerationTests(SimpleTestCase):
         )
 
 
-class FormValidationTests(SimpleTestCase):
+class FormValidationTests(TestCase):
     def _valid_post(self, **overrides):
         payload = {
             "fecha": "2026-11-27",
@@ -325,7 +325,7 @@ class FormValidationTests(SimpleTestCase):
         self.assertContains(response, wide_name[:40], status_code=400)
 
 
-class FormViewTests(SimpleTestCase):
+class FormViewTests(TestCase):
     def test_get_form(self):
         client = Client()
         response = client.get(reverse("prescriptions:terapias_ambulatorias"))
@@ -503,7 +503,7 @@ class EscolaridadFormTests(SimpleTestCase):
         self.assertIn("jornada", form.errors)
 
 
-class EscolaridadFormViewTests(SimpleTestCase):
+class EscolaridadFormViewTests(TestCase):
     def test_get_form(self):
         client = Client()
         response = client.get(reverse("prescriptions:escolaridad_especial"))

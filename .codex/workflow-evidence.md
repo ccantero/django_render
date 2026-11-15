@@ -1,11 +1,33 @@
 ---
 doc_id: workflow-evidence
-doc_version: 1.0.1
+doc_version: 1.0.2
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-10-31
+last_verified_at: 2026-11-15
 source_repo: django_render
 ---
+
+# Workflow evidence — tighten permissions on profile API and bot control (2026-11-15)
+
+task_mode: STANDARD
+phases_completed: planner, implementer, tester, documentator
+impact: behavior
+planner: problem: close anonymous profile API access, require staff or superuser for bot control and the named dust/correction actions, and protect public Galeno PDF posts; scope: W-01, W-02, W-03, R-01, W-06; out of scope: W-04, W-05, W-07 through W-10, R-02 through R-10, binancebot, new migrations, new dependencies; components: profile permissions and serializer, core bot control views, dashboard staff gate, prescriptions forms and views, passkey rate-limit window argument; contract impact: none for bot-owned tables; logging impact: no new logs and Galeno form values are not logged; versioning: VERSION 2.3.0 to 3.0.0, touched doc_version patches, last_verified_at 2026-11-15; schema/DER: none, PasskeyRateLimit reused; test strategy: failing acceptance tests first, then full pytest; risks: breaking non-staff bot-control clients, shared proxy address for the Galeno limit
+implementation: deny anonymous profile access, staff-only create, password validators on create, own-profile writes, staff gate on bot stop/resume/status and dust POST and correction reads, Galeno 20 posts per 10 minutes on REMOTE_ADDR with scope galeno_pdf, DNI 7-8 digits after removing dots, max_length 500, content_disposition_header; optional window argument defaults to the existing 15-minute passkey window
+tests_created: profile/tests.py ProfileApiPermissionTests; tests/test_operator_staff_access.py; tests/test_galeno_public_guards.py; existing bot-control and dust-review success tests updated for staff; Galeno POST view tests use the database
+failing_test_proof: DJANGO_SKIP_ENV_FILE=1 .venv/bin/pytest profile/tests.py::ProfileApiPermissionTests tests/test_operator_staff_access.py tests/test_galeno_public_guards.py -q before the fix: 15 failed, 8 passed. Anonymous profile list returned 200, non-staff profile create returned 201, a common password returned 201, non-staff bot control returned 200, non-staff dust POST returned 302, a bad DNI returned 200, a dotted DNI stayed in the filename, the 21st Galeno POST returned 200, a missing REMOTE_ADDR returned 200, an oversized field used the layout error instead of the 500-character limit, and a non-staff correction read returned 200.
+tests_executed: DJANGO_SKIP_ENV_FILE=1 .venv/bin/pytest -q: 529 passed, 3 skipped, 0 failed, 55 subtests passed in 64.90s
+pending_issues: effective rate-limit scope behind the proxy = NEEDS_RUNTIME_VERIFICATION; passkey behavior unchanged because the new window argument defaults to 15 minutes and passkey call sites do not pass it; no migration; out-of-scope findings unchanged
+docs_reviewed: README.md, PLAN.md, docs/DATA_CONTRACT.md, docs/PROJECT_STATE.md, docs/DESIGN.md, docs/ARCHITECTURE.md, docs/CHANGELOG.md, docs/KPI_REGISTRY.md
+docs_updated: README.md 1.1.50, PLAN.md 1.1.33, docs/PROJECT_STATE.md 1.1.54, docs/ARCHITECTURE.md 1.1.33, docs/DESIGN.md 1.1.44, docs/CHANGELOG.md 1.1.67, VERSION 3.0.0; last_verified_at 2026-11-15; DATA_CONTRACT and KPI_REGISTRY reviewed, no update needed
+changelog: updated
+schema_der: not_applicable: no schema, migration, or DER change; Galeno reuses PasskeyRateLimit
+data_contract_sync: not_applicable: docs/DATA_CONTRACT.md reviewed and bot-owned semantics were not changed
+logging_observability: reviewed, no runtime logging change; Galeno form values are not logged
+kpi_registry_reviewed: yes
+kpi_registry_updated: not-needed
+kpi_registry_sync_checked: not-available
+protected_infrastructure: no changes to AGENTS.md or .codex/hooks, .codex/lib, .codex/templates
 
 # Workflow evidence — Render/Django security audit (2026-10-31)
 

@@ -1,13 +1,42 @@
 ---
 doc_id: changelog
-doc_version: 1.1.66
+doc_version: 1.1.67
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-11-13
+last_verified_at: 2026-11-15
 source_repo: django_render
 ---
 
 # Changelog
+
+## 2026-11-15 - Tighten permissions on profile API and bot control
+
+Type: behavior
+Runtime version: 3.0.0
+Schema version: unknown
+Docs affected:
+- README.md
+- PLAN.md
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/DESIGN.md
+- docs/CHANGELOG.md
+
+Summary:
+- Anonymous requests to `/api/profiles/` are denied, profile creation is staff or superuser only, and new passwords run `AUTH_PASSWORD_VALIDATORS`. An authenticated user can change only their own profile.
+- `/bot/stop/`, `/bot/resume/`, and `/bot/status/` require staff or superuser. Pause confirmation, POST-only changes, and CSRF stay in place. A signed-in user who is neither receives HTTP 403 and no control row is written.
+- Dust-review writes and manual-correction list/detail reads use the same staff or superuser check.
+- Public Galeno forms stay public. PDF POSTs reuse the database rate-limit table with scope `galeno_pdf` at 20 posts per 10 minutes per `REMOTE_ADDR`. The passkey limiter still uses its 15-minute window; the window is now an optional argument. A missing or empty `REMOTE_ADDR` returns HTTP 429 and no PDF. DNI must be 7 or 8 digits after dots are removed. Diagnóstico and prestación are limited to 500 characters. The download name uses Django's content-disposition helper and the normalized digits. Submitted form values are not logged.
+- Bumped app `VERSION` to `3.0.0` because non-staff session clients can no longer pause, resume, or read bot status.
+
+Operator impact:
+- Non-staff operators can no longer request pause or resume, read bot status, write a dust review, or open manual-correction pages.
+- Galeno visitors can still open the forms. Repeated PDF downloads from the same address are rejected after 20 in 10 minutes. Whether that address is shared by the deployment proxy needs runtime verification.
+- Passkey login and enrollment limits are unchanged.
+
+Validation:
+- Focused permission and Galeno tests, then the full pytest suite.
+- KPI registry reviewed; no update needed.
 
 ## 2026-11-13 - Add Galeno Escolaridad Especial under a shared hub
 

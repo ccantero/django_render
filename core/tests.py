@@ -3035,6 +3035,8 @@ class DashboardEndpointTests(TestCase):
         self.assertEqual(DustSignalReview.objects.count(), 0)
 
     def test_dust_detail_post_marks_signal_ignored(self):
+        self.user.is_staff = True
+        self.user.save(update_fields=["is_staff"])
         self.client.force_login(self.user)
 
         response = self.client.post(reverse('dust_detail'), {

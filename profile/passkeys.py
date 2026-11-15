@@ -79,8 +79,13 @@ def _fingerprint(scope, identity):
     return hmac.new(settings.SECRET_KEY.encode(), raw, hashlib.sha256).hexdigest()
 
 
-def _consume_rate_limit(scope, identity, limit):
-    """Apply a shared database-backed fixed-window limit; fail closed on DB errors."""
+def _consume_rate_limit(scope, identity, limit, window=None):
+    """Apply a shared database-backed fixed-window limit; fail closed on DB errors.
+
+    ``window`` defaults to the existing 15-minute passkey window. Callers that
+    need a different window pass it explicitly; passkey call sites do not.
+    """
+    active_window = WINDOW if window is None else window
     key_hash = _fingerprint(scope, identity)
     now = timezone.now()
     try:
@@ -90,7 +95,7 @@ def _consume_rate_limit(scope, identity, limit):
                 key_hash=key_hash,
                 defaults={"window_started_at": now, "attempts": 0},
             )
-            if now - row.window_started_at >= WINDOW:
+            if now - row.window_started_at >= active_window:
                 row.window_started_at = now
                 row.attempts = 0
             if row.attempts >= limit:

@@ -22,7 +22,7 @@ class BotControlHttpTests(TestCase):
             email="owner@example.com",
             password="TestPassword123",
             name="Owner",
-            is_staff=False,
+            is_staff=True,
         )
         self.pause_url = reverse("bot_stop")
         self.resume_url = reverse("bot_resume")
@@ -67,7 +67,7 @@ class BotControlHttpTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertFalse(BotControl.objects.filter(is_paused=True).exists())
 
-    def test_non_staff_html_pause_redirects_with_requested_message(self):
+    def test_staff_html_pause_redirects_with_requested_message(self):
         self.client.force_login(self.user)
 
         response = self.client.post(
