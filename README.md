@@ -1,9 +1,9 @@
 ---
 doc_id: readme
-doc_version: 1.1.49
+doc_version: 1.1.51
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-11-13
+last_verified_at: 2026-11-15
 source_repo: django_render
 ---
 
@@ -51,7 +51,7 @@ The dashboard is a **consumer/operator UI**. It must not execute trading logic, 
 - Public app liveness endpoint at `/health/` for Render keepalive/cron pings
 - Dashboard Disk Usage visibility from latest bot healthcheck VPS disk data
 - Experimental authenticated, read-only bot diagnostics API for health and persisted ETHUSDT inventory evidence
-- Public Galeno prescriptions hub at `/prescripciones-galeno/` with Terapias Ambulatorias (`/terapias-ambulatorias/`, prestación + frecuencia) and Escolaridad Especial (`/escolaridad-especial/`, prestación one line + jornada). Forms fill bundled PDFs with measured field boxes and reject overlong/malformed input (no bot DB use). The shared navbar exposes a single **Prescripciones Galeno** entry; form pages extend `base.html` and link back to the hub.
+- Public Galeno prescriptions hub at `/prescripciones-galeno/` with Terapias Ambulatorias (`/terapias-ambulatorias/`, prestación + frecuencia) and Escolaridad Especial (`/escolaridad-especial/`, prestación one line + jornada). Forms fill bundled PDFs with measured field boxes and reject overlong/malformed input (no bot DB use). PDF POSTs are limited to 20 per 10 minutes per `REMOTE_ADDR` and reject a DNI that is not 7 or 8 ASCII digits after dots are removed. The shared navbar exposes a single **Prescripciones Galeno** entry; form pages extend `base.html` and link back to the hub.
 
 ---
 
@@ -679,7 +679,7 @@ The endpoint returns `{"status":"ok"}` when the Django web process is reachable.
 
 The running app version is separate from the `doc_version` headers in this
 repository. The only app-version source is the root `VERSION` file, which
-contains SemVer 2.1.0 core `MAJOR.MINOR.PATCH`. The initial value is `1.0.0`:
+contains SemVer 3.0.0 core `MAJOR.MINOR.PATCH`. The initial value is `1.0.0`:
 there was no canonical app version or git tag before that file, the app is
 already in production, and the per-document `doc_version` numbers are not an
 app release sequence.
@@ -687,7 +687,7 @@ app release sequence.
 `1.0.0` is the initial baseline. The MAJOR, MINOR, and PATCH rules below apply
 to behavior changes after that baseline. Introducing `VERSION`, and correcting
 the timestamp so it is only an explicit value, stay on `1.0.0`. The current
-file is `2.1.0`. `1.1.0` added the dashboard pause/resume request flow. `2.0.0` is a MAJOR bump because every pause POST now requires confirmation, including JSON clients that `1.0.0` and `1.1.0` accepted without it. The success JSON object is unchanged. `2.1.0` adds read-only Telegram `/position_modes` and `/position_mode`.
+file is `3.0.0`. `1.1.0` added the dashboard pause/resume request flow. `2.0.0` is a MAJOR bump because every pause POST now requires confirmation, including JSON clients that `1.0.0` and `1.1.0` accepted without it. The success JSON object is unchanged. `2.1.0` adds read-only Telegram `/position_modes` and `/position_mode`. `3.0.0` requires a staff or superuser session for `/bot/stop/`, `/bot/resume/`, and `/bot/status/`. Anonymous clients of those routes still redirect to login. A signed-in user who is neither staff nor superuser receives HTTP 403 and no control row is written. The same release closes anonymous access to `/api/profiles/`.
 
 Render sets `RENDER_GIT_COMMIT` at build and runtime
 ([default environment variables](https://render.com/docs/environment-variables)).
@@ -801,7 +801,9 @@ state and markdown contracts.
 - Dashboard must require login.
 - Manual correction request creation is staff/superuser-only.
 - State-changing actions must be POST-only and CSRF-protected.
-- Pause and resume stay login-only, POST-only, and CSRF-protected. Staff is not required. Every pause POST requires confirmation: HTML sends `confirm=yes`, and JSON sends that field or `{"confirm":"yes"}` / `{"confirm":true}`. An unconfirmed HTML pause redirects back with an error and does not write. An unconfirmed JSON pause returns HTTP 400 `{"error":"confirmation_required","detail":"..."}` and does not write. Resume does not require confirmation. An HTML post (`Accept` includes `text/html` ahead of `application/json`) redirects to a safe same-origin `next` or `Referer`, or `/dashboard/#control-seguro`, and shows "Pausa solicitada" or "Reanudación solicitada". `Accept: application/json`, `*/*`, or a missing Accept still returns the same JSON object (`is_paused`, `status`, `updated_at`, `updated_by`, `reason`) after a confirmed pause or any resume. No Telegram handler, script, or other module in this repository called `/bot/stop/`, `/bot/resume/`, or `/bot/status/`, so there is no compatibility exception. The row is the desired state only. With JavaScript, a failed or aborted response is not submitted again: the card shows "Resultado incierto", re-reads `GET /bot/status/`, and posts again only if the operator uses "Reintentar el pedido". Without JavaScript, the form posts once and the browser follows the redirect.
+- Pause and resume stay POST-only and CSRF-protected, and status stays GET. All three require a staff or superuser session. Anonymous requests redirect to login. A signed-in user who is neither receives HTTP 403 and no control row is written. Every pause POST requires confirmation: HTML sends `confirm=yes`, and JSON sends that field or `{"confirm":"yes"}` / `{"confirm":true}`. An unconfirmed HTML pause redirects back with an error and does not write. An unconfirmed JSON pause returns HTTP 400 `{"error":"confirmation_required","detail":"..."}` and does not write. Resume does not require confirmation. An HTML post (`Accept` includes `text/html` ahead of `application/json`) redirects to a safe same-origin `next` or `Referer`, or `/dashboard/#control-seguro`, and shows "Pausa solicitada" or "Reanudación solicitada". `Accept: application/json`, `*/*`, or a missing Accept still returns the same JSON object (`is_paused`, `status`, `updated_at`, `updated_by`, `reason`) after a confirmed pause or any resume. No Telegram handler, script, or other module in this repository called `/bot/stop/`, `/bot/resume/`, or `/bot/status/`, so there is no compatibility exception. The row is the desired state only. With JavaScript, a failed or aborted response is not submitted again: the card shows "Resultado incierto", re-reads `GET /bot/status/`, and posts again only if the operator uses "Reintentar el pedido". Without JavaScript, the form posts once and the browser follows the redirect.
+- `/api/profiles/` denies anonymous list, retrieve, create, update, and delete. Creating a profile is staff or superuser only and runs `AUTH_PASSWORD_VALIDATORS`. An authenticated user can change only their own profile.
+- Public Galeno form pages stay public. Each PDF POST is counted by the existing database rate-limit table with scope `galeno_pdf`: 20 posts per 10 minutes for one `REMOTE_ADDR`. A missing or empty `REMOTE_ADDR` returns HTTP 429 and no PDF. Over the limit also returns HTTP 429 and no PDF. DNI values must be 7 or 8 ASCII digits after dots are removed. Diagnóstico and prestación accept at most 500 characters. Invalid input returns HTTP 400. The download name uses the normalized digits and Django's content-disposition helper. Submitted form values are not logged. Whether `REMOTE_ADDR` is one client or a shared proxy address behind the deployment proxy is NEEDS_RUNTIME_VERIFICATION.
 - Public/demo views must never expose sensitive data.
 - Database grants should be reviewed so public roles cannot mutate bot-owned accounting tables.
 - The 2026-10-31 Render/Django security audit is recorded in [`docs/security/AUDIT_2026-11.md`](docs/security/AUDIT_2026-11.md). It does not change application behavior. [`scripts/security/check_exposure.py`](scripts/security/check_exposure.py) is a read-only status-and-size probe.

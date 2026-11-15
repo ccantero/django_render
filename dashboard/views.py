@@ -62,20 +62,24 @@ def dust_dashboard(request):
 	return render(request, "dashboard/dust_dashboard.html", read_model.context)
 
 
+def _record_dust_review(request):
+	update_dust_signal_review(
+		request.POST,
+		request.POST.get("status", ""),
+		request.POST.get("note", ""),
+		request.user,
+	)
+	querystring = request.POST.get("group_querystring", "")
+	redirect_url = reverse("dust_detail")
+	if querystring:
+		redirect_url = f"{redirect_url}?{querystring}"
+	return redirect(redirect_url)
+
+
 @login_required
 def dust_detail(request):
 	if request.method == "POST":
-		update_dust_signal_review(
-			request.POST,
-			request.POST.get("status", ""),
-			request.POST.get("note", ""),
-			request.user,
-		)
-		querystring = request.POST.get("group_querystring", "")
-		redirect_url = reverse("dust_detail")
-		if querystring:
-			redirect_url = f"{redirect_url}?{querystring}"
-		return redirect(redirect_url)
+		return staff_or_superuser_required(_record_dust_review)(request)
 
 	read_model = get_dust_detail_context(request.GET)
 	return render(request, "dashboard/dust_detail.html", read_model.context)
@@ -84,7 +88,11 @@ def dust_detail(request):
 def staff_or_superuser_required(view_func):
 	@login_required
 	def wrapped(request, *args, **kwargs):
-		if not (request.user.is_staff or request.user.is_superuser):
+		try:
+			allowed = bool(request.user.is_staff or request.user.is_superuser)
+		except Exception:
+			return HttpResponseForbidden("Staff access required.")
+		if not allowed:
 			return HttpResponseForbidden("Staff access required.")
 		return view_func(request, *args, **kwargs)
 	return wrapped
@@ -122,7 +130,7 @@ def manual_correction_new(request):
 	})
 
 
-@login_required
+@staff_or_superuser_required
 def manual_corrections(request, status):
 	status = status.upper()
 	if status not in dict(ManualCorrection.STATUS_CHOICES):
@@ -135,7 +143,7 @@ def manual_corrections(request, status):
 	})
 
 
-@login_required
+@staff_or_superuser_required
 def manual_correction_detail(request, correction_id):
 	correction = get_object_or_404(ManualCorrection, pk=correction_id)
 	return render(request, "dashboard/manual_correction_detail.html", {"correction": correction})

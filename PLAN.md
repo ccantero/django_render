@@ -1,9 +1,9 @@
 ---
 doc_id: project-plan
-doc_version: 1.1.32
+doc_version: 1.1.34
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-11-13
+last_verified_at: 2026-11-15
 source_repo: django_render
 ---
 
@@ -201,7 +201,9 @@ Additional pending visibility work:
 - Public Galeno prescriptions hub at `/prescripciones-galeno/` with Terapias and Escolaridad Especial forms (ported with `galeno-cud-generator`; measured field overlay and capacity validation; no bot DB use).
 - Authenticated dashboard, dust/residual review, and manual correction request pages exist in `dashboard`.
 - Home/auth-adjacent pages, Telegram webhook listener, bot-control endpoints, and bot-owned table mappings remain in `core`.
-- Dashboard pause/resume keeps the operator in the HTML UI. The request records desired `core_botcontrol` state only, requires confirmation on every pause POST (HTML and JSON), and does not claim the bot has applied it. A failed browser response is not replayed.
+- Dashboard pause/resume keeps the operator in the HTML UI. The request records desired `core_botcontrol` state only, requires confirmation on every pause POST (HTML and JSON), and does not claim the bot has applied it. A failed browser response is not replayed. Stop, resume, and status require staff or superuser.
+- Profile API creation is staff or superuser only, anonymous profile access is denied, and new passwords run the configured password validators.
+- Public Galeno PDF posts are limited to 20 per 10 minutes per `REMOTE_ADDR`, and DNI input must be 7 or 8 ASCII digits after dots are removed. Profile creation checks password similarity against the submitted email and name.
 - DRF endpoints exist for user profiles and currency/exchange-rate resources.
 - drf-spectacular schema and Swagger views are wired at `/api/schema` and `/api/docs`.
 - Test configuration exists for Django test runner and pytest-django.
@@ -256,7 +258,7 @@ Additional pending visibility work:
 - Monitoring cards exist for bot status, portfolio summary, valuation consistency, latest operation/recent trade, and drift alerts.
 - Tests cover dashboard access, manual correction permissions, form validation, model contract alignment, drift prefill behavior, and environment validation.
 - Public `/health/` liveness endpoint exists for Render keepalive/cron pings.
-- Public deploy identity is the root `VERSION` SemVer (`1.0.0` baseline, current `2.1.0`) plus short `RENDER_GIT_COMMIT` build metadata, shown in the shared footer and at `/version/`. A Buenos Aires time is shown only from `DEPLOYED_AT` or `stamp_build`. `/health/` stays liveness-only. `2.0.0` requires confirmation on every pause POST. `2.1.0` adds read-only Telegram position generation modes.
+- Public deploy identity is the root `VERSION` SemVer (`1.0.0` baseline, current `3.0.0`) plus short `RENDER_GIT_COMMIT` build metadata, shown in the shared footer and at `/version/`. A Buenos Aires time is shown only from `DEPLOYED_AT` or `stamp_build`. `/health/` stays liveness-only. `2.0.0` requires confirmation on every pause POST. `2.1.0` adds read-only Telegram position generation modes.
 - The dashboard-created `CLOSE_LOTS_EXTERNAL_SELL` request flow was validated on 2026-05-08 with an ASIACOIN / `币安人生USDT` dust-closure case: dashboard request creation, bot CLI dry-run/confirmed apply, and post-apply dashboard state review all preserved the dashboard/bot boundary.
 
 ## P0 Safety / Correctness

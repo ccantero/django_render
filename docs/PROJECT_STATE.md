@@ -1,9 +1,9 @@
 ---
 doc_id: project-state
-doc_version: 1.1.53
+doc_version: 1.1.55
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-11-13
+last_verified_at: 2026-11-15
 source_repo: django_render
 ---
 
@@ -97,7 +97,7 @@ The results panel also shows the current official USD and UVA values used by
 the calculator.
 
 The deployed app version is SemVer in the root `VERSION` file. `1.0.0` is the
-initial baseline and `2.3.0` is the current release. `1.1.0` added the pause/resume request flow; `2.0.0` requires confirmation on every pause POST. `2.1.0` adds read-only Telegram position generation modes. `2.2.0` adds the public Galeno Terapias Ambulatorias prescription PDF form. `2.2.1` corrects Galeno PDF field alignment, measured text fitting, periodo slot rendering, and form validation for month/capacity errors. `2.2.2` fills periodo day blanks from month boundaries (first/last calendar day) with centered day/month/year slots. `2.2.3` adds a shared navbar link **Prescripciones médicas** to `/terapias-ambulatorias/`. `2.2.4` makes the prescription form extend the shared `base.html` layout so that navigation remains on the form page. `2.3.0` adds the public Escolaridad Especial prescription PDF form and a shared **Prescripciones Galeno** hub at `/prescripciones-galeno/` that chooses between Terapias and Escolaridad. Those release
+initial baseline and `3.0.0` is the current release. `1.1.0` added the pause/resume request flow; `2.0.0` requires confirmation on every pause POST. `2.1.0` adds read-only Telegram position generation modes. `2.2.0` adds the public Galeno Terapias Ambulatorias prescription PDF form. `2.2.1` corrects Galeno PDF field alignment, measured text fitting, periodo slot rendering, and form validation for month/capacity errors. `2.2.2` fills periodo day blanks from month boundaries (first/last calendar day) with centered day/month/year slots. `2.2.3` adds a shared navbar link **Prescripciones médicas** to `/terapias-ambulatorias/`. `2.2.4` makes the prescription form extend the shared `base.html` layout so that navigation remains on the form page. `2.3.0` adds the public Escolaridad Especial prescription PDF form and a shared **Prescripciones Galeno** hub at `/prescripciones-galeno/` that chooses between Terapias and Escolaridad. `3.0.0` requires staff or superuser for bot pause, resume, and status, denies anonymous access to `/api/profiles/`, and limits public Galeno PDF posts. Those release
 numbers are not the per-document `doc_version`. The shared base footer and `GET /version/` show that version
 and a 7-character `RENDER_GIT_COMMIT` build suffix or `dev`. A Buenos Aires
 clock time is included only when `DEPLOYED_AT` or `python manage.py stamp_build`
@@ -124,13 +124,13 @@ Detected Django apps:
 - `dashboard`: dashboard pages, dashboard URLs, read models, forms, and dashboard templates.
 - `currencyconverter`: UVA calculator, currency/exchange-rate models, DRF viewsets, HTML exchange-rate view, and staff-only rate update endpoint.
 - `profile`: custom email-based user model, token login, profile API, admin integration, and profile permissions.
-- `prescriptions`: public Galeno hub at `/prescripciones-galeno/` plus measured PDF overlays at `/terapias-ambulatorias/` and `/escolaridad-especial/` (layout profiles; capacity-checked field boxes; no models or migrations). Reachable from the shared `base.html` navbar as a single **Prescripciones Galeno** entry; form templates extend that same base and link back to the hub.
+- `prescriptions`: public Galeno hub at `/prescripciones-galeno/` plus measured PDF overlays at `/terapias-ambulatorias/` and `/escolaridad-especial/` (layout profiles; capacity-checked field boxes; no models or migrations). PDF POSTs reuse the database rate-limit table, scope `galeno_pdf`, at 20 posts per 10 minutes per `REMOTE_ADDR`. DNI must be 7 or 8 ASCII digits after dots are removed. Diagnóstico and prestación are limited to 500 characters. Reachable from the shared `base.html` navbar as a single **Prescripciones Galeno** entry; form templates extend that same base and link back to the hub.
 - `investments`: contains an `Invest` model, but it is not currently listed in `INSTALLED_APPS`.
 
 Implemented capabilities:
 
 - Authenticated dashboard pages
-- Dashboard pause/resume requests write the desired `core_botcontrol` row only. The control card shows "Estado solicitado", the recorded time in America/Buenos_Aires, who changed it, and the reason. HTML posts redirect back into the dashboard with "Pausa solicitada" or "Reanudación solicitada". Every pause POST requires confirmation; resume does not. There is no bot acknowledgement. Confirmed JSON clients still receive the previous payload. A failed browser response shows "Resultado incierto", re-reads `GET /bot/status/`, and does not send the POST again unless the operator retries.
+- Dashboard pause/resume requests write the desired `core_botcontrol` row only. Stop, resume, and status require staff or superuser. A signed-in user who is neither receives HTTP 403 and no row is written. The control card shows "Estado solicitado", the recorded time in America/Buenos_Aires, who changed it, and the reason. HTML posts redirect back into the dashboard with "Pausa solicitada" or "Reanudación solicitada". Every pause POST requires confirmation; resume does not. There is no bot acknowledgement. Confirmed JSON clients still receive the previous payload. A failed browser response shows "Resultado incierto", re-reads `GET /bot/status/`, and does not send the POST again unless the operator retries. Dust review writes and manual-correction reads use the same staff or superuser gate.
 - Main dashboard as a concise operator console: normalized Bot Health badge, Disk Usage, Inventory Integrity, compact Analytics link card, active issues, informational residual counts, and latest activity
 - Main dashboard does not compute full-history KPI data during initial render; KPI calculations are deferred to the Analytics dashboard
 - Main dashboard uses bounded homepage read paths: recent operations are fetched in a small capped window, SELL diagnostics are disabled by default, and dust overview loads only a capped recent candidate set without a homepage `COUNT(*)`

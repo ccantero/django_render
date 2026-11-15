@@ -1,3 +1,5 @@
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from profile import models
 
@@ -13,6 +15,25 @@ class ProfileSerializer(serializers.ModelSerializer):
                 }
             }
         }
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if self.instance is not None:
+            return attrs
+        password = attrs.get("password")
+        try:
+            candidate = models.UserProfile(
+                email=attrs.get("email") or "",
+                name=attrs.get("name") or "",
+            )
+            validate_password(password, user=candidate)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"password": list(exc.messages)}) from exc
+        except Exception as exc:
+            raise serializers.ValidationError(
+                {"password": ["Password could not be validated."]}
+            ) from exc
+        return attrs
 
     def create(self, validated_data):
         user = models.UserProfile.objects.create_user(

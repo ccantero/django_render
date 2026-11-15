@@ -7,7 +7,6 @@ from django.http import HttpResponse, JsonResponse, HttpResponseForbidden
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
-from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_GET, require_POST
 from django.db import DatabaseError
 from django.urls import reverse
@@ -17,6 +16,7 @@ import json
 import logging
 import requests
 from core.models import BotControl, TelegramMessage
+from dashboard.views import staff_or_superuser_required
 from django_render.version import current_release_info
 
 TELEGRAM_WEBHOOK_TOKEN = settings.TELEGRAM_WEBHOOK_TOKEN
@@ -207,14 +207,14 @@ def _control_response(request, control, *, message):
 	return JsonResponse(bot_control_payload(control))
 
 
-@login_required
+@staff_or_superuser_required
 @require_GET
 def bot_status(request):
 	control = BotControl.get_solo()
 	return JsonResponse(bot_control_payload(control))
 
 
-@login_required
+@staff_or_superuser_required
 @require_POST
 def bot_stop(request):
 	if not _pause_is_confirmed(request):
@@ -223,7 +223,7 @@ def bot_stop(request):
 	return _control_response(request, control, message=PAUSE_REQUESTED_MESSAGE)
 
 
-@login_required
+@staff_or_superuser_required
 @require_POST
 def bot_resume(request):
 	control = _apply_control(request, paused=False)

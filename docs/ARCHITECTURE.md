@@ -1,9 +1,9 @@
 ---
 doc_id: architecture
-doc_version: 1.1.32
+doc_version: 1.1.34
 schema_version: unknown
 runtime_min_version: unknown
-last_verified_at: 2026-11-13
+last_verified_at: 2026-11-15
 source_repo: django_render
 ---
 
@@ -79,7 +79,9 @@ prescriptions/
   Especial forms, measured PDF overlay (`pypdf` + `reportlab` layout profiles
   with capacity validation), bundled blank PDFs and Carlito font under
   `assets/`, mounted at `/prescripciones-galeno/`, `/terapias-ambulatorias/`,
-  and `/escolaridad-especial/`; no models.
+  and `/escolaridad-especial/`; no models. PDF POSTs use the existing
+  database rate-limit table with scope `galeno_pdf` (20 per 10 minutes per
+  `REMOTE_ADDR`). DNI is 7 or 8 ASCII digits after dots are removed.
   Linked from the shared `core/templates/base.html` navbar as a single
   Prescripciones Galeno entry; form pages link back to the hub.
   Templates extend `base.html` (`body_class` `prescriptions-page`) and scope
@@ -173,7 +175,7 @@ individual command failures use an operator-safe fallback response.
 
 State-changing dashboard actions are protected with login, staff checks where required, POST-only decorators where present, and Django CSRF except for the Telegram webhook listener, which uses the Telegram secret-token header.
 
-Pause and resume write only `core_botcontrol.is_paused`, `reason`, `updated_by`, and `updated_at`. `is_paused` is the desired state. The dashboard does not receive an acknowledgement from the bot and does not claim the bot has stopped or resumed. Every pause POST requires confirmation. HTML sends `confirm=yes`. JSON accepts that form field, `{"confirm":"yes"}`, or `{"confirm":true}`. Resume does not require confirmation. A missing confirmation does not write: HTML redirects with "Confirmá la solicitud de pausa antes de continuar. No se registró ningún cambio.", and any other client receives HTTP 400 `{"error":"confirmation_required","detail":"<same sentence>"}`. A search of this repository, including Telegram handlers and scripts, found no caller of `/bot/stop/`, `/bot/resume/`, or `/bot/status/` other than the dashboard form, its script, tests, and docs, so JSON has no compatibility exception. A confirmed HTML post then redirects to a safe same-origin `next` or `Referer`, falling back to `/dashboard/#control-seguro`. Targets that point at the pause, resume, or status URLs are rejected. The redirect carries "Pausa solicitada" or "Reanudación solicitada". The control card shows that requested state, the row time in America/Buenos_Aires (ART), the user email, and the reason. With JavaScript, the same POST is sent as `Accept: application/json` and the card updates in place. A failed, non-JSON, or aborted response does not submit the form again. The card shows "Resultado incierto. No se reenvió el pedido.", re-reads `GET /bot/status/`, and keeps that warning. "Reintentar el pedido" is the only later POST. While a request is in flight the pause and resume controls are disabled, and an older response sequence cannot replace a newer card state. Clients that do not advertise `text/html` keep the previous JSON object when the pause is confirmed or the call is a resume. Login and CSRF rules are unchanged, including for authenticated non-staff users. Without JavaScript, the browser submits the form once and follows the redirect.
+Pause and resume write only `core_botcontrol.is_paused`, `reason`, `updated_by`, and `updated_at`. `is_paused` is the desired state. The dashboard does not receive an acknowledgement from the bot and does not claim the bot has stopped or resumed. Every pause POST requires confirmation. HTML sends `confirm=yes`. JSON accepts that form field, `{"confirm":"yes"}`, or `{"confirm":true}`. Resume does not require confirmation. A missing confirmation does not write: HTML redirects with "Confirmá la solicitud de pausa antes de continuar. No se registró ningún cambio.", and any other client receives HTTP 400 `{"error":"confirmation_required","detail":"<same sentence>"}`. A search of this repository, including Telegram handlers and scripts, found no caller of `/bot/stop/`, `/bot/resume/`, or `/bot/status/` other than the dashboard form, its script, tests, and docs, so JSON has no compatibility exception. A confirmed HTML post then redirects to a safe same-origin `next` or `Referer`, falling back to `/dashboard/#control-seguro`. Targets that point at the pause, resume, or status URLs are rejected. The redirect carries "Pausa solicitada" or "Reanudación solicitada". The control card shows that requested state, the row time in America/Buenos_Aires (ART), the user email, and the reason. With JavaScript, the same POST is sent as `Accept: application/json` and the card updates in place. A failed, non-JSON, or aborted response does not submit the form again. The card shows "Resultado incierto. No se reenvió el pedido.", re-reads `GET /bot/status/`, and keeps that warning. "Reintentar el pedido" is the only later POST. While a request is in flight the pause and resume controls are disabled, and an older response sequence cannot replace a newer card state. Clients that do not advertise `text/html` keep the previous JSON object when the pause is confirmed or the call is a resume. Login and CSRF rules are unchanged. Pause, resume, and status require staff or superuser; a signed-in user who is neither receives HTTP 403 and no control row is written. Without JavaScript, the browser submits the form once and follows the redirect.
 
 `/health/` is public and side-effect-free. It reports only Django web-process liveness for hosting keepalive checks; bot operational health remains sourced from `bot.bot_healthcheck` in dashboard views.
 

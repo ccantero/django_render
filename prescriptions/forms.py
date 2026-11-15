@@ -30,6 +30,7 @@ class _PrescriptionFormBase(forms.Form):
     dni = forms.CharField(
         label="DNI",
         max_length=20,
+        strip=False,
         widget=forms.TextInput(attrs={"inputmode": "numeric", "required": True}),
     )
     edad = forms.IntegerField(
@@ -40,10 +41,12 @@ class _PrescriptionFormBase(forms.Form):
     )
     diagnostico = forms.CharField(
         label="Diagnóstico",
+        max_length=500,
         widget=forms.Textarea(attrs={"rows": 3, "required": True}),
     )
     prestacion = forms.CharField(
         label="Prestación",
+        max_length=500,
         widget=forms.Textarea(attrs={"rows": 2, "required": True}),
     )
     periodo_desde = forms.CharField(
@@ -72,6 +75,16 @@ class _PrescriptionFormBase(forms.Form):
             return date(year, month, 1)
         except ValueError as exc:
             raise forms.ValidationError("Ingresá un mes válido (AAAA-MM).") from exc
+
+    def clean_dni(self):
+        raw = self.cleaned_data.get("dni", "")
+        try:
+            normalized = str(raw).replace(".", "")
+        except Exception as exc:
+            raise forms.ValidationError("Ingresá un DNI de 7 u 8 dígitos.") from exc
+        if re.fullmatch(r"^[0-9]{7,8}$", normalized, flags=re.ASCII) is None:
+            raise forms.ValidationError("Ingresá un DNI de 7 u 8 dígitos.")
+        return normalized
 
     def clean_periodo_desde(self):
         return self._parse_month(self.cleaned_data["periodo_desde"])
@@ -147,6 +160,7 @@ class EscolaridadEspecialForm(_PrescriptionFormBase):
 
     prestacion = forms.CharField(
         label="Prestación",
+        max_length=500,
         widget=forms.Textarea(attrs={"rows": 1, "required": True}),
     )
     jornada = forms.CharField(
